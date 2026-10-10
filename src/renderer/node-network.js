@@ -6,10 +6,10 @@ function nodeNetworkCard(){
  const option=(id,label,current)=>`<option value="${id}" ${current===id?'selected':''}>${label}</option>`;
  const isNonDefault = value.dnsMode !== 'system' || value.routeMode !== 'system';
  const warnDns = value.dnsMode !== 'system' ? `<p class="warning-note" style="background:#fef3cd;border-left:3px solid #f4b400;padding:12px;margin:12px 0"><strong>提示：</strong>当前节点 DNS 设置为「${value.dnsMode === 'auto' ? '自动兼容' : value.dnsMode === 'strict' ? '严格模式' : '安全 DNS'}」。${value.dnsMode === 'strict' ? '公网节点域名只用 DoH，查询失败时阻止启动，不回退系统 DNS。' : value.dnsMode === 'auto' ? '系统解析正常时沿用系统 DNS；发现 Fake-IP、解析失败或绑定网卡时使用 DoH。DoH 失败时回退系统 DNS，继续尝试启动，仍可能连接失败。' : '公网节点域名优先使用 DoH；失败时回退系统 DNS，继续尝试启动，仍可能连接失败。'}仅影响节点服务器域名解析，不保证网页 DNS 无泄露。</p>` : '';
- return `<section class="settings-card full" id="nodeNetworkCard" hidden aria-hidden="true"><h3>节点 DNS 与出站网络</h3><div class="inner">
+ return `<section class="settings-card full" id="nodeNetworkCard"><h3>节点 DNS 与出站网络</h3><div class="inner">
  <p class="actions-note">适用于代理实例及节点检测。本机 IP 直连和订阅更新沿用系统网络；设置保存后在下次启动或检测生效。</p>
  ${warnDns}
- <div id="nodeDnsAdvanced" hidden aria-hidden="true">
+ <div id="nodeDnsAdvanced">
   <label class="field"><span>节点域名解析</span><select id="nodeDnsMode" ${networkBusy?'disabled':''}>${option('auto','自动兼容（Fake-IP、解析失败或绑定网卡时使用 DoH）',value.dnsMode)}${option('system','系统 DNS',value.dnsMode)}${option('secure','安全 DNS（公网节点使用 DoH）',value.dnsMode)}${option('strict','严格模式（公网节点只用 DoH，失败不回退）',value.dnsMode)}</select></label>
   <p class="actions-note">默认使用系统 DNS，保持原有启动行为。自动兼容和安全 DNS 在 DoH 失败时回退系统 DNS，继续尝试启动，不保证连通；严格模式失败时阻止启动。这里只控制节点服务器的域名解析，不改变网页 DNS 路径。</p>
  </div>

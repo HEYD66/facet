@@ -41,7 +41,11 @@ app.whenReady().then(async()=>{let failed=false;try{
   const direct=c.store.list()[0];c.store.update(direct.id,{url:'http://127.0.0.1:'+server.address().port});await c.start(direct.id);
   const original=c.runtimes.get(direct.id).view.webContents;
   await wait(()=>original.getTitle()==='Preserved direct instance','direct page');
-  await ui("route('settings')");assert.equal(await ui('document.querySelector("#nodeNetworkCard").hidden'),true);await click('#nodeNetworkRefresh');await wait(()=>ui('!networkBusy&&networkRows.length>0'),'real network inventory');
+  await ui("route('settings')");assert.equal(await ui('document.querySelector("#nodeNetworkCard").hidden'),false);
+  assert(await ui('document.querySelector("#nodeDnsMode").getBoundingClientRect().height>0'));
+  assert.deepEqual(await ui('[...document.querySelector("#nodeDnsMode").options].map(x=>x.value)'),['auto','system','secure','strict']);
+  assert.equal(await ui('!!document.querySelector("#nodeNetworkReset")'),false);pass('DNS panel is visible with all four modes and default policy unchanged');
+  await click('#nodeNetworkRefresh');await wait(()=>ui('!networkBusy&&networkRows.length>0'),'real network inventory');
   assert(await ui('networkRows.some(row=>row.physical&&row.defaultRoute)'));pass('Refresh button reads real physical and virtual interfaces');
   await ui('document.querySelector("#nodeRouteMode").value="physical";document.querySelector("#nodeRouteMode").dispatchEvent(new Event("change",{bubbles:true}));document.querySelector("#nodeDnsMode").value="secure";document.querySelector("#nodeDnsMode").dispatchEvent(new Event("change",{bubbles:true}))');
   await click('#nodeNetworkSave');await wait(()=>ui('!networkBusy&&networkMessage.startsWith("已保存")'),'persist settings via UI');
