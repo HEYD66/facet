@@ -151,14 +151,18 @@ test('node regional fallback still rejects private, Fake-IP and mismatched quest
   });
   await assert.rejects(queryDohAddresses('unsafe.node-vendor.com',nodeOptions),{code:'DOH_NONPUBLIC_ADDRESS'});assert.equal(calls.length,6);
 });
-test('all unsafe node answers fail preparation before spawning a core; system mode is unchanged',async t=>{
+test('all unsafe node answers fall back to system DNS; system mode is unchanged',async t=>{
   const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),dns=require('node:dns').promises;
   const {NodeNetwork}=require('../src/main/node-network.cjs'),{Mihomo}=require('../src/main/mihomo.cjs');
   const calls=mockDnsHttp(t,options=>options.hostname==='dns.alidns.com'?regionalReply(options,options.path.endsWith('type=A')?['198.18.2.1']:[]):{body:reply(options,options.path.endsWith('type=A')?['127.127.127.5']:[])});
   t.mock.method(dns,'lookup',async()=>[{address:'198.18.1.2',family:4}]);
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facet-unsafe-dns-'));
-  try{const network=new NodeNetwork(dir),core=new Mihomo(path.resolve('resources/mihomo/mihomo.exe'),path.join(dir,'runtime'),null,network);
-    await assert.rejects(core.start({server:'unsafe.node-vendor.com',type:'ss',port:8080}),/多个安全 DNS/);assert.equal(core.child,null);assert(!fs.existsSync(path.join(dir,'runtime')));assert.equal(calls.length,6);
+  try{const network=new NodeNetwork(dir);await network.save({dnsMode:'auto',routeMode:'system'});const core=new Mihomo(path.resolve('resources/mihomo/mihomo.exe'),path.join(dir,'runtime'),null,network);
+    // DoH returns non-public addresses, should auto-fallback to system DNS (no throw)
+    const result=await network.prepare({server:'unsafe.node-vendor.com',type:'ss',port:8080});
+    assert.equal(calls.length,6); // All 3 providers queried (2 requests each)
+    assert.deepEqual(result.overrides,{}); // No hosts override, fell back to system
+    assert(result.summary.dns.includes('回退')||result.summary.dns.includes('系统')); // Fallback message
     await network.save({dnsMode:'system',routeMode:'system'});assert.deepEqual((await network.prepare({server:'unsafe.node-vendor.com'})).overrides,{});assert.equal(calls.length,6);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
@@ -166,4 +170,16 @@ test('node fallback has bounded deadlines and parent cancellation never starts a
   const calls=mockDnsHttp(t,()=>({hang:true})),abort=new AbortController();
   const pending=queryDohAddresses('cancel.node-vendor.com',{...nodeOptions,signal:abort.signal});abort.abort();await assert.rejects(pending,{code:'ABORT_ERR'});assert.equal(calls.length,2);
   const started=Date.now();await assert.rejects(queryDohAddresses('slow.node-vendor.com',{...nodeOptions,timeoutMs:20}),{code:'DOH_UNAVAILABLE'});assert.equal(calls.length,8);assert(Date.now()-started<2000);
+});
+test('strict mode never falls back to system DNS when DoH fails',async t=>{
+  const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),dns=require('node:dns').promises;
+  const {NodeNetwork}=require('../src/main/node-network.cjs');
+  const calls=mockDnsHttp(t,options=>options.hostname==='dns.alidns.com'?regionalReply(options,options.path.endsWith('type=A')?['198.18.2.1']:[]):{body:reply(options,options.path.endsWith('type=A')?['127.127.127.5']:[])});
+  t.mock.method(dns,'lookup',async()=>[{address:'198.18.1.2',family:4}]);
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facet-strict-dns-'));
+  try{const network=new NodeNetwork(dir);await network.save({dnsMode:'strict',routeMode:'system'});
+    // Strict mode: DoH returns non-public, should throw (not fallback)
+    await assert.rejects(network.prepare({server:'unsafe.node-vendor.com',type:'ss',port:8080}),/多个安全 DNS/);
+    assert.equal(calls.length,6); // All 3 providers queried
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

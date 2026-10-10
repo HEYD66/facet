@@ -12,6 +12,7 @@ const {isPublicHostname, queryDohAddresses} = require('./subscription-doh.cjs');
 const {isPublicAddress, isFakeIPAddress} = require('./subscription-policy.cjs');
 // Keep the pre-DNS-fix startup behavior as the default. Auto/secure are opt-in
 // compatibility modes for nodes affected by Fake-IP or system DNS failures.
+// Strict mode never falls back, for users who prioritize leak prevention over reliability.
 const DEFAULTS = Object.freeze({dnsMode: 'system', routeMode: 'system', interfaceName: ''});
 
 function safeError(message) {
@@ -24,7 +25,7 @@ function interfaceName(value) {
   return value;
 }
 function normalize(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !['auto', 'system', 'secure'].includes(value.dnsMode) || !['system', 'physical', 'interface'].includes(value.routeMode)) throw safeError('节点 DNS 或出站设置无效');
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !['auto', 'system', 'secure', 'strict'].includes(value.dnsMode) || !['system', 'physical', 'interface'].includes(value.routeMode)) throw safeError('节点 DNS 或出站设置无效');
   return {dnsMode: value.dnsMode, routeMode: value.routeMode, interfaceName: value.routeMode === 'interface' ? interfaceName(value.interfaceName) : ''};
 }
 function fakeAddress(address) {
@@ -111,8 +112,9 @@ class NodeNetwork {
     }
     signal?.throwIfAborted();
     const bound = selected || node['interface-name'] || '';
-    let secure = settings.dnsMode === 'secure' && isPublicHostname(host);
+    let secure = (settings.dnsMode === 'secure' || settings.dnsMode === 'strict') && isPublicHostname(host);
     let reason = secure ? '安全 DNS' : '系统 DNS';
+    const strictMode = settings.dnsMode === 'strict';
     if (settings.dnsMode === 'auto' && isPublicHostname(host)) {
       if (bound) { secure = true; reason = '安全 DNS'; }
       else {
@@ -135,15 +137,37 @@ class NodeNetwork {
       // pin only this node hostname in this core's temporary hosts configuration.
       // A new start/probe resolves again; no resolved IP is written to the library.
       let answers;
+      let dohFailed = false;
       try { answers = await queryDohAddresses(host, {signal, nodeFallback: true, acceptAddress: isPublicAddress}); }
       catch (error) {
         signal?.throwIfAborted();
-        if (error.code === 'DOH_NONPUBLIC_ADDRESS') throw safeError('节点域名解析为回环、内网或保留地址；多个安全 DNS 均未获得公网地址，请检查节点或订阅配置');
-        throw safeError('节点安全 DNS 查询失败；未启动代理、未回退目标网站直连，请检查网络或选择系统 DNS');
+        // Strict mode: never fall back, throw error to prevent DNS leaks
+        if (strictMode) {
+          if (error.code === 'DOH_NONPUBLIC_ADDRESS') throw safeError('节点域名解析为回环、内网或保留地址；多个安全 DNS 均未获得公网地址，请检查节点或订阅配置');
+          throw safeError('节点安全 DNS 查询失败；未启动代理、未回退目标网站直连，请检查网络或切换到自动模式');
+        }
+        // Auto/secure mode: auto-fallback to system DNS with warning
+        // This prevents "can't connect" errors while still attempting to reduce leaks.
+        dohFailed = true;
+        reason = error.code === 'DOH_NONPUBLIC_ADDRESS'
+          ? '安全 DNS 返回非公网地址，已回退系统 DNS'
+          : '安全 DNS 查询失败，已回退系统 DNS';
+        console.warn(`[NodeNetwork] DoH failed for ${host}: ${error.code || error.message}, falling back to system DNS`);
+        answers = null;
       }
       signal?.throwIfAborted();
-      if (!answers.length || answers.some(row => !isPublicAddress(row.address))) throw safeError('节点安全 DNS 未返回合法公网地址；请核对节点域名或使用系统 DNS 连接内网节点');
-      overrides.hosts = {[host]: [...new Set(answers.map(row => row.address))]};
+      if (answers) {
+        if (!answers.length || answers.some(row => !isPublicAddress(row.address))) {
+          // Strict mode: throw error
+          if (strictMode) throw safeError('节点安全 DNS 未返回合法公网地址；请核对节点域名或切换到自动模式连接内网节点');
+          // Same auto-fallback for invalid responses
+          reason = '安全 DNS 返回无效地址，已回退系统 DNS';
+          console.warn(`[NodeNetwork] DoH returned invalid addresses for ${host}, falling back to system DNS`);
+          dohFailed = true;
+        } else {
+          overrides.hosts = {[host]: [...new Set(answers.map(row => row.address))]};
+        }
+      }
     }
     return {overrides, summary: {dns: reason, route: selected ? '指定网卡：' + selected : '保留系统路由及节点设置'}};
   }
