@@ -12,7 +12,7 @@ const {isPublicHostname, queryDohAddresses} = require('./subscription-doh.cjs');
 const {isPublicAddress, isFakeIPAddress} = require('./subscription-policy.cjs');
 // Keep the pre-DNS-fix startup behavior as the default. Auto/secure are opt-in
 // compatibility modes for nodes affected by Fake-IP or system DNS failures.
-// Strict mode never falls back, for users who prioritize leak prevention over reliability.
+// Strict mode never falls back to system DNS for public node hostnames.
 const DEFAULTS = Object.freeze({dnsMode: 'system', routeMode: 'system', interfaceName: ''});
 
 function safeError(message) {
@@ -137,22 +137,19 @@ class NodeNetwork {
       // pin only this node hostname in this core's temporary hosts configuration.
       // A new start/probe resolves again; no resolved IP is written to the library.
       let answers;
-      let dohFailed = false;
       try { answers = await queryDohAddresses(host, {signal, nodeFallback: true, acceptAddress: isPublicAddress}); }
       catch (error) {
         signal?.throwIfAborted();
-        // Strict mode: never fall back, throw error to prevent DNS leaks
+        // Strict mode: refuse startup instead of resolving this node via system DNS.
         if (strictMode) {
           if (error.code === 'DOH_NONPUBLIC_ADDRESS') throw safeError('节点域名解析为回环、内网或保留地址；多个安全 DNS 均未获得公网地址，请检查节点或订阅配置');
           throw safeError('节点安全 DNS 查询失败；未启动代理、未回退目标网站直连，请检查网络或切换到自动模式');
         }
-        // Auto/secure mode: auto-fallback to system DNS with warning
-        // This prevents "can't connect" errors while still attempting to reduce leaks.
-        dohFailed = true;
+        // Auto/secure mode: continue startup with system DNS; connectivity may still fail.
+        // Return a safe summary for the caller's log without exposing the node hostname.
         reason = error.code === 'DOH_NONPUBLIC_ADDRESS'
           ? '安全 DNS 返回非公网地址，已回退系统 DNS'
           : '安全 DNS 查询失败，已回退系统 DNS';
-        console.warn(`[NodeNetwork] DoH failed for ${host}: ${error.code || error.message}, falling back to system DNS`);
         answers = null;
       }
       signal?.throwIfAborted();
@@ -162,8 +159,6 @@ class NodeNetwork {
           if (strictMode) throw safeError('节点安全 DNS 未返回合法公网地址；请核对节点域名或切换到自动模式连接内网节点');
           // Same auto-fallback for invalid responses
           reason = '安全 DNS 返回无效地址，已回退系统 DNS';
-          console.warn(`[NodeNetwork] DoH returned invalid addresses for ${host}, falling back to system DNS`);
-          dohFailed = true;
         } else {
           overrides.hosts = {[host]: [...new Set(answers.map(row => row.address))]};
         }
