@@ -35,6 +35,7 @@
     "test:experience-ui": "node tests/experience-renderer.cjs",
     "test:viewport-bookmarks": "node scripts/launch-electron.cjs tests/viewport-bookmarks.cjs",
     "test:quick-links": "node scripts/launch-electron.cjs tests/quick-links.cjs",
+    "test:privacy-sites": "node scripts/launch-electron.cjs tests/privacy-sites-electron.cjs",
     "test:appearance-ui": "node tests/appearance-audit.cjs",
     "test:extensions": "node --test tests/extensions.test.cjs",
     "test:extensions-electron": "node scripts/launch-electron.cjs tests/extensions-electron.cjs",

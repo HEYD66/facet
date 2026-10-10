@@ -1,7 +1,7 @@
 "use strict";
 // 扩展菜单浮层：显示控制界面生成的菜单，并把按钮点击回传给控制界面处理。
 const menu = document.getElementById("menu");
-const KEYS = ["extension", "extensionId", "instanceId", "kind", "view"];
+const KEYS = ["extension", "extensionId", "instanceId", "kind", "view", "privacySite"];
 function report() {
   facetOverlay.send({ type: "size", height: Math.ceil(menu.getBoundingClientRect().height) });
 }
@@ -22,6 +22,6 @@ document.addEventListener("click", (e) => {
   if (!b || b.disabled) return;
   const data = {};
   for (const k of KEYS) if (b.dataset[k] !== undefined) data[k] = String(b.dataset[k]);
-  if (data.extension || data.view) facetOverlay.send({ type: "action", data });
+  if (data.extension || data.view || data.privacySite) facetOverlay.send({ type: "action", data });
 });
 new ResizeObserver(report).observe(menu);

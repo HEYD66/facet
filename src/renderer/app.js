@@ -28,6 +28,7 @@ function render(force=false){
  if(view==='runtime-output'){view='global-logs';globalLogTab='debug';}
  syncRuntimeOutputRefresh();
  refreshIPBookmarks();refreshQuickLinksManager();
+ if(privacyMenuFor&&(view!=='browser'||activeId!==privacyMenuFor))closePrivacySitesMenu();
  document.documentElement.dataset.page=view;scheduleUiSave();if(view!=='grid'&&typeof gridLeave==='function')gridLeave();
  const x=current(),global=globalViews.includes(view),focus=document.activeElement,typing=focus?.id==='addressField'?{value:focus.value,start:focus.selectionStart,end:focus.selectionEnd}:null,refocus=captureShellFocus();
  if(contentKey&&contentKey!==view+':'+activeId)rememberScroll(contentKey);
@@ -52,7 +53,7 @@ function render(force=false){
  if(view==='extensions')extensionPage();else if(view==='browser')browserPage(x);else if(view==='environment')environmentPage(x);else if(view==='proxies')libraryPage();else if(view==='favorites')favoritesPage();else if(view==='global-logs')globalLogsPage();else if(view==='runtime-output')runtimeOutputPage();else if(view==='overview')overview();else if(view==='grid')gridPage();else if(view==='logs')logsPage(x);else if(view==='settings')settingsPage();else globalPage();
  if(view==='environment'){environmentWarnings();mountEnvironment(x);mountInstanceNodeActions();applyUiDetails();}
  if(typing&&$('#addressField')){$('#addressField').value=typing.value;$('#addressField').focus();try{$('#addressField').setSelectionRange(typing.start,typing.end);}catch{}}
- renderExtensionMenu();positionExtensionMenu();
+ renderExtensionMenu();positionExtensionMenu();syncPrivacySitesMenu();
  layout();if(switched)restoreScroll(key);
 }
 function browserPage(x){if(!x){$('#content').innerHTML='<div class="page-empty"><h2>创建第一个独立实例</h2><p>不需要代理节点，即可明确选择本机 IP 直连。</p><button class="btn primary" data-action="new">新建实例</button></div>';return;}

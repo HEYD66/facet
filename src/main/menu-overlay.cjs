@@ -96,9 +96,9 @@ class MenuOverlay {
     }
     if (msg.type === "action" && this.open) {
       const data = {};
-      for (const k of ["extension", "extensionId", "instanceId", "kind", "view"])
+      for (const k of ["extension", "extensionId", "instanceId", "kind", "view", "privacySite"])
         if (typeof msg.data?.[k] === "string") data[k] = msg.data[k].slice(0, 200);
-      if (!data.extension && !data.view) return;
+      if (!data.extension && !data.view && !data.privacySite) return;
       this.hide("action");
       this.notify({ type: "action", data });
     }
