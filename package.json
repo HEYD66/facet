@@ -18,6 +18,7 @@
     "start": "node scripts/launch-electron.cjs .",
     "test:launcher": "node --test tests/launcher.test.cjs",
     "test:webrtc": "node tests/webrtc-runner.cjs",
+    "test:browser-network": "node tests/browser-network-runner.cjs",
     "test:rename": "node scripts/launch-electron.cjs tests/rename-electron.cjs",
     "test:exit": "node scripts/launch-electron.cjs tests/exit-electron.cjs",
     "preview": "node scripts/preview.cjs",

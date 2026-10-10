@@ -13,6 +13,7 @@ if(app.isPackaged)require('./runtime-output.cjs').installRuntimeOutput(app);
 if(process.platform==='win32')app.setAppUserModelId('Facet.MultiInstanceBrowser');
 const appIcon=resourcePath(app,process.platform==='win32'?'facet.ico':'facet.png');
 require('./webrtc-policy.cjs').installWebRTCPolicy(app);
+require('./browser-network-policy.cjs').installBrowserNetworkPolicy(app);
 app.commandLine.appendSwitch('disable-quic');
 // 外部控制默认关闭。开启后由应用级 CDP 端口承载所有实例页面，端口只监听本机。
 const cdpStarted=controlSettings.enabled&&!!controlSettings.cdpPort;
