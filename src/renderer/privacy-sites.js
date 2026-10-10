@@ -1,5 +1,6 @@
 'use strict';
 const privacySites=Object.freeze([
+ {id:'ipip',name:'ipip.la',url:'https://ipip.la/disguise.html',note:'IP · DNS · 浏览环境检测',icon:'globe',tone:'blue'},
  {id:'ipleak',name:'ipleak.net',url:'https://ipleak.net/',note:'IP · DNS · WebRTC',icon:'search',tone:'blue'},
  {id:'browserleaks',name:'browserleaks.com/dns',url:'https://browserleaks.com/dns',note:'DNS 泄露检测',icon:'globe',tone:'purple'},
  {id:'dnsleaktest',name:'dnsleaktest.com',url:'https://dnsleaktest.com/',note:'标准 / 扩展 DNS 检测',icon:'monitor',tone:'green'},
