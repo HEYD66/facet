@@ -44,6 +44,7 @@ app.whenReady().then(async()=>{try{
  assert.equal(after.notes,before.notes);
  assert.notEqual(after.environment.fingerprint.seed,before.environment.fingerprint.seed);
  assert.equal(after.environment.fingerprint.touch,0);
+ assert.equal(after.environment.fingerprint.hardware,true);
  assert.equal((await ses.cookies.get({url})).length,0);
  const form=await ui('environmentFormValue()');
  assert.equal(form.environment.userAgent,after.environment.userAgent);
@@ -58,6 +59,9 @@ app.whenReady().then(async()=>{try{
  await controller.start(instance.id);
  const restarted=controller.runtimes.get(instance.id);
  await wait(()=>restarted.view?.webContents.getTitle()==='reset-fixture','restarted fixture page');
+ const reported=await restarted.view.webContents.executeJavaScript('({touch:navigator.maxTouchPoints,memory:navigator.deviceMemory})');
+ assert.equal(reported.touch,0);
+ assert.equal(reported.memory,8);
  assert.equal(await restarted.view.webContents.executeJavaScript('localStorage.getItem("reset-marker")'),null);
  // Both successful batch items discard old drafts, including one not on screen.
  const previousSeed=after.environment.fingerprint.seed;
