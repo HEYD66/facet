@@ -1,0 +1,23 @@
+'use strict';
+// 实例开发者工具：真实 Electron 页面验证 F12、界面按钮、本地控制通道和停止清理。
+const {app,BrowserWindow}=require('electron');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-devtools-test-'));app.setPath('userData',root);app.commandLine.appendSwitch('disable-features','CalculateNativeWinOcclusion');if(process.platform==='linux')app.commandLine.appendSwitch('disable-gpu');
+const {Controller}=require('../src/main/controller.cjs'),{installIPC}=require('../src/main/ipc.cjs');
+let win,c,server;const results=[],errors=[];const sleep=ms=>new Promise(r=>setTimeout(r,ms));const wait=async(fn,label,n=240)=>{for(let i=0;i<n;i++){try{const value=await fn();if(value)return value;}catch{}await sleep(50);}throw Error('Timeout: '+label);};const ok=name=>{results.push(name);console.log('PASS '+name);};
+setTimeout(()=>app.exit(2),90000).unref();
+app.whenReady().then(async()=>{try{
+ server=http.createServer((_req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><title>DevTools fixture</title><button id="focus">focus</button>');});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const url='http://127.0.0.1:'+server.address().port+'/';
+ win=new BrowserWindow({width:1400,height:900,show:true,webPreferences:{preload:path.join(__dirname,'../src/main/preload.cjs'),sandbox:true,contextIsolation:true}});
+ c=new Controller(win,root,path.join(__dirname,'../resources/mihomo',process.platform==='win32'?'mihomo.exe':'mihomo'));installIPC(win,c);
+ const a=c.store.list()[0]||c.store.create('开发者工具实例');c.store.update(a.id,{name:'开发者工具实例',url});
+ await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));const ui=code=>win.webContents.executeJavaScript(code);await wait(()=>ui('typeof route==="function"&&!!current()'),'renderer');
+ await c.start(a.id);const wc=()=>c.runtimes.get(a.id).view.webContents;await wait(()=>wc().getURL()===url&&!wc().isLoading(),'instance loaded');await ui(`localOpen.add(${JSON.stringify(a.id)});route('browser',${JSON.stringify(a.id)})`);await wait(()=>ui('!!document.querySelector("[data-action=toggle-devtools]")'),'toolbar button');
+ assert.equal(await ui('document.querySelector("[data-action=toggle-devtools]").disabled'),false);
+ const devtoolsReady=()=>{const d=c.runtimes.get(a.id).devtoolsView?.webContents;return d&&!d.isDestroyed()&&d.getURL().startsWith('devtools://');};
+ wc().sendInputEvent({type:'keyDown',keyCode:'F12'});wc().sendInputEvent({type:'keyUp',keyCode:'F12'});await wait(devtoolsReady,'F12 opens devtools');assert.equal(BrowserWindow.getAllWindows().length,1);ok('当前实例网页按 F12 打开右侧停靠开发者工具');
+ const close=await c.externalRequest({action:'toggle-devtools',id:a.id});assert.deepEqual(close,{ok:true,value:{open:false}});await wait(()=>!c.runtimes.get(a.id).devtoolsOpen,'API closes devtools');ok('本地控制通道可关闭同一实例开发者工具');
+ const open=await ui(`window.facet.request('toggle-devtools',{id:${JSON.stringify(a.id)}})`);assert.deepEqual(open,{ok:true,value:{open:true}});await wait(devtoolsReady,'UI button action opens devtools');await ui('document.querySelector("[data-action=toggle-devtools]").click()');await wait(()=>!c.runtimes.get(a.id).devtoolsOpen,'toolbar button closes devtools');ok('浏览页面工具栏按钮可切换开发者工具');
+ await c.externalRequest({action:'toggle-devtools',id:a.id});await wait(devtoolsReady,'devtools before stop');await c.stop(a.id);assert.equal(c.runtimes.get(a.id).status,'stopped');assert.equal(c.runtimes.get(a.id).view,null);assert.equal(c.runtimes.get(a.id).devtoolsView,null);ok('实例停止时自动关闭开发者工具并保留停止流程');
+}catch(e){errors.push(e.stack||String(e));console.error(e);}finally{try{await c?.closeAll();}catch(e){errors.push(e.message);}win?.destroy();if(server){server.closeAllConnections();server.close();}const report={platform:process.platform,electron:process.versions.electron,passed:results.length,results,errors};fs.writeFileSync(path.join(__dirname,'devtools-electron-'+process.platform+'.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));app.exit(errors.length?1:0);}});

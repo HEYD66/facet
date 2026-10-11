@@ -133,6 +133,7 @@ function installIPC(window,controller){
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
     case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
     case 'navigate':await controller.navigate(id,message.url);break;
+    case 'toggle-devtools':return {ok:true,value:await controller.toggleDevTools(id)};
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
     case 'settings':return {ok:true,value:await controller.settings(id,message.patch||{})};
     case 'import-subscription':return {ok:true,value:await controller.importSubscription(id,message.url,false)};
