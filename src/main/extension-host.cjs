@@ -23,9 +23,23 @@ function properties(value){
 }
 function windowInfo(host){const w=host.controller.window;return {id:w.id,focused:w.isFocused(),type:'normal',state:w.isMaximized()?'maximized':w.isMinimized()?'minimized':'normal',...w.getBounds(),incognito:false,alwaysOnTop:w.isAlwaysOnTop()};}
 function invoke(event,method,args){
- const {host,id,manifest,worker,wc}=sender(event);if(!Array.isArray(args)||args.length>2)throw Error('扩展请求参数无效');
+ const {host,id,manifest,worker,wc}=sender(event);if(!Array.isArray(args))throw Error('扩展请求参数无效');
  if(method==='target')return {tabId:host.runtime.view.webContents.id,windowId:host.controller.window.id};
  if(method==='window')return windowInfo(host);
+ if(method==='debugger-attach'||method==='debugger-detach'||method==='debugger-command'){
+  if(!manifest.permissions?.includes('debugger'))throw Error('扩展未声明 debugger 权限');
+  if(method==='debugger-attach'){
+   if(args.length!==2)throw Error('调试器附加参数无效');
+   return host.debuggerAttach(id,worker,args[0],args[1]);
+  }
+  if(method==='debugger-detach'){
+   if(args.length!==1)throw Error('调试器断开参数无效');
+   return host.debuggerDetach(id,worker,args[0]);
+  }
+  if(args.length!==3)throw Error('调试器命令参数无效');
+  return host.debuggerCommand(id,worker,args[0],args[1],args[2]);
+ }
+ if(args.length>2)throw Error('扩展请求参数无效');
  if(!manifest.permissions?.includes('contextMenus'))throw Error('扩展未声明contextMenus权限');
  let entry=host.menus.get(id);if(!entry){entry={items:new Map(),worker,wc};host.menus.set(id,entry);}entry.worker=worker||entry.worker;entry.wc=wc||entry.wc;
  if(method==='menu-create'){const row=properties(args[0]);if(row.id===undefined)throw Error('缺少菜单标识');if(entry.items.size>=100)throw Error('扩展菜单数量超限');if(entry.items.has(String(row.id)))throw Error('菜单标识已存在');if(row.parentId!==undefined&&!entry.items.has(String(row.parentId)))throw Error('父菜单不存在');entry.items.set(String(row.id),row);return row.id;}
@@ -41,13 +55,41 @@ function applies(row,params){
 }
 class ExtensionHost{
  constructor(controller,runtime,instanceId,allowed){
-  this.controller=controller;this.runtime=runtime;this.instanceId=instanceId;this.allowed=new Set(allowed.map(x=>path.resolve(x)));this.menus=new Map();this.workers=new Set();this.closed=false;this.lastMenu=null;
+  this.controller=controller;this.runtime=runtime;this.instanceId=instanceId;this.allowed=new Set(allowed.map(x=>path.resolve(x)));this.menus=new Map();this.workers=new Set();this.closed=false;this.lastMenu=null;this.debuggerOwner=null;this.debuggerWorker=null;this.debuggerAttached=false;
   if(!hosts.size)ipcMain.handle(channel,invoke);hosts.set(runtime.session,this);
   this.preloads=['frame','service-worker'].map(type=>runtime.session.registerPreloadScript({type,filePath:path.join(__dirname,'extension-host-preload.cjs')}));
   this.onWorker=event=>{const worker=runtime.session.serviceWorkers.getWorkerFromVersionID(event.versionId);if(worker&&!this.workers.has(worker)){this.workers.add(worker);worker.ipc.handle(channel,invoke);}};
   runtime.session.serviceWorkers.on('running-status-changed',this.onWorker);
+  this.onDebuggerMessage=(_event,method,params)=>{if(!this.debuggerAttached||!this.debuggerWorker||this.debuggerWorker.isDestroyed()||!['Network.responseReceived','Network.dataReceived','Network.loadingFinished','Network.loadingFailed'].includes(method))return;try{this.debuggerWorker.send('facet:extension-debugger-event',{type:'event',source:{tabId:this.runtime.view.webContents.id},method,params:params||{}});}catch(error){this.controller.log(this.instanceId,'扩展调试事件转发失败：'+require('./workspace.cjs').redact(error.message),'WARN');}};
+  this.onDebuggerDetach=(_event,reason)=>{const worker=this.debuggerWorker;this.debuggerAttached=false;this.debuggerOwner=null;this.debuggerWorker=null;if(worker&&!worker.isDestroyed())try{worker.send('facet:extension-debugger-event',{type:'detach',source:{tabId:this.runtime.view?.webContents?.id},reason});}catch{}};
+  runtime.view.webContents.debugger.on('message',this.onDebuggerMessage);
+  runtime.view.webContents.debugger.on('detach',this.onDebuggerDetach);
   this.onContext=(_event,params)=>{const menu=this.buildMenu(params);if(menu){this.lastMenu=menu;menu.popup({window:controller.window,callback:()=>{if(this.lastMenu===menu)this.lastMenu=null;}});}};
   runtime.view.webContents.on('context-menu',this.onContext);
+ }
+ debuggerTarget(target){
+  if(!target||typeof target!=='object'||target.tabId!==this.runtime.view?.webContents?.id)throw Error('调试器目标不是当前实例页面');
+  return this.runtime.view.webContents.debugger;
+ }
+ debuggerAttach(extensionId,worker,target,version){
+  this.debuggerTarget(target);if(typeof version!=='string'||!/^\d+\.\d+$/.test(version))throw Error('不支持的调试器协议版本');
+  if(this.debuggerAttached&&this.debuggerOwner!==extensionId)throw Error('该实例页面的调试器已被其他扩展占用');
+  const debug=this.runtime.view.webContents.debugger;
+  if(!debug.isAttached())throw Error('实例页面调试器尚未就绪');
+  this.debuggerAttached=true;this.debuggerOwner=extensionId;this.debuggerWorker=worker;return undefined;
+ }
+ debuggerDetach(extensionId,worker,target){
+  this.debuggerTarget(target);if(!this.debuggerAttached)return undefined;
+  if(this.debuggerOwner!==extensionId||this.debuggerWorker!==worker)throw Error('只能断开当前扩展创建的调试会话');
+  // The application owns the underlying CDP connection. Stop forwarding events for this
+  // extension, but keep the connection alive for Facet's environment and viewport controls.
+  this.debuggerAttached=false;this.debuggerOwner=null;this.debuggerWorker=null;return undefined;
+ }
+ async debuggerCommand(extensionId,worker,target,method,params){
+  this.debuggerTarget(target);if(!this.debuggerAttached||this.debuggerOwner!==extensionId||this.debuggerWorker!==worker)throw Error('请先附加当前实例页面的调试器');
+  if(typeof method!=='string'||!['Network.enable','Network.disable','Network.streamResourceContent','Network.getResponseBody'].includes(method))throw Error('此扩展不允许调用该调试器命令');
+  if(!params||typeof params!=='object'||Array.isArray(params))throw Error('调试器命令参数无效');
+  return this.runtime.view.webContents.debugger.sendCommand(method,params);
  }
  buildMenu(params){
   const template=[];
@@ -66,6 +108,6 @@ class ExtensionHost{
    recipient.send('facet:extension-menu-click',info,tab);
   }catch(error){this.controller.log(this.instanceId,'扩展菜单执行失败：'+require('./workspace.cjs').redact(error.message),'WARN');}
  }
- close(){if(this.closed)return;this.closed=true;this.lastMenu?.closePopup();this.lastMenu=null;this.runtime.view?.webContents.removeListener('context-menu',this.onContext);this.runtime.session.serviceWorkers.removeListener('running-status-changed',this.onWorker);for(const worker of this.workers)if(!worker.isDestroyed())worker.ipc.removeHandler(channel);for(const id of this.preloads)this.runtime.session.unregisterPreloadScript(id);this.menus.clear();hosts.delete(this.runtime.session);if(!hosts.size)ipcMain.removeHandler(channel);}
+ close(){if(this.closed)return;this.closed=true;this.lastMenu?.closePopup();this.lastMenu=null;this.runtime.view?.webContents.removeListener('context-menu',this.onContext);this.runtime.view?.webContents.debugger.removeListener('message',this.onDebuggerMessage);this.runtime.view?.webContents.debugger.removeListener('detach',this.onDebuggerDetach);this.runtime.session.serviceWorkers.removeListener('running-status-changed',this.onWorker);for(const worker of this.workers)if(!worker.isDestroyed())worker.ipc.removeHandler(channel);for(const id of this.preloads)this.runtime.session.unregisterPreloadScript(id);this.menus.clear();this.debuggerOwner=null;this.debuggerWorker=null;this.debuggerAttached=false;hosts.delete(this.runtime.session);if(!hosts.size)ipcMain.removeHandler(channel);}
 }
 module.exports={ExtensionHost,properties,applies,pattern};

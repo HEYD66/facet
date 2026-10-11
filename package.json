@@ -39,6 +39,7 @@
     "test:appearance-ui": "node tests/appearance-audit.cjs",
     "test:extensions": "node --test tests/extensions.test.cjs",
     "test:extensions-electron": "node scripts/launch-electron.cjs tests/extensions-electron.cjs",
+    "test:extension-debugger-electron": "node scripts/launch-electron.cjs tests/extension-debugger-electron.cjs",
     "test:extension-popup": "node --test tests/extension-popup.test.cjs",
     "test:extension-popup-electron": "node scripts/test-extension-popup.cjs",
     "test:ux3-ui": "node tests/ux3-renderer.cjs",

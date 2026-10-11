@@ -22,6 +22,14 @@
 
 扩展面板/设置页使用相同实例的session和代理，不带控制窗口preload，没有Node权限，不允许随意弹出新窗口或离开扩展自己的来源。只有清单声明的面板/设置入口能通过控制IPC打开。生产sandbox、contextIsolation、webSecurity不降低。
 
+### Arena Trace Inspector 3.x：实例内 CDP 兼容
+
+Electron 不提供扩展侧 `chrome.debugger`。千面为声明 `debugger` 权限的扩展提供受限兼容层：复用该实例已经用于环境和视口控制的 CDP 连接，并转发 `Network.responseReceived`、`Network.dataReceived`、`Network.loadingFinished` 和 `Network.loadingFailed` 事件；允许的命令仅包括 `Network.enable`、`Network.disable`、`Network.streamResourceContent` 和 `Network.getResponseBody`。
+
+兼容层的 `attach` / `detach` 是扩展监听生命周期，不会关闭千面自己的 CDP。目标必须是当前实例页面，不能跨实例读取；因此 Arena Trace Inspector 在每个实例内分别开启/停止检测。外部统一 CDP 端口仍按 `/v1/targets` 暴露所有运行实例，不受此适配影响。
+
+这项兼容只解决调试器和网络事件适配，不绕过 Arena 接口认证；`/cost`、Trace 或其他接口返回 401/403 时，仍按服务端权限和当前会话处理。
+
 程序文件全局共用，各实例分别选择；所有实例停用后才能移除程序包。移除保留实例登录和扩展存储，删除实例时才按原流程清除该实例数据。暂不支持商店一键安装、CRX/ZIP直装、自动更新、完整Chrome工具栏/右键菜单/命令快捷键或任意Chrome API。扩展不会被自动装入用户实例。
 
 ## 兼容性不是“加载成功”
@@ -54,6 +62,7 @@ https://www.electronjs.org/docs/latest/api/extensions-api
 
 npm run test:extensions
 npm run test:extensions-electron
+npm run test:extension-debugger-electron
 
 Dark Reader可选验证路径由DARK_READER_DIR指定；默认项目旁extension-validation/darkreader。不提供验证包时不执行Dark Reader探测。普通扩展单元和受控Electron测试不依赖它。
 
