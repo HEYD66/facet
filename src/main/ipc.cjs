@@ -14,6 +14,7 @@ function installIPC(window,controller){
   latestScroll={revision:message.revision,scrollTop:message.scrollTop};if(scrollTask)return;
   scrollTask=true;queueMicrotask(()=>{scrollTask=null;const next=latestScroll;latestScroll=null;if(!next||window.isDestroyed()||controller.disposing||!controller.grid)return;if(!controller.scrollGrid(next))window.webContents.send('core:grid-resync',next.revision);});};
  ipcMain.on('core:grid-scroll',onGridScroll);
+ const onDevToolsResize=(event,message)=>controller.resizeDevTools(event.sender.id,message||{});ipcMain.on('facet:devtools-resize',onDevToolsResize);
  const assignNode=(id,sourceId,name)=>controller.queue(id,async()=>{controller.store.get(id);const node=controller.library.node(sourceId,name);await controller.stopInner(id);controller.store.saveNodes(id,[node],null,{sourceId,name:node.name});controller.store.update(id,{network:{mode:'mihomo',nodeName:node.name}});controller.log(id,'已从全局库分配节点；当前实例已停止，请手动启动');return {id,sourceId,name:node.name,status:'success'};});
  const requestHandler=async(event,message)=>{
   try{if(window.isDestroyed()||controller.disposing)return {ok:false,error:'应用正在关闭'};const controls=window.webContents;if(!controls||controls.isDestroyed())return {ok:false,error:'控制窗口已关闭'};if(event.sender!==controls||event.senderFrame!==controls.mainFrame)throw Error('拒绝非控制界面调用');
@@ -147,6 +148,6 @@ function installIPC(window,controller){
  };
  ipcMain.handle('core:request',requestHandler);
  controller.externalRequest=message=>requestHandler({sender:window.webContents,senderFrame:window.webContents.mainFrame},message);
- return ()=>{for(const event of visibilityEvents)window.removeListener(event,sendWindowVisibility);window.webContents.removeListener('did-finish-load',sendWindowVisibility);ipcMain.removeHandler('core:request');delete controller.externalRequest;ipcMain.removeListener('core:grid-scroll',onGridScroll);latestScroll=null;ipcMain.removeListener('overlay:event',onOverlay);overlay.destroy();};
+ return ()=>{for(const event of visibilityEvents)window.removeListener(event,sendWindowVisibility);window.webContents.removeListener('did-finish-load',sendWindowVisibility);ipcMain.removeHandler('core:request');delete controller.externalRequest;ipcMain.removeListener('core:grid-scroll',onGridScroll);ipcMain.removeListener('facet:devtools-resize',onDevToolsResize);latestScroll=null;ipcMain.removeListener('overlay:event',onOverlay);overlay.destroy();};
 }
 module.exports={installIPC};
