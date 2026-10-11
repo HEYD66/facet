@@ -96,7 +96,7 @@ async function confirmBatchDelete(data){
  await request('activate',{id:null});render(true);layout();$('#modal [data-action="confirm"]').focus();
 }
 async function confirmBatchReset(data){
- const result=await request('instance-reset-many',{ids:data.ids});state=await request('snapshot');pruneInstanceSelection();
+ const result=await request('instance-reset-many',{ids:data.ids});for(const item of result.items)if(item.status==='reset')clearResetEnvironmentDraft(item.id);state=await request('snapshot');pruneInstanceSelection();
  modal={type:'batch-reset-result',busy:false};const summary=`已重置 ${result.reset}/${result.total} 个实例${result.failed?`，${result.failed} 个失败`:''}${result.cancelled?'，剩余实例未执行':''}。`;
  const labels={reset:'已重置',failed:'重置失败',queued:'未执行',running:'未完成'};
  $('#modal').innerHTML=`<div class="modal-head"><h2 id="modalTitle">批量重置结果</h2><button class="icon-btn" data-action="modal-close" aria-label="关闭">×</button></div><p class="description" role="status">${esc(summary)}</p><ul class="instance-delete-results">${result.items.map(x=>`<li><b>${esc(x.name)}</b><span class="${x.status==='reset'?'':'error'}">${esc(labels[x.status]||x.status)}${x.error?'：'+esc(x.error):''}</span></li>`).join('')}</ul><div class="modal-actions"><button class="btn primary" data-action="confirm">关闭</button></div>`;
@@ -110,7 +110,7 @@ async function confirm(){if(!modal||modal.newEnvironmentBusy)return;const data={
  else if(data.type==='delete'){await request('remove',{id:data.id});localOpen.delete(data.id);selected.delete(data.id);if(activeId===data.id)activeId=state.instances[0]?.id||null;view='overview';}
  else if(data.type==='import'){await request('import',{id:data.id});}
  else if(data.type==='subscription'||data.type==='refresh-subscription'){imported=await request(data.type==='subscription'?'import-subscription':'refresh-subscription',{id:data.id,...(data.type==='subscription'?{url:data.url}:{})});}
- else if(data.type==='reset'){await request('reset-environment',{id:data.id});closeModal(true);state=await request('snapshot');render(true);toast('环境已重置，代理配置保留；请重新启动实例');}
+ else if(data.type==='reset'){await request('reset-environment',{id:data.id});clearResetEnvironmentDraft(data.id);closeModal(true);state=await request('snapshot');render(true);toast('环境已重置，代理配置保留；请重新启动实例');}
  else if(data.type==='batch-reset'){await confirmBatchReset(data);return;}
  else if(data.type==='batch-reset-result'){closeModal(true);render(true);return;}
  else if(data.type==='batch-delete'){await confirmBatchDelete(data);return;}

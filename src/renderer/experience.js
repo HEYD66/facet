@@ -1,6 +1,7 @@
 'use strict';
 // Session-only drafts. Never persist unsaved environment values to instance storage.
 const environmentDrafts=new Map(),environmentBases=new Map(),environmentUndo=new Map(),savingEnvironments=new Set();
+function clearResetEnvironmentDraft(id){environmentDrafts.delete(id);environmentBases.delete(id);environmentUndo.delete(id);}
 let restoringEnvironment=false;
 function savedEnvironmentKey(x){return JSON.stringify({network:x.network,environment:x.environment});}
 function environmentFormValue(){if(!$('#environmentForm'))return null;const e={language:$('#language').value,timezone:$('#timezone').value,...readAdvancedEnvironment()};for(const k of ['width','height','scale','cpu','latitude','longitude'])e[k]=Number(e[k]);return {network:{mode:$('#networkMode').value,nodeName:$('#proxyNodeName').value},environment:e};}
