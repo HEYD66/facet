@@ -34,15 +34,15 @@ app.whenReady().then(async()=>{try{
  await ui("document.querySelector('#modal [data-action=confirm]').click()");await wait(()=>[a,b,d].every(x=>c.store.get(x.id).network.mode==='mihomo'),'batch assigned');
  assert.deepEqual([a,b,d].map(x=>c.store.get(x.id).network.nodeName),['香港 01','日本 东京 01','香港 01']);assert.equal(c.workspace.events.filter(e=>e.text.includes('批量分配节点')).length,1);
  ok('Batch assignment spreads selected nodes over several instances and cycles when nodes run out');
- // 代理断开提醒：B 使用不可用节点，访问网页失败 → 提醒；不切换、不直连
- await c.start(b.id);const rb=c.runtimes.get(b.id);await c.navigate(b.id,'https://unreachable.facet.test/').catch(()=>{});await wait(()=>!!rb.proxyAlert,'proxy alert raised',200);
+ // 单个网站失败只记录页面错误，不升级为全局代理告警；内核连续报告三次才提醒。
+ await c.start(b.id);const rb=c.runtimes.get(b.id);await c.navigate(b.id,'https://unreachable.facet.test/').catch(()=>{});await wait(()=>rb.loadFailed===true,'page failure recorded',200);assert.ok(!rb.proxyAlert,'single-site failure is not a global proxy alert');c.noteProxyIssue(b.id,rb,'测试内核错误 1',false);c.noteProxyIssue(b.id,rb,'测试内核错误 2',false);c.noteProxyIssue(b.id,rb,'测试内核错误 3',false);assert.ok(!rb.proxyAlert,'core errors alone do not blame the node');c.notePageFailure(b.id,rb,-100,'https://one.example/');c.notePageFailure(b.id,rb,-100,'https://two.example/');await wait(()=>!!rb.proxyAlert,'proxy alert raised after different sites fail',200);
  assert.equal(c.store.get(b.id).network.mode,'mihomo');assert.equal(c.store.get(b.id).network.nodeName,'日本 东京 01');assert.equal(rb.status,'running');
  const snap=c.snapshot().instances.find(x=>x.id===b.id);assert(snap.proxyAlert.includes('代理'),snap.proxyAlert);
  await ui(`localOpen.add(${JSON.stringify(b.id)});route('browser',${JSON.stringify(b.id)})`);c.emit();await wait(()=>ui("!!document.querySelector('.tab-alert')&&!!document.querySelector('#sidebar .proxy-alert')"),'alert shown in tab and sidebar');
  assert.equal(c.workspace.events.filter(e=>e.instanceId===b.id&&e.text.startsWith('代理可能已断开')).length,1,'logged once');
  ok('A dead node raises a visible proxy alert once, without switching node or falling back to direct');
  // 恢复：A 使用可用节点，页面经代理成功加载后自动清除提醒
- await c.start(a.id);const ra=c.runtimes.get(a.id);c.noteProxyIssue(a.id,ra,'测试提醒',true);assert(ra.proxyAlert);await c.navigate(a.id,'http://ok.facet.test/');await wait(()=>!ra.proxyAlert,'alert cleared after a successful proxied load',200);
+ await c.start(a.id);const ra=c.runtimes.get(a.id);c.notePageFailure(a.id,ra,-100,'https://one.example/');c.notePageFailure(a.id,ra,-100,'https://two.example/');assert(ra.proxyAlert);await c.navigate(a.id,'http://ok.facet.test/');await wait(()=>!ra.proxyAlert,'alert cleared after a successful proxied load',200);
  assert(c.workspace.events.some(e=>e.instanceId===a.id&&e.text.startsWith('代理连接已恢复')));await c.stop(b.id);assert.equal(c.snapshot().instances.find(x=>x.id===b.id).proxyAlert,'');
  ok('The alert clears when a page loads through the proxy and is not shown for stopped instances');
  // 全部节点源：合并显示、标出来源；同名节点按来源区分；跨订阅删除和批量分配

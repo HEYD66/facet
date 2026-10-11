@@ -18,7 +18,7 @@ function installIPC(window,controller){
  const requestHandler=async(event,message)=>{
   try{if(window.isDestroyed()||controller.disposing)return {ok:false,error:'应用正在关闭'};const controls=window.webContents;if(!controls||controls.isDestroyed())return {ok:false,error:'控制窗口已关闭'};if(event.sender!==controls||event.senderFrame!==controls.mainFrame)throw Error('拒绝非控制界面调用');
   if(!message||typeof message.action!=='string')throw Error('请求无效');const {action,id}=message;
-  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
+  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
    switch(action){
     case 'node-network-interfaces':return {ok:true,value:await controller.nodeNetwork.interfaces(true)};
     case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
@@ -129,7 +129,9 @@ function installIPC(window,controller){
     case 'start':await controller.start(id);break;
     case 'stop':await controller.stop(id);break;
     case 'remove':await controller.remove(id);break;
+    case 'reset-environment':return {ok:true,value:await controller.resetEnvironment(id)};
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
+    case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
     case 'navigate':await controller.navigate(id,message.url);break;
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
     case 'settings':return {ok:true,value:await controller.settings(id,message.patch||{})};

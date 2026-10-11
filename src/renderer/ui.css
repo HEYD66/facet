@@ -807,9 +807,9 @@ html[data-frame="custom"] .toast{top:80px}
 .grid-tools .grid-stop{color:var(--red)}
 /* 格子标题栏里的实例占用；窄格子先省略它，再省略名字。 */
 .grid-res{flex:0 1 auto;min-width:0;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
-/* 放大查看：盖住宫格区域的弹出框，背景变暗；原生网页层摆在框内。z-index 低于应用弹窗(50)和菜单(60)。 */
-.grid-zoom{position:fixed;z-index:40;display:flex;align-items:center;justify-content:center;background:var(--scrim,rgba(10,12,16,.55))}
-.grid-zoom-box{display:flex;flex-direction:column;max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+/* 放大查看只提升实例框本身；外围不拦截应用菜单、提示和弹窗的鼠标事件。 */
+.grid-zoom{position:fixed;z-index:20;display:flex;align-items:center;justify-content:center;background:var(--scrim,rgba(10,12,16,.55));pointer-events:none}
+.grid-zoom-box{display:flex;flex-direction:column;max-width:100%;border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35);pointer-events:auto}
 .grid-zoom-head{flex:none;cursor:default}
 .grid-zoom-body{flex:none}
 #content.grid-zoomed{overflow:hidden!important}

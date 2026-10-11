@@ -1,0 +1,18 @@
+'use strict';
+const {app,BrowserWindow}=require('electron'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-grid-transition-'));app.setPath('userData',root);
+const {Controller}=require('../src/main/controller.cjs'),{installIPC}=require('../src/main/ipc.cjs');
+let win,c,server;const results=[],sleep=ms=>new Promise(r=>setTimeout(r,ms));async function wait(fn,label){for(let i=0;i<200;i++){if(await fn())return;await sleep(50);}throw Error('Timeout '+label);}const pass=x=>{results.push(x);console.log('PASS '+x);};setTimeout(()=>app.exit(2),90000).unref();
+app.whenReady().then(async()=>{let failure;try{
+ const hits=[];server=http.createServer((req,res)=>{hits.push(req.url);res.setHeader('Content-Type','text/html');res.end(req.url==='/popup'?'<title>Popup</title><button id="confirm" onclick="window.clicked=true">Confirm</button>':req.url==='/frame'?'<button id="verify" onclick="window.clicked=true">Verify</button>':'<title>Grid transition</title><textarea id="draft"></textarea><iframe src="/frame"></iframe><script>window.resizes=[];addEventListener("resize",()=>resizes.push([innerWidth,innerHeight]));window.identity=Math.random()</script>');});await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
+ win=new BrowserWindow({width:1400,height:900,show:true,webPreferences:{preload:path.resolve(__dirname,'../src/main/preload.cjs'),sandbox:true,contextIsolation:true}});c=new Controller(win,root,path.join(root,'unused'));installIPC(win,c);const a=c.store.list()[0],b=c.store.create('Second');c.store.update(a.id,{url:base+'/home'});c.store.update(b.id,{url:base+'/other'});
+ await win.loadFile(path.resolve(__dirname,'../src/renderer/index.html'));const ui=code=>win.webContents.executeJavaScript(code);await wait(()=>ui('typeof route==="function"&&!!current()'),'UI');await c.start(a.id);await c.start(b.id);const r=c.runtimes.get(a.id),wc=r.view.webContents;
+ await wait(()=>wc.getTitle()==='Grid transition'&&!wc.isLoading(),'page');const identity=await wc.executeJavaScript('identity');
+ for(const mode of ['live','saver']){
+  await ui(`gridPrefs.mode=${JSON.stringify(mode)};route('grid')`);await wait(()=>ui('document.querySelectorAll(".grid-tile").length===2'),'grid DOM');await ui(`gridSetZoom(${JSON.stringify(a.id)})`);await wait(()=>ui('!!document.querySelector(".grid-zoom")'),'zoom');await r.viewportWork;
+  await wc.executeJavaScript('document.querySelector("#draft").focus()');await wc.debugger.sendCommand('Input.insertText',{text:mode+' draft'});const text=await wc.executeJavaScript('document.querySelector("#draft").value');
+  pass(mode+': zoom page is ready without rebuilding the target');
+  await ui(`route('browser',${JSON.stringify(a.id)})`);await wait(()=>ui('view==="browser"'),'browser UI');await wait(()=>r.view.getVisible(),'browser view');await r.viewportWork;await sleep(250);
+  assert.equal(await wc.executeJavaScript('document.querySelector("#draft").value'),text);assert.equal(await wc.executeJavaScript('identity'),identity);assert.equal(hits.filter(x=>x==='/home').length,1);console.log('RESIZES',await wc.executeJavaScript('JSON.stringify(resizes)'));pass(mode+': zoom to browser retains input, document and target without reload');
+ }
+}catch(e){failure=e;console.error(e);}finally{await c?.closeAll().catch(e=>{failure??=e;});win?.destroy();server?.close();fs.writeFileSync(path.join(root,'result.json'),JSON.stringify({results,error:failure?.stack},null,2));console.log('Report '+path.join(root,'result.json'));app.exit(failure?1:0);}});

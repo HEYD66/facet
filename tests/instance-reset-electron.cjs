@@ -1,0 +1,40 @@
+'use strict';
+const {app,BrowserWindow}=require('electron');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
+const {Controller}=require('../src/main/controller.cjs');
+
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-instance-reset-'));
+app.setPath('userData',root);
+app.commandLine.appendSwitch('disable-features','CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-background-networking');
+if(process.platform==='win32')app.commandLine.appendSwitch('disable-gpu');
+const wait=async(fn,label,timeout=20000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('Timeout '+label);};
+
+let win,controller,server;
+app.whenReady().then(async()=>{try{
+ server=http.createServer((_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><script>document.title="reset-fixture";</script>');});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ const url='http://127.0.0.1:'+server.address().port+'/';
+ win=new BrowserWindow({show:false,webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
+ controller=new Controller(win,root,path.join(__dirname,'../resources/mihomo',process.platform==='win32'?'mihomo.exe':'mihomo'));
+ const instance=controller.store.list()[0];controller.store.update(instance.id,{url,notes:'保留管理备注'});
+ const before=structuredClone(controller.store.get(instance.id));
+ await controller.start(instance.id);
+ const runtime=controller.runtimes.get(instance.id),ses=runtime.view.webContents.session;
+ await wait(()=>runtime.view?.webContents.getTitle()==='reset-fixture','fixture page');
+ await ses.cookies.set({url,name:'reset-cookie',value:'present'});
+ await runtime.view.webContents.executeJavaScript('localStorage.setItem("reset-marker","present")');assert.equal(await runtime.view.webContents.executeJavaScript('localStorage.getItem("reset-marker")'),'present');
+ await controller.resetEnvironment(instance.id);
+ assert.equal(controller.runtimes.get(instance.id).status,'stopped');
+ const after=controller.store.get(instance.id);
+ assert.deepEqual(after.network,before.network);
+ assert.equal(after.notes,before.notes);
+ assert.notEqual(after.environment.fingerprint.seed,before.environment.fingerprint.seed);
+ assert.equal(after.environment.fingerprint.touch,0);
+ assert.equal((await ses.cookies.get({url})).length,0);
+ await controller.start(instance.id);
+ const restarted=controller.runtimes.get(instance.id);
+ await wait(()=>restarted.view?.webContents.getTitle()==='reset-fixture','restarted fixture page');
+ assert.equal(await restarted.view.webContents.executeJavaScript('localStorage.getItem("reset-marker")'),null);
+ console.log(JSON.stringify({status:'passed',results:['重置停止实例、清除 Cookie 与网站存储、保留代理和实例资料','重置生成新固定环境种子并将桌面触摸点设为 0','重启后网站存储不会复活']},null,2));
+}catch(error){console.error(error.stack||String(error));process.exitCode=1;}finally{try{await controller?.closeAll();}catch{}if(!win?.isDestroyed())win?.destroy();server?.close();app.exit(process.exitCode||0);}}).catch(error=>{console.error(error.stack||String(error));app.exit(1);});
