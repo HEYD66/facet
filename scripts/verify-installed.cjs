@@ -32,6 +32,14 @@ async function api(endpoint,{body,authenticated=true}={}){
  if(!authenticated){assert.equal(response.status,401);return;}
  const result=await response.json();assert.equal(result.ok,true,result.error);return result.value;
 }
+async function instancePage(id){
+ const target=(await api('/v1/targets')).find(x=>x.instanceId===id);assert(target,'running instance target missing');
+ for(const page of browser.contexts().flatMap(c=>c.pages())){
+  const session=await page.context().newCDPSession(page);let info;try{info=await session.send('Target.getTargetInfo');}finally{await session.detach();}
+  if(info.targetInfo.targetId===target.targetId)return page;
+ }
+ throw Error('running instance page missing');
+}
 async function close(){
  if(!child||child.exitCode!==null)return;
  if(ui){const snapshot=await call('snapshot');for(const x of snapshot.instances)if(x.status==='running'||x.status==='starting')await call('stop',{id:x.id});}
@@ -87,6 +95,11 @@ async function main(){
  await menu.screenshot({path:path.join(root,'privacy-menu.png')});await menu.keyboard.press('Escape');
  pass('Packaged toolbar removes both legacy ipip shortcuts and opens a real native menu containing exactly one ipip entry');
  const pages=browser.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===url);assert.equal(pages.length,2);
+ await ui.locator('[data-action="toggle-devtools"]').click();
+ await wait(()=>browser.contexts().flatMap(c=>c.pages()).some(p=>p.url().startsWith('devtools://')),'packaged developer tools');
+ await ui.screenshot({path:path.join(root,'embedded-devtools.png')});
+ assert.equal((await call('toggle-devtools',{id:a.id})).open,false);
+ pass('Packaged toolbar opens the real DevTools frontend and the control channel closes it');
  await pages[0].evaluate(()=>localStorage.setItem('facet-install-persistence','installed-check'));
  assert.equal(await pages[1].evaluate(()=>localStorage.getItem('facet-install-persistence')),null);pass('Installed browser sessions remain isolated');
  await ui.evaluate(()=>{gridPrefs.mode='live';route('grid');});await ui.waitForFunction(()=>view==='grid'&&!gridFrame&&!gridInFlight);
@@ -110,6 +123,19 @@ async function main(){
  for(const id of [a.id,b.id])await call('start',{id});await wait(async()=>(await call('snapshot')).instances.every(x=>x.title==='Installed live fixture'&&x.status==='running'),'restarted pages',45000);
  const restarted=browser.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===url);assert((await Promise.all(restarted.map(p=>p.evaluate(()=>localStorage.getItem('facet-install-persistence'))))).includes('installed-check'));
  pass('Application restart retains renamed configuration, browser storage, migrated shortcuts and enabled API/CDP');
+ const beforeReset=(await call('snapshot')).instances.find(x=>x.id===b.id);
+ const resetPage=await instancePage(b.id);
+ await resetPage.evaluate(()=>{localStorage.setItem('reset-marker','present');document.cookie='reset-cookie=present; path=/';});
+ assert.equal(await resetPage.evaluate(()=>localStorage.getItem('reset-marker')),'present');assert((await resetPage.evaluate(()=>document.cookie)).includes('reset-cookie'));
+ await ui.evaluate(id=>route('environment',id),b.id);await ui.locator('[data-action="reset-environment"]').click();await ui.locator('#modal [data-action="confirm"]').click();
+ await ui.waitForFunction(id=>!modal&&current().id===id&&current().status==='stopped'&&!environmentChanged(),b.id);
+ const savedReset=JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===b.id);
+ assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,0);
+ assert.deepEqual(await ui.evaluate(()=>environmentFormValue().environment.fingerprint),savedReset.environment.fingerprint);
+ await call('start',{id:b.id});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');
+ const resetPageAfter=await instancePage(b.id);assert.notEqual(resetPageAfter,resetPage);
+ const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,0);
+ pass('Packaged reset clears website data, saves a fresh desktop environment, refreshes the form and preserves the proxy on restart');
  const control=await call('control-status');await call('control-save',{enabled:false});await assert.rejects(()=>fetch('http://127.0.0.1:'+control.apiPort+'/v1/status'));pass('Disabling external control closes the packaged API listener');await close();
 }
 main().catch(e=>{errors.push(e.stack||String(e));console.error(e.message);}).finally(async()=>{
