@@ -6,6 +6,8 @@
 
 > AI 或自动化工具接手本项目时，请先阅读根目录 [`AGENTS.md`](AGENTS.md)，再阅读 [`docs/AI-CONTROL-HANDOFF.md`](docs/AI-CONTROL-HANDOFF.md)。
 
+源码中的常用扩展 API 补充、实例隔离、实际验收与兼容边界，见 [扩展兼容层](docs/EXTENSION-COMPATIBILITY.md)。本轮尚未随新安装包发布，不代表所有 Chrome 插件完整兼容。
+
 如果千面对你有帮助，欢迎点一下 **Star**，帮助更多人发现这个项目。
 
 ## 功能

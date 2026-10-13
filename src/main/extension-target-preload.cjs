@@ -4,6 +4,7 @@ const {contextBridge,ipcRenderer}=require('electron');
 if(location.protocol==='chrome-extension:'){
  contextBridge.exposeInMainWorld('__facetExtensionTarget',{id:()=>ipcRenderer.invoke('facet:extension-target')});
  contextBridge.executeInMainWorld({func:()=>{
+  if(globalThis.__facetExtensionCompatApplied)return;
   const tabs=globalThis.chrome?.tabs;if(typeof tabs?.query!=='function')return;
   const query=tabs.query.bind(tabs);
   tabs.query=function(info,callback){

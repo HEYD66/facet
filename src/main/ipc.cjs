@@ -38,6 +38,8 @@ function installIPC(window,controller){
     case 'extension-reveal':await reveal(controller,shell,message.extensionId);break;
     case 'extension-configure':if(message.confirmed!==true)throw Error('请确认仅停止目标实例后更改扩展');await controller.queue('extensions',()=>controller.extensions.configure(id,message.extensionId,message.enabled));break;
     case 'extension-remove':if(message.confirmed!==true)throw Error('请确认移除扩展');return {ok:true,value:await controller.queue('extensions',()=>require('./extension-remove.cjs').removeExtension(controller,message.extensionId,message.instanceIds))};
+    case 'extension-action':{const r=controller.runtimes.get(id),ext=r?.loadedExtensions?.get(message.extensionId),compat=r?.extensionHost?.compat;if(!ext||!compat)throw Error('请先启用扩展并启动实例');const ctx=compat.endpoints.get(ext.id);if(!ctx)throw Error('扩展后台尚未就绪');await compat.actionClick(ctx);break;}
+    case 'extension-side-panel-close':controller.runtimes.get(id)?.extensionHost?.compat?.closePanel();break;
     case 'extension-open':await controller.queue(id,()=>controller.extensions.open(id,message.extensionId,message.kind));break;
     case 'snapshot':return {ok:true,value:controller.snapshot()};
     case 'control-status':return {ok:true,value:controller.controlApi?.uiSnapshot()||{enabled:false,running:false,apiPort:null,cdpPort:null,token:null,restartRequired:false}};

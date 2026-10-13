@@ -1,13 +1,14 @@
 'use strict';
 const {contextBridge,ipcRenderer}=require('electron');
 const extensionContext=typeof location==='undefined'||location.protocol==='chrome-extension:';
-if(extensionContext&&(typeof location==='undefined'||process.contextIsolated)){
- contextBridge.exposeInMainWorld('__facetExtensionHost',{
+if(extensionContext){
+ const hostBridge={
   call:(method,args)=>ipcRenderer.invoke('facet:extension-host',method,args),
   onClick:listener=>{const handler=(_event,info,tab)=>listener(info,tab);ipcRenderer.on('facet:extension-menu-click',handler);return ()=>ipcRenderer.removeListener('facet:extension-menu-click',handler);},
+  onCompat:listener=>{const handler=(_event,payload)=>listener(payload);ipcRenderer.on('facet:extension-compat-event',handler);return ()=>ipcRenderer.removeListener('facet:extension-compat-event',handler);},
   onDebugger:listener=>{const handler=(_event,payload)=>listener(payload);ipcRenderer.on('facet:extension-debugger-event',handler);return ()=>ipcRenderer.removeListener('facet:extension-debugger-event',handler);}
- });
- contextBridge.executeInMainWorld({func:()=>{
+ };if(process.contextIsolated)contextBridge.exposeInMainWorld('__facetExtensionHost',hostBridge);else globalThis.__facetExtensionHost=hostBridge;
+ const installHost=()=>{
   const api=globalThis.chrome,host=globalThis.__facetExtensionHost;if(location.protocol!=='chrome-extension:'||!api||!host)return;
   const result=(promise,callback)=>{if(typeof callback!=='function')return promise;promise.then(value=>callback(value),error=>{console.error('Extension compatibility: '+error.message);callback();});};
   // Electron intentionally does not implement chrome.debugger for extensions. Facet already
@@ -51,5 +52,5 @@ if(extensionContext&&(typeof location==='undefined'||process.contextIsolated)){
   if(typeof tabs.get==='function'){const get=tabs.get.bind(tabs);tabs.get=(id,callback)=>result(Promise.all([get(id),host.call('target',[])]).then(([tab,target])=>tab.id===target.tabId?{...tab,active:true,windowId:target.windowId}:tab),callback);}
   if(typeof tabs.query==='function'){const query=tabs.query.bind(tabs);tabs.query=(info,callback)=>{if(info?.active!==true)return query(info,callback);const filters={...info};delete filters.active;return result(Promise.all([query(filters),host.call('target',[])]).then(([rows,target])=>rows.filter(x=>x.id===target.tabId).map(x=>({...x,active:true,windowId:target.windowId}))),callback);};}
   if(globalThis.browser){for(const key of ['contextMenus','windows','tabs'])Object.defineProperty(globalThis.browser,key,{configurable:true,value:api[key]});}
- }});
+ };if(process.contextIsolated)contextBridge.executeInMainWorld({func:installHost});else installHost();
 }

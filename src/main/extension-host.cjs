@@ -1,13 +1,13 @@
 'use strict';
 const {ipcMain,Menu}=require('electron'),path=require('node:path');
-const hosts=new Map(),channel='facet:extension-host';
+const hosts=new Map(),channel='facet:extension-host';let handlerInstalled=false;
 function sender(event){
  const worker=event.type==='service-worker',ses=worker?event.session:event.sender?.session,host=hosts.get(ses);if(!host)throw Error('扩展上下文未登记');
  const r=host.runtime;if(!['starting','running'].includes(r.status)||!r.view||r.view.webContents.isDestroyed())throw Error('所属实例已停止');
  if(!worker&&event.senderFrame!==event.sender.mainFrame)throw Error('仅允许扩展主框架');
  const url=new URL(worker?event.serviceWorker.scriptURL:event.senderFrame.url);if(url.protocol!=='chrome-extension:')throw Error('仅允许扩展上下文');
  const extension=ses.extensions.getExtension(url.hostname);if(!extension||!host.allowed.has(path.resolve(extension.path)))throw Error('此扩展未绑定到实例');
- return {host,id:extension.id,manifest:extension.manifest,worker:worker?event.serviceWorker:null,wc:worker?null:event.sender};
+ return {host,id:extension.id,extension,manifest:extension.manifest,worker:worker?event.serviceWorker:null,wc:worker?null:event.sender};
 }
 function properties(value){
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('菜单参数无效');const row={};
@@ -24,6 +24,7 @@ function properties(value){
 function windowInfo(host){const w=host.controller.window;return {id:w.id,focused:w.isFocused(),type:'normal',state:w.isMaximized()?'maximized':w.isMinimized()?'minimized':'normal',...w.getBounds(),incognito:false,alwaysOnTop:w.isAlwaysOnTop()};}
 function invoke(event,method,args){
  const {host,id,manifest,worker,wc}=sender(event);if(!Array.isArray(args))throw Error('扩展请求参数无效');
+ if(method==='compat'){if(args.length!==2)throw Error('扩展兼容参数无效');const ctx=sender(event);return Promise.resolve().then(()=>host.compat.call(ctx,args[0],args[1])).then(value=>({ok:true,value}),error=>({ok:false,error:require('./workspace.cjs').redact(error.message)}));}
  if(method==='target')return {tabId:host.runtime.view.webContents.id,windowId:host.controller.window.id};
  if(method==='window')return windowInfo(host);
  if(method==='debugger-attach'||method==='debugger-detach'||method==='debugger-command'){
@@ -40,7 +41,7 @@ function invoke(event,method,args){
   return host.debuggerCommand(id,worker,args[0],args[1],args[2]);
  }
  if(args.length>2)throw Error('扩展请求参数无效');
- if(!manifest.permissions?.includes('contextMenus'))throw Error('扩展未声明contextMenus权限');
+ if(!host.compat?.has({id,manifest},'contextMenus'))throw Error('扩展未声明contextMenus权限');
  let entry=host.menus.get(id);if(!entry){entry={items:new Map(),worker,wc};host.menus.set(id,entry);}entry.worker=worker||entry.worker;entry.wc=wc||entry.wc;
  if(method==='menu-create'){const row=properties(args[0]);if(row.id===undefined)throw Error('缺少菜单标识');if(entry.items.size>=100)throw Error('扩展菜单数量超限');if(entry.items.has(String(row.id)))throw Error('菜单标识已存在');if(row.parentId!==undefined&&!entry.items.has(String(row.parentId)))throw Error('父菜单不存在');entry.items.set(String(row.id),row);return row.id;}
  if(method==='menu-update'){const key=String(args[0]),old=entry.items.get(key);if(!old)throw Error('菜单不存在');const changes=properties(args[1]);if(changes.id!==undefined||changes.parentId!==undefined)throw Error('不支持更改菜单标识或层级');entry.items.set(key,{...old,...changes});return;}
@@ -56,8 +57,8 @@ function applies(row,params){
 class ExtensionHost{
  constructor(controller,runtime,instanceId,allowed){
   this.controller=controller;this.runtime=runtime;this.instanceId=instanceId;this.allowed=new Set(allowed.map(x=>path.resolve(x)));this.menus=new Map();this.workers=new Set();this.closed=false;this.lastMenu=null;this.debuggerOwner=null;this.debuggerWorker=null;this.debuggerAttached=false;
-  if(!hosts.size)ipcMain.handle(channel,invoke);hosts.set(runtime.session,this);
-  this.preloads=['frame','service-worker'].map(type=>runtime.session.registerPreloadScript({type,filePath:path.join(__dirname,'extension-host-preload.cjs')}));
+  if(!handlerInstalled){ipcMain.handle(channel,(event,method,args)=>{if(method==='compat')try{return invoke(event,method,args);}catch{return {ok:false,error:'扩展实例已停止或上下文无效'};}return invoke(event,method,args);});handlerInstalled=true;}hosts.set(runtime.session,this);
+  this.preloads=['extension-host-preload.cjs','extension-compat-preload.cjs'].flatMap(file=>['frame','service-worker'].map(type=>runtime.session.registerPreloadScript({type,filePath:path.join(__dirname,file)})));
   this.onWorker=event=>{const worker=runtime.session.serviceWorkers.getWorkerFromVersionID(event.versionId);if(worker&&!this.workers.has(worker)){this.workers.add(worker);worker.ipc.handle(channel,invoke);}};
   runtime.session.serviceWorkers.on('running-status-changed',this.onWorker);
   this.onDebuggerMessage=(_event,method,params)=>{if(!this.debuggerAttached||!this.debuggerWorker||this.debuggerWorker.isDestroyed()||!['Network.responseReceived','Network.dataReceived','Network.loadingFinished','Network.loadingFailed'].includes(method))return;try{this.debuggerWorker.send('facet:extension-debugger-event',{type:'event',source:{tabId:this.runtime.view.webContents.id},method,params:params||{}});}catch(error){this.controller.log(this.instanceId,'扩展调试事件转发失败：'+require('./workspace.cjs').redact(error.message),'WARN');}};
@@ -66,6 +67,7 @@ class ExtensionHost{
   runtime.view.webContents.debugger.on('detach',this.onDebuggerDetach);
   this.onContext=(_event,params)=>{const menu=this.buildMenu(params);if(menu){this.lastMenu=menu;menu.popup({window:controller.window,callback:()=>{if(this.lastMenu===menu)this.lastMenu=null;}});}};
   runtime.view.webContents.on('context-menu',this.onContext);
+  this.compat=new (require('./extension-compat.cjs').ExtensionCompat)(this);
  }
  debuggerTarget(target){
   if(!target||typeof target!=='object'||target.tabId!==this.runtime.view?.webContents?.id)throw Error('调试器目标不是当前实例页面');
@@ -108,6 +110,6 @@ class ExtensionHost{
    recipient.send('facet:extension-menu-click',info,tab);
   }catch(error){this.controller.log(this.instanceId,'扩展菜单执行失败：'+require('./workspace.cjs').redact(error.message),'WARN');}
  }
- close(){if(this.closed)return;this.closed=true;this.lastMenu?.closePopup();this.lastMenu=null;this.runtime.view?.webContents.removeListener('context-menu',this.onContext);this.runtime.view?.webContents.debugger.removeListener('message',this.onDebuggerMessage);this.runtime.view?.webContents.debugger.removeListener('detach',this.onDebuggerDetach);this.runtime.session.serviceWorkers.removeListener('running-status-changed',this.onWorker);for(const worker of this.workers)if(!worker.isDestroyed())worker.ipc.removeHandler(channel);for(const id of this.preloads)this.runtime.session.unregisterPreloadScript(id);this.menus.clear();this.debuggerOwner=null;this.debuggerWorker=null;this.debuggerAttached=false;hosts.delete(this.runtime.session);if(!hosts.size)ipcMain.removeHandler(channel);}
+ close(){if(this.closed)return;this.closed=true;this.compat?.close();this.lastMenu?.closePopup();this.lastMenu=null;this.runtime.view?.webContents.removeListener('context-menu',this.onContext);this.runtime.view?.webContents.debugger.removeListener('message',this.onDebuggerMessage);this.runtime.view?.webContents.debugger.removeListener('detach',this.onDebuggerDetach);this.runtime.session.serviceWorkers.removeListener('running-status-changed',this.onWorker);for(const worker of this.workers)if(!worker.isDestroyed())worker.ipc.removeHandler(channel);for(const id of this.preloads)this.runtime.session.unregisterPreloadScript(id);this.menus.clear();this.debuggerOwner=null;this.debuggerWorker=null;this.debuggerAttached=false;hosts.delete(this.runtime.session);}
 }
 module.exports={ExtensionHost,properties,applies,pattern};

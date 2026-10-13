@@ -79,9 +79,9 @@ document.addEventListener('mousedown',e=>{if(extensionPopFor&&view==='extensions
 // 浏览页：地址栏右侧的扩展图标 + 拼图按钮。
 function extensionToolbarHTML(x){
  const enabled=(state.extensions||[]).filter(row=>extensionInfo(row,x.id).enabled);
- const icons=enabled.map(row=>{const info=extensionInfo(row,x.id),kind=row.entries.popup?'popup':row.entries.options?'options':'';const ready=info.loaded&&x.status==='running';const tip=info.error?`${row.name} · ${info.error}`:ready?(kind?`${row.name} · 点击打开${kind==='popup'?'面板':'设置'}`:`${row.name} · 已加载（无面板）`):`${row.name} · 等待实例启动`;
-  return `<button type="button" class="ext-tool ${ready?'':'idle'} ${info.error?'error':''}" data-extension="open" data-extension-id="${esc(row.id)}" data-instance-id="${esc(x.id)}" data-kind="${kind}" title="${esc(tip)}" aria-label="${esc(tip)}">${extensionIconHTML(row,'ext-tool-icon')}${info.error?'<b class="ext-badge">!</b>':''}</button>`;}).join('');
- return `<div class="ext-toolbar" role="toolbar" aria-label="此实例的扩展">${icons}<button type="button" class="ext-tool ext-puzzle" data-extension="menu" data-instance-id="${esc(x.id)}" aria-haspopup="dialog" aria-expanded="${extensionMenuFor===x.id}" title="扩展" aria-label="扩展菜单">${extensionPuzzleSVG()}</button></div>`;
+ const icons=enabled.map(row=>{const info=extensionInfo(row,x.id),kind=(info.action?.popup??row.entries.popup)?'popup':row.entries.options?'options':'action';const ready=info.loaded&&x.status==='running';const tip=info.error?`${row.name} · ${info.error}`:ready?(kind?`${row.name} · 点击打开${kind==='popup'?'面板':'设置'}`:`${row.name} · 已加载（无面板）`):`${row.name} · 等待实例启动`;
+  return `<button type="button" class="ext-tool ${ready?'':'idle'} ${info.error?'error':''}" data-extension="open" data-extension-id="${esc(row.id)}" data-instance-id="${esc(x.id)}" data-kind="${kind}" ${info.action?.enabled===false?'disabled':''} title="${esc(info.action?.title||tip)}" aria-label="${esc(info.action?.title||tip)}">${extensionIconHTML({...row,icon:info.action?.icon||row.icon},'ext-tool-icon')}${info.action?.badgeText?`<b class="ext-badge" style="background:${Array.isArray(info.action.badgeColor)?'rgba('+info.action.badgeColor.slice(0,3).join(',')+','+(info.action.badgeColor.length===4?info.action.badgeColor[3]/255:1)+')':/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(info.action.badgeColor||'')?info.action.badgeColor:'#3c46aa'}">${esc(info.action.badgeText)}</b>`:''}${info.error?'<b class="ext-badge">!</b>':''}</button>`;}).join('');
+ return `<div class="ext-toolbar" role="toolbar" aria-label="此实例的扩展">${icons}${enabled.some(row=>extensionInfo(row,x.id).sidePanelOpen)?`<button type="button" class="ext-tool" data-extension="close-side-panel" data-instance-id="${esc(x.id)}" title="关闭扩展侧栏" aria-label="关闭扩展侧栏">×</button>`:''}<button type="button" class="ext-tool ext-puzzle" data-extension="menu" data-instance-id="${esc(x.id)}" aria-haspopup="dialog" aria-expanded="${extensionMenuFor===x.id}" title="扩展" aria-label="扩展菜单">${extensionPuzzleSVG()}</button></div>`;
 }
 function extensionPuzzleSVG(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3.5a2 2 0 0 1 4 0V5h3.5A1.5 1.5 0 0 1 19 6.5V10h-1.5a2 2 0 0 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 0 0-4 0V19H6.5A1.5 1.5 0 0 1 5 17.5V14h1.5a2 2 0 0 0 0-4H5V6.5A1.5 1.5 0 0 1 6.5 5H10z"/></svg>';}
 function extensionMenuDialog(){let d=document.getElementById('extensionMenu');if(!d){d=document.createElement('dialog');d.id='extensionMenu';d.className='ext-menu';d.setAttribute('data-browser-overlay','');d.setAttribute('aria-label','此实例的扩展');document.body.append(d);}return d;}
@@ -131,13 +131,14 @@ document.addEventListener('click',async e=>{
  if(action==='toggle'&&row&&targetInstance){extensionConfirm=null;const p=extensionPending.get(row.id)||new Map(),next=!extensionWanted(row,targetInstance.id);if(next===extensionInfo(row,targetInstance.id).enabled)p.delete(targetInstance.id);else p.set(targetInstance.id,next);if(p.size)extensionPending.set(row.id,p);else extensionPending.delete(row.id);extensionPage();return;}
  if((action==='select-all'||action==='select-none')&&row){extensionConfirm=null;const on=action==='select-all',p=new Map();for(const instance of state.instances)if(extensionInfo(row,instance.id).enabled!==on)p.set(instance.id,on);if(p.size)extensionPending.set(row.id,p);else extensionPending.delete(row.id);extensionPage();return;}
  if(action==='remove'&&row){extensionPending.delete(row.id);extensionPopFor=null;const used=state.instances.filter(x=>{const info=extensionInfo(row,x.id);return info.enabled||info.loaded;});extensionConfirm={action:'extension-remove',payload:{extensionId:row.id,confirmed:true,instanceIds:used.map(x=>x.id)},text:`移除「${row.name}」${used.length?'并在 '+used.length+' 个实例中停用':''}？`,detail:(used.length?'涉及：'+used.map(x=>x.name).join('、')+'。会停止其中正在运行的实例，移除后需手动启动。':'')+'不会删除实例登录数据、扩展已保存的数据或来源文件夹。'};extensionPage();return;}
+ if(action==='close-side-panel'){await request('extension-side-panel-close',{id:b.dataset.instanceId});return;}
  if(action==='open'){
   if(!row||!targetInstance)return;const info=extensionInfo(row,targetInstance.id),kind=b.dataset.kind;
   if(info.error){toast(`「${row.name}」加载失败：${info.error}`);return;}
   if(!info.loaded||targetInstance.status!=='running'){toast(`请先启动「${targetInstance.name}」，扩展会随实例加载`);return;}
   if(!kind){toast(`「${row.name}」没有面板或设置页，已在网页中自动运行`);return;}
   closeExtensionMenu();
-  try{await request('extension-open',{id:targetInstance.id,extensionId:row.id,kind});}catch(err){toast(err.message);}
+  try{await request(kind==='action'?'extension-action':'extension-open',{id:targetInstance.id,extensionId:row.id,kind});}catch(err){toast(err.message);}
   return;
  }
  if(action==='confirm'&&b.dataset.mode==='apply'&&row){
