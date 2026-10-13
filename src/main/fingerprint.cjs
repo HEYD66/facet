@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path');
 const crypto = require('node:crypto');
+const catalog = require('./fingerprint-catalog.cjs');
 
 // arena 指纹环境 · 设备模板与设置
 //
@@ -105,7 +106,7 @@ function normalize(value={}){
  const enabled=value.enabled===true, seed=String(value.seed|| (enabled?crypto.randomBytes(16).toString('hex'):''));
  if(seed&&!/^[a-zA-Z0-9_-]{1,64}$/.test(seed))throw Error('固定种子须为1–64位字母、数字、下划线或短横线');
  const n=(key,def,min,max)=>{const v=Number(value[key]??def);if(!Number.isInteger(v)||v<min||v>max)throw Error('指纹参数超出范围：'+key);return v;};
- const template=String(value.template||'custom');if(!['custom',...DEVICE_TEMPLATES.map(x=>x.id)].includes(template))throw Error('未知设备预设');
+ const template=String(value.template||'custom');if(!['custom',catalog.ID,...DEVICE_TEMPLATES.map(x=>x.id)].includes(template))throw Error('未知设备预设');
  const f={enabled,seed,template,screenWidth:n('screenWidth',1920,640,7680),screenHeight:n('screenHeight',1080,480,4320),availHeight:n('availHeight',1040,240,4320),memory:n('memory',8,1,8),touch:n('touch',0,0,10),colorDepth:n('colorDepth',24,24,32)};
  if(f.availHeight>f.screenHeight||![1,2,4,8].includes(f.memory)||![24,30,32].includes(f.colorDepth))throw Error('屏幕可用高度、内存档位或色深无效');
  for(const k of FLAGS)f[k]=value[k]===true;
@@ -114,15 +115,31 @@ function normalize(value={}){
  return f;
 }
 function preset(id,base={},seed=crypto.randomBytes(16).toString('hex')){
- const hash=crypto.createHash('sha256').update(seed).digest();
- const t=id==='random'?DEVICE_TEMPLATES[hash[0]%DEVICE_TEMPLATES.length]:DEVICE_TEMPLATES.find(x=>x.id===id);if(!t)throw Error('未知设备预设');
- const version=process.versions.chrome||'0.0.0.0';const current=normalize(base.fingerprint);const keepWindow=id==='random';
- return {...base,...(id==='random'?{colorScheme:['system','light','dark'][hash[1]%3],reducedMotion:hash[2]%2?'reduce':'no-preference'}:{}),userAgent:`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`,platform:'Win32',width:keepWindow?(base.width||0):0,height:keepWindow?(base.height||0):0,scale:keepWindow?(base.scale||0):t.deviceScaleFactor,cpu:t.hardwareConcurrency,
- fingerprint:normalize({...base.fingerprint,...(keepWindow?{webgl:true,canvas:true,audio:true}:{}),enabled:true,hardware:keepWindow?!!(base.fingerprint?.enabled&&current.hardware):true,seed,template:t.id,screenWidth:keepWindow?current.screenWidth:t.screenWidth,screenHeight:keepWindow?current.screenHeight:t.screenHeight,availHeight:keepWindow?current.availHeight:t.availableScreenHeight,memory:t.deviceMemory,touch:0,colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
+ if(id==='random'||id===catalog.ID){
+  const full=id===catalog.ID,current=normalize(base.fingerprint),plan=catalog.generate(seed,base,full);
+  const choice=key=>crypto.createHash('sha256').update(seed+':'+key).digest().readUInt32LE(0);
+  const screen=plan.screen;
+  return {...base,colorScheme:['system','light','dark'][choice('color-scheme')%3],reducedMotion:choice('reduced-motion')%2?'reduce':'no-preference',
+   userAgent:generatedUserAgent(),platform:'Win32',cpu:plan.cpu,
+   width:full?(base.width||screen.width):(base.width||0),height:full?(base.height||screen.availHeight):(base.height||0),scale:full?screen.dpr:(base.scale||0),
+   fingerprint:normalize({...current,enabled:true,hardware:full||!!(base.fingerprint?.enabled&&current.hardware),webgl:true,canvas:true,audio:true,seed,template:catalog.ID,
+    screenWidth:full?screen.width:current.screenWidth,screenHeight:full?screen.height:current.screenHeight,availHeight:full?screen.availHeight:current.availHeight,
+    memory:plan.memory,touch:0,colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.gpu.renderer})};
+ }
+ const t=DEVICE_TEMPLATES.find(x=>x.id===id);if(!t)throw Error('未知设备预设');
+ return {...base,userAgent:generatedUserAgent(),platform:'Win32',width:0,height:0,scale:t.deviceScaleFactor,cpu:t.hardwareConcurrency,
+ fingerprint:normalize({...base.fingerprint,enabled:true,hardware:true,seed,template:t.id,screenWidth:t.screenWidth,screenHeight:t.screenHeight,availHeight:t.availableScreenHeight,memory:t.deviceMemory,touch:0,colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
+}
+function generatedUserAgent(){return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome||'0.0.0.0'} Safari/537.36`;}
+// Only a generated UA matching this runtime can reuse native UA-CH metadata.
+// An explicitly edited or old-version UA retains the existing custom-UA policy.
+function generatedMetadata(env,native){
+ if(!env.fingerprint?.enabled||env.fingerprint.template==='custom'||env.platform!=='Win32'||env.userAgent!==generatedUserAgent()||native?.metadata?.platform!=='Windows')return null;
+ return {...native.metadata,platform:'Windows',mobile:false,model:''};
 }
 function script(env){const f=normalize(env.fingerprint);if(!f.enabled)return null;
  const seed=key=>crypto.createHash('sha256').update(f.seed+':'+key).digest().readUInt32LE(0);
  const payload={Hardware:f.hardware,WebGL:f.webgl,Canvas:f.canvas,Audio:f.audio,Rects:f.rects,DeviceMemory:f.memory,MaxTouchPoints:f.touch,ScreenWidth:f.screenWidth,ScreenHeight:f.screenHeight,AvailableScreenHeight:f.availHeight,ColorDepth:f.colorDepth,WebGlVendor:f.vendor,WebGlRenderer:f.renderer,CanvasSeed:seed('canvas'),AudioSeed:seed('audio'),ClientRectsSeed:seed('rects')};
  const source=fs.readFileSync(path.join(__dirname,'fingerprint-inject.js'),'utf8'),slot='/*__FACET_FP_PAYLOAD__*/null';if(source.split(slot).length!==2)throw Error('指纹注入槽位无效');return source.replace(slot,()=>JSON.stringify(payload));
 }
-module.exports={normalize,preset,script,DEVICE_TEMPLATES};
+module.exports={normalize,preset,script,DEVICE_TEMPLATES,generatedMetadata,generatedUserAgent};

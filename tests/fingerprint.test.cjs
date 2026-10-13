@@ -30,3 +30,50 @@ test('random preserves explicit layout choice and a later manual opt-out still s
  const edited=environment({...next,fingerprint:{...next.fingerprint,canvas:false,audio:false,webgl:false}});
  for(const k of ['canvas','audio','webgl'])assert.equal(edited.fingerprint[k],false);
 });
+
+test('catalog import strips unknown/private fields, rejects incompatible renderers and deduplicates GPU aliases',()=>{
+ const {gpuRecord}=require('../scripts/import-fingerprint-catalog.cjs');
+ const row={webGLManufacturer:'Google Inc. (NVIDIA)',webGLRender:'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 (0x00002484) Direct3D11 vs_5_0 ps_5_0, driver.dll-1.2)',token:'private',hostIP:'private'};
+ assert.deepEqual(gpuRecord(row),{brand:'NVIDIA',model:'NVIDIA GeForce RTX 3070'});
+ for(const renderer of ['ANGLE (AMD, Radeon Direct3D11 vs_5_0 ps_5_0)','ANGLE (NVIDIA, NVIDIA GeForce GTX 560 Direct3D9Ex vs_3_0 ps_3_0)','ANGLE (NVIDIA, <script> Direct3D11 vs_5_0 ps_5_0)'])assert.equal(gpuRecord({...row,webGLRender:renderer}),null);
+ const data=require('../src/main/fingerprint-catalog.json');
+ assert.deepEqual(Object.keys(data).sort(),['gpus','schemaVersion','sources']);
+ assert.equal(new Set(data.gpus.map(g=>g.brand+'|'+g.model.toLowerCase())).size,data.gpus.length);
+ for(const gpu of data.gpus)assert.deepEqual(Object.keys(gpu).sort(),['brand','model']);
+});
+
+test('full catalog plans remain coherent over 2000 seeds without mutating input or applying source UA/timezone',()=>{
+ const {ID,GPUS,SCREENS,CPUS}=require('../src/main/fingerprint-catalog.cjs');
+ const base=environment({language:'ja-JP',timezone:'Asia/Tokyo',geoEnabled:true,latitude:35,longitude:139});
+ const original=JSON.stringify(base),seenGPU=new Set(),seenCPU=new Set(),seenScreen=new Set(),seenMemory=new Set();
+ for(let i=0;i<2000;i++){
+  const plan=environment(preset(ID,base,'catalog-'+i)),f=plan.fingerprint;
+  assert.equal(plan.language,base.language);assert.equal(plan.timezone,base.timezone);assert.equal(plan.longitude,139);
+  assert.equal(f.hardware,true);assert.equal(f.touch,0);assert.equal(f.colorDepth,24);assert([4,8].includes(f.memory));
+  assert(GPUS.some(g=>g.vendor===f.vendor&&g.renderer===f.renderer));assert(CPUS.includes(plan.cpu));
+  assert(SCREENS.some(s=>s.width===f.screenWidth&&s.height===f.screenHeight&&s.dpr===plan.scale));
+  assert(plan.width<=f.screenWidth&&plan.height<=f.availHeight);assert(f.memory!==4||plan.cpu<=8);
+  assert.deepEqual(environment(plan),plan);assert.deepEqual(preset(ID,base,'catalog-'+i),preset(ID,base,'catalog-'+i));
+  seenGPU.add(f.renderer);seenCPU.add(plan.cpu);seenScreen.add([f.screenWidth,f.screenHeight,plan.scale].join(':'));seenMemory.add(f.memory);
+ }
+ assert(seenGPU.size>400);assert.equal(seenCPU.size,CPUS.length);assert.equal(seenScreen.size,SCREENS.length);assert.equal(seenMemory.size,2);
+ assert.equal(JSON.stringify(base),original);
+});
+
+test('catalog fits explicitly fixed viewports and seed labels do not couple color preference with hardware',()=>{
+ const base=environment({width:3000,height:1900});
+ for(let i=0;i<30;i++){const plan=environment(preset('library-v1',base,'fixed-'+i));assert.equal(plan.width,3000);assert.equal(plan.height,1900);assert(plan.width<=plan.fingerprint.screenWidth);}
+ const pairs=new Map();for(let i=0;i<200;i++){const plan=preset('random',{},'independent-'+i);const set=pairs.get(plan.fingerprint.memory)||new Set();set.add(plan.colorScheme);pairs.set(plan.fingerprint.memory,set);}
+ for(const values of pairs.values())assert.equal(values.size,3);
+ assert.throws(()=>preset('library-v1',{},'bad seed'));
+});
+
+test('generated UA metadata follows current Windows runtime and explicit custom UA stays custom',()=>{
+ const {generatedUserAgent,generatedMetadata}=require('../src/main/fingerprint.cjs');
+ const plan=environment(preset('library-v1',{},'metadata'));
+ const metadata={platform:'Windows',platformVersion:'15.0.0',architecture:'x86',bitness:'64',brands:[{brand:'Chromium',version:'current'}],mobile:false};
+ assert.equal(plan.userAgent,generatedUserAgent());assert.deepEqual(generatedMetadata(plan,{metadata}),{...metadata,mobile:false,model:''});
+ assert.equal(generatedMetadata({...plan,userAgent:'custom UA'},{metadata}),null);
+ assert.equal(generatedMetadata({...plan,platform:'MacIntel'},{metadata}),null);
+ assert.equal(generatedMetadata(plan,{metadata:{...metadata,platform:'Linux'}}),null);
+});

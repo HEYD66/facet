@@ -61,7 +61,7 @@ app.whenReady().then(async()=>{try{
  await wait(()=>restarted.view?.webContents.getTitle()==='reset-fixture','restarted fixture page');
  const reported=await restarted.view.webContents.executeJavaScript('({touch:navigator.maxTouchPoints,memory:navigator.deviceMemory})');
  assert.equal(reported.touch,0);
- assert.equal(reported.memory,8);
+ assert.equal(reported.memory,after.environment.fingerprint.memory);
  assert.equal(await restarted.view.webContents.executeJavaScript('localStorage.getItem("reset-marker")'),null);
  // Both successful batch items discard old drafts, including one not on screen.
  const previousSeed=after.environment.fingerprint.seed;

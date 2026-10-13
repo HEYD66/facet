@@ -57,7 +57,8 @@
     "test:control-api": "node --test tests/control-api.test.cjs",
     "test:devtools-electron": "node scripts/launch-electron.cjs tests/devtools-electron.cjs",
     "test:instance-reset-electron": "node scripts/launch-electron.cjs tests/instance-reset-electron.cjs",
-    "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs"
+    "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs",
+    "test:fingerprint-electron": "node tests/fingerprint-catalog-runner.cjs"
   },
   "engines": {
     "node": ">=22.12.0"

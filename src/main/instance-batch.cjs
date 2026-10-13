@@ -31,7 +31,7 @@ function prepare(controller,message){
  for(let i=0;i<count;i++){
   let name;do{name=prefix+' '+sequence++;}while(used.has(name));if(name.length>40)throw Error('实例名称过长，请缩短前缀');used.add(name);
   const node=sources.length?sources[i%sources.length]:null;
-  const item={name,...node,environment:message.random===true?environment(preset('random',base)):base};
+  const item={name,...node,environment:message.random===true?environment(preset('library-v1',base)):base};
   bytes+=Buffer.byteLength(JSON.stringify(item));if(bytes>2*1024*1024)throw Error('单批环境草稿超过 2MB，请减少本次数量后分批创建；实例总数不限');items.push(item);
  }
  const plan={token:crypto.randomUUID(),items,start:message.start===true,random:message.random===true,syncLocale:message.syncLocale===true};
