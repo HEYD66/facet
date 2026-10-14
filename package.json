@@ -42,6 +42,7 @@
     "test:extension-debugger-electron": "node scripts/launch-electron.cjs tests/extension-debugger-electron.cjs",
     "test:extension-compat": "node tests/extension-compat-runner.cjs",
     "test:extension-compat-policy": "node --test tests/extension-compat-policy.test.cjs",
+    "test:extension-native": "node scripts/launch-electron.cjs tests/extension-compat-native.cjs",
     "test:extension-popup": "node --test tests/extension-popup.test.cjs",
     "test:extension-popup-electron": "node scripts/test-extension-popup.cjs",
     "test:ux3-ui": "node tests/ux3-renderer.cjs",
