@@ -1,9 +1,10 @@
 'use strict';
 // Exercise the actual installed executable and packaged UI/IPC with isolated data.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),net=require('node:net'),assert=require('node:assert/strict');
-const {spawn}=require('node:child_process');
+const {spawn,execFile}=require('node:child_process'),{promisify}=require('node:util');
 const {chromium}=require('playwright');
 const {Store}=require('../src/main/store.cjs');
+const {ExtensionCatalog}=require('../src/main/extension-catalog.cjs');
 const {childEnvironment}=require('./electron-runtime.cjs');
 const buildManifest=path.resolve(__dirname,'../release/build-manifest.json');
 const executable=path.resolve(process.argv[2]||(fs.existsSync(buildManifest)?JSON.parse(fs.readFileSync(buildManifest,'utf8')).unpackedExecutable:'release/win-unpacked/Facet.exe'));
@@ -26,6 +27,14 @@ async function launch(){
  assert(ui.url().includes('app.asar'),'must load packaged source');
 }
 async function call(action,payload={}){const response=await ui.evaluate(({action,payload})=>bridge.request(action,payload),{action,payload});assert.equal(response.ok,true,response.error);return response.value;}
+async function verifyTaskbar(){
+ const native=JSON.parse((await promisify(execFile)('pwsh.exe',['-NoProfile','-File',path.join(__dirname,'../tests/window-identity-properties.ps1'),'-ProcessId',String(child.pid)],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
+ assert.equal(native.pid,child.pid);assert.equal(native.appId,'Facet.MultiInstanceBrowser');
+ assert.equal(native.icon,path.join(path.dirname(executable),'resources/facet.ico')+',0');
+ assert.equal(native.command,'"'+executable+'"');assert.equal(native.name,'千面 Facet');
+ assert(native.large?.hash&&native.small?.hash);
+ return native;
+}
 async function api(endpoint,{body,authenticated=true}={}){
  const control=await call('control-status');
  const response=await fetch(`http://127.0.0.1:${control.apiPort}${endpoint}`,{method:body?'POST':'GET',headers:{'content-type':'application/json',...(authenticated?{authorization:'Bearer '+control.token}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -40,6 +49,11 @@ async function instancePage(id){
  }
  throw Error('running instance page missing');
 }
+async function extensionPage(id,extensionId){
+ await call('extension-open',{id,extensionId,kind:'popup'});let panel;
+ await wait(()=>{panel=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().startsWith('chrome-extension://')&&p.url().endsWith('/popup.html'));return !!panel;},'packaged extension panel');
+ await panel.waitForFunction(()=>!!window.__facetExtensionCompatApplied);return panel;
+}
 async function close(){
  if(!child||child.exitCode!==null)return;
  if(ui){const snapshot=await call('snapshot');for(const x of snapshot.instances)if(x.status==='running'||x.status==='starting')await call('stop',{id:x.id});}
@@ -51,7 +65,7 @@ async function close(){
 async function main(){
  assert(fs.existsSync(executable),'installed executable missing');
  const resources=path.join(path.dirname(executable),'resources');
- for(const file of ['app.asar','mihomo/mihomo.exe','mihomo/LICENSE','mihomo/mihomo-source.tar.gz','process-host/facet-process-host.exe','process-host/manifest.json','facet.ico','AGENTS.md','docs/AI-CONTROL-HANDOFF.md','docs/CONTROL-API.md'])assert(fs.existsSync(path.join(resources,file)),file+' missing');
+ for(const file of ['app.asar','mihomo/mihomo.exe','mihomo/LICENSE','mihomo/mihomo-source.tar.gz','process-host/facet-process-host.exe','process-host/manifest.json','facet.ico','AGENTS.md','README.md','docs/README.md','docs/PROJECT.md','docs/CURRENT-SCOPE.md','docs/AI-CONTROL-HANDOFF.md','docs/CONTROL-API.md','docs/EXTENSION-COMPATIBILITY.md','docs/FINGERPRINT-CATALOG.md'])assert(fs.existsSync(path.join(resources,file)),file+' missing');
  pass('Installed resources include packaged code, core, process host, icon, licenses and source archive');
  server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><title>Installed live fixture</title><h1>REAL_INSTALLED_PAGE</h1><script>window.ticks=0;function tick(){window.ticks++;requestAnimationFrame(tick)}tick();</script>');});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port+'/';
@@ -59,9 +73,19 @@ async function main(){
  proxy.on('connect',(req,downstream,head)=>{proxyHits++;const target=new URL('http://'+req.url);const upstream=net.connect(Number(target.port)||443,target.hostname,()=>{downstream.write('HTTP/1.1 200 Connection established\r\n\r\n');if(head.length)upstream.write(head);upstream.pipe(downstream);downstream.pipe(upstream);});for(const socket of [upstream,downstream]){sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));}});
  await new Promise(r=>proxy.listen(0,'127.0.0.1',r));
  const store=new Store(root),a=store.create('安装验证·直连'),b=store.create('安装验证·代理');store.update(a.id,{url});store.update(b.id,{url,network:{mode:'mihomo',nodeName:'本机验证代理'}});store.saveNodes(b.id,[{name:'本机验证代理',type:'http',server:'127.0.0.1',port:proxy.address().port}],null);
+ const extensionSource=path.join(root,'extension-source');fs.mkdirSync(extensionSource);
+ fs.writeFileSync(path.join(extensionSource,'manifest.json'),JSON.stringify({manifest_version:3,name:'Packaged API verification',version:'1.0.0',permissions:['tabs','webNavigation','bookmarks'],host_permissions:['http://127.0.0.1/*'],action:{default_popup:'popup.html'}}));
+ fs.writeFileSync(path.join(extensionSource,'popup.html'),'<title>Packaged extension verification</title><p>Real packaged extension API</p>');
+ const catalog=new ExtensionCatalog(root),extension=catalog.stage(extensionSource);catalog.accept(extension);catalog.setEnabled(b.id,extension.id,true);
  fs.writeFileSync(path.join(root,'workspace-tools.json'),JSON.stringify({nodes:[],ips:[],quickLinksRevision:1,quickLinks:[{id:'quick-ipip',name:'ipip.la',url:'https://ipip.la/disguise.html'},{id:'quick-arena',name:'Arena',url:'https://arena.ai/agent'},{id:'duplicate',name:'ipip.la',url:'https://ipip.la/'}]}));
  await launch();assert((await call('snapshot')).instances.every(x=>x.status==='stopped'));pass('Installed app loads real production preload/IPC and does not auto-start instances');
+ const firstIcon=await verifyTaskbar();pass('Actual packaged window exposes native Facet icons and correct taskbar icon/relaunch paths');
  assert.equal((await call('snapshot')).versions.app,require('../package.json').version);
+ const beforeCatalogEnvironment=(await call('snapshot')).instances.find(x=>x.id===a.id).environment;
+ const plan=await call('fingerprint-preset',{preset:'library-v1',environment:{language:'ja-JP',timezone:'Asia/Tokyo'}});
+ assert.equal(plan.fingerprint.template,'library-v1');assert.equal(plan.fingerprint.touch,0);assert(plan.fingerprint.renderer&&plan.fingerprint.vendor);assert.equal(plan.language,'ja-JP');assert.equal(plan.timezone,'Asia/Tokyo');
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,beforeCatalogEnvironment);
+ pass('Packaged fingerprint catalog generates coherent desktop plans without changing saved instances');
  await ui.locator('#sidebar .nav[data-view="settings"]').click();await ui.waitForFunction(()=>view==='settings'&&!!document.querySelector('#nodeNetworkCard'));
  assert.match(await ui.locator('#workspaceHead h1').textContent(),/^应用设置/);assert(await ui.locator('[data-palette-mode]').count()>0);
  assert(await ui.locator('#nodeNetworkCard').isVisible());
@@ -116,11 +140,25 @@ async function main(){
  await ui.waitForFunction(id=>activeId===id&&view==='browser',a.id);await wait(async()=>(await api('/v1/targets')).some(x=>x.instanceId===a.id&&x.url===url+'?external-control'),'external navigation downstream');
  assert.equal(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).url,url+'?external-control');await call('navigate',{id:a.id,url});
  pass('Packaged API rejects missing credentials; authenticated rename and navigation update the UI, target and saved data');
+ const panel=await extensionPage(b.id,extension.id),ownTarget=(await api('/v1/targets')).find(x=>x.instanceId===b.id),peerTarget=(await api('/v1/targets')).find(x=>x.instanceId===a.id);
+ const extra=await panel.evaluate(async({url,tabId})=>{
+  const frames=await chrome.webNavigation.getAllFrames({tabId});
+  const tab=await chrome.tabs.create({url:url+'?extension-page'});
+  const bookmark=await chrome.bookmarks.create({title:'Packaged durable bookmark',url});
+  return {frames,tab,bookmark,tabs:await chrome.tabs.query({})};
+ },{url,tabId:ownTarget.webContentsId});
+ assert(extra.frames.some(x=>x.frameId===0&&x.url===url));assert(extra.tabs.some(x=>x.id===extra.tab.id));assert(!extra.tabs.some(x=>x.id===peerTarget.webContentsId));
+ await wait(()=>browser.contexts().flatMap(c=>c.pages()).some(p=>p.url()===url+'?extension-page'),'packaged extension page loaded');
+ await panel.evaluate(id=>chrome.tabs.remove(id),extra.tab.id);
+ pass('Actual packaged extension queries frames, opens an owned proxied page, rejects peer visibility and stores a bookmark');
  const output=await call('runtime-output');assert.equal(output.warning,'');assert(output.rows.some(r=>r.text.includes('ready')));pass('Installed runtime output works without the development launcher');
  const corePids=(await call('snapshot')).instances.map(x=>x.pid).filter(Boolean);await close();assert(corePids.every(pid=>{try{process.kill(pid,0);return false;}catch{return true;}}));pass('Normal exit reclaims packaged proxy processes');
- await launch();const second=await call('snapshot');assert(second.instances.some(x=>x.name==='安装验证·已改名'));assert(second.instances.every(x=>x.status==='stopped'));assert.equal(second.nodeNetwork.settings.dnsMode,'system');assert.equal(second.nodeNetwork.settings.routeMode,'system');assert(!fs.existsSync(path.join(root,'node-network.json')));
+ await launch();const secondIcon=await verifyTaskbar();assert.equal(secondIcon.large.hash,firstIcon.large.hash);assert.equal(secondIcon.small.hash,firstIcon.small.hash);const second=await call('snapshot');assert(second.instances.some(x=>x.name==='安装验证·已改名'));assert(second.instances.every(x=>x.status==='stopped'));assert.equal(second.nodeNetwork.settings.dnsMode,'system');assert.equal(second.nodeNetwork.settings.routeMode,'system');assert(!fs.existsSync(path.join(root,'node-network.json')));
  assert.equal((await call('control-status')).restartRequired,false);assert.equal((await api('/v1/status')).running,true);assert.deepEqual(second.quickLinks.map(x=>x.name),['Arena']);
  for(const id of [a.id,b.id])await call('start',{id});await wait(async()=>(await call('snapshot')).instances.every(x=>x.title==='Installed live fixture'&&x.status==='running'),'restarted pages',45000);
+ const restartedPanel=await extensionPage(b.id,extension.id);
+ assert((await restartedPanel.evaluate(()=>chrome.bookmarks.search('Packaged durable bookmark'))).some(x=>x.id===extra.bookmark.id));
+ pass('Packaged extension durable data survives a completely new application process');
  const restarted=browser.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===url);assert((await Promise.all(restarted.map(p=>p.evaluate(()=>localStorage.getItem('facet-install-persistence'))))).includes('installed-check'));
  pass('Application restart retains renamed configuration, browser storage, migrated shortcuts and enabled API/CDP');
  const beforeReset=(await call('snapshot')).instances.find(x=>x.id===b.id);
@@ -130,6 +168,7 @@ async function main(){
  await ui.evaluate(id=>route('environment',id),b.id);await ui.locator('[data-action="reset-environment"]').click();await ui.locator('#modal [data-action="confirm"]').click();
  await ui.waitForFunction(id=>!modal&&current().id===id&&current().status==='stopped'&&!environmentChanged(),b.id);
  const savedReset=JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===b.id);
+ assert.equal(savedReset.environment.fingerprint.template,'library-v1');
  assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,0);
  assert.deepEqual(await ui.evaluate(()=>environmentFormValue().environment.fingerprint),savedReset.environment.fingerprint);
  await call('start',{id:b.id});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');

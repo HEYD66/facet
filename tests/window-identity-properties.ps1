@@ -1,6 +1,8 @@
-param([long]$WindowHandle)
+param([long]$WindowHandle, [int]$ProcessId)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+if($ProcessId) { $WindowHandle = (Get-Process -Id $ProcessId -ErrorAction Stop).MainWindowHandle.ToInt64() }
+if(-not $WindowHandle) { throw 'The specified process has no main window' }
 # Read native window/taskbar metadata only; never alter windows or shell settings.
 Add-Type -TypeDefinition @'
 using System;

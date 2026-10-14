@@ -2,6 +2,10 @@
 
 这份文档给接手项目的 AI、Playwright 脚本和本地自动化工具使用。内容不包含 API 令牌、Cookie、订阅链接或代理凭据。
 
+整体架构、数据/恢复、构建与发布见 [项目总览](PROJECT.md)，专题入口见 [文档索引](README.md)。v0.2.13 安装包一并附带项目 Markdown 文档；旧安装包仅附带当时构建配置指定的接手文件，不自动获得后来新增的文档。
+
+当前未完成工作（2026-10-13）：[订阅指定代理与详细诊断导出](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。两个后端模块仍是未接线草稿；继续前先检查实际源码与 Git 状态，不要把文档中的设计字段当作已可调用的 API。
+
 ## 1. 先确认项目和运行状态
 
 确认当前 Electron 进程的 `--app-path` 与项目根目录一致，不要根据旧安装包或旧目录名猜测运行副本。开发启动入口：
@@ -92,15 +96,26 @@ GET http://127.0.0.1:<CDP端口>/json/list
 
 ```js
 const target = targets.value.find(item => item.instanceId === instanceId);
-if (!target) throw new Error('目标实例没有运行中的页面');
-const browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
-const pages = browser.contexts().flatMap(context => context.pages());
-const page = pages.find(item => item.url() === target.url);
+if (!target?.targetId) throw new Error('目标实例没有运行中的页面');
+const browser = await chromium.connectOverCDP(cdpAddress);
+let page;
+for (const candidate of browser.contexts().flatMap(context => context.pages())) {
+  const session = await candidate.context().newCDPSession(candidate);
+  try {
+    const info = await session.send('Target.getTargetInfo');
+    if (info.targetInfo.targetId === target.targetId) page = candidate;
+  } finally {
+    await session.detach();
+  }
+  if (page) break;
+}
 if (!page) throw new Error('目标实例页面未找到');
 await page.bringToFront();
 ```
 
 CDP 只控制网页内容；实例、代理、环境、扩展、日志和持久化状态通过本地 API 或 `/v1/actions` 完成。
+
+`cdpAddress` 从当前连接信息获取；同 URL 实例必须按 targetId 区分，停止/重建后重新查询。`bringToFront()` 不等于管理界面跟随，必要时通过 API focus。API 的 Bearer 鉴权不等于 CDP 自身具备同一鉴权。
 
 ## 7. 验证要求
 

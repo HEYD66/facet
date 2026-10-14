@@ -1,6 +1,6 @@
 {
   "name": "facet",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "description": "Independent multi-instance browser with explicit direct networking and bundled Mihomo",
   "author": "HEYD66",

@@ -1,4 +1,33 @@
-# 0.2.0 实测交接
+# 验证入口与历史记录
+
+更新：2026-10-14。当前源码版本 v0.2.13。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
+
+## 当前验证方式
+
+| 范围 | 命令 | 证据边界 |
+| --- | --- | --- |
+| 最低基础检查 | `npm.cmd run check`、`npm.cmd run test:control-api`、`git diff --check` | 语法/桥接边界/API 回归，不证明所有业务功能 |
+| 下载/源管理/安全 | `test:subscription`、`test:library`、`test:hardening` | 主要为受控请求与本机夹具，不证明所有机场可用 |
+| 节点准备/内核 | `test:node-network`、`test:node-network-electron`、`test:core`、`test:process-host` | 公网、TUN、多网卡另记录实际条件 |
+| 浏览网络与隐私 | `test:browser-network`、`test:webrtc` | 受控解析/浏览器回归，不保证所有协议与扩展无泄露 |
+| 扩展 | `test:extensions`、`test:extensions-electron`、`test:extension-debugger-electron`、`test:extension-popup-electron` | 必须区分加载成功和真实插件功能 |
+| 常用扩展 API | `test:extension-compat`、`test:extension-compat-policy`、`test:extension-native` | 自动专项、原生保存/权限生命周期与通知真人点击分别报告 |
+| 指纹库/窗口图标 | `test:fingerprint`、`test:fingerprint-electron`、`test:window-identity` | 真实页面/重启及 Win32 图标与任务栏属性；不代表所有检测网站或设备 |
+| 实例操作/UI | `test:electron`、`test:instance-reset-electron`、`test:devtools-electron`、`test:grid-transition-electron`、`test:viewport-bookmarks` | 独立测试数据；页面/存储/真实点击和进程结果需一起检查 |
+| 迁移/删除 | `test:instance-archive`、`test:instance-transfer`、`test:export-delete` | 真实生成归档、复读校验、原数据与异常恢复 |
+| 日志/更新/打包 | `test:diagnostics`、`test:updates`、`test:packaging`、`test:installed` | 新构建要新验收，不能借旧包结果 |
+
+以上为 `npm.cmd run <脚本名>`；不是每次全部重跑。按照实际修改的风险和必须通过的项目门禁选择，不把未运行项写成通过。
+
+v0.2.12 发行时：check 210 个脚本、control-api 1 项、packaging 3 项、updates 15 项及打包程序隔离验收 15 项通过；exe PE/版本/打包源码/清单校验一致，发布四附件和远端 SHA256 核对完成。D 盘测试目录启动异常后，用 C 盘完整复制且 88 文件哈希一致的程序验收；没有运行安装向导，不等于多设备安装测试。安装版升级 Star 弹窗也加载包内代码验证过。
+
+已知测试环境边界：部分 Playwright UI 测试需匹配其浏览器版本；`test:experience` 历史有夹具缺少 `isDevToolsOpened` 的失败记录，未在本次文档整理中修复。详见 [项目手册](PROJECT.md)。
+
+本次项目文档整理会核验文件、链接、脚本名称、基础检查和文档与实际源码一致性；不会重启用户应用或宣称新增网络草稿已验收。
+
+---
+
+# 历史：0.2.0 实测交接
 
 ## 已验证
 

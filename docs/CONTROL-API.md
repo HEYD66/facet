@@ -2,6 +2,8 @@
 
 应用设置中的「外部控制（本机 API + CDP）」默认关闭。开启后，千面只在 `127.0.0.1` 监听，不接受局域网或公网连接。
 
+更新：2026-10-14；以 v0.2.13 的 `control-api.cjs` 和 `ipc.cjs` 为准。[项目手册](PROJECT.md) 说明架构、数据和恢复。端口/路径从当前界面获取，不写死。订阅指定代理字段尚未接入，见 [专项状态](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
+
 ## 端口和隔离
 
 - API 端口用于启停实例、跳转页面和查询状态。
@@ -40,3 +42,59 @@
 启动、刷新和跳转接口也会自动发送跟随通知；如果千面当前停留在设置或全局页面，会切换到目标实例的浏览页面。
 
 API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，也不要把令牌提交到日志、工单或版本库。
+
+## 请求和结果
+
+请求使用 `Authorization: Bearer <当前令牌>`，JSON 操作使用 `Content-Type: application/json`，请求体最多 128 KB。
+
+| 情况 | 状态与结果 |
+| --- | --- |
+| 普通接口完成 | 200，`{"ok":true,"value":...}` |
+| 创建接口完成 | 201，继续检查 value 的 `created`、`started` 和错误字段 |
+| 缺少/错误令牌 | 401，`ok:false` |
+| 参数或操作失败 | 400，`ok:false` 与 error |
+| 未知接口 | 404，`ok:false` |
+
+OPTIONS 预检不表示业务授权，CORS 不能代替令牌。`ok:true` 也不表示长任务全部完成：批量创建、检测、导出等需继续查询 snapshot、任务进度、targets、磁盘及最终文件。
+
+## 通用动作分类
+
+完整字段以 `ipc.cjs` 和对应 renderer 请求为准；下表不代替每个动作的确认和数据校验。
+
+| 领域 | 已有动作举例 | 完成依据 |
+| --- | --- | --- |
+| 实例 | `create`、`rename`、`start`、`stop`、`remove`、`instance-notes`、`instance-autostart` | ID、实际状态、持久数据 |
+| 环境 | `settings`、`fingerprint-preset`、`reset-environment`、`instance-reset-many` | 草稿/保存区别；重置后网站数据和新环境 |
+| 代理 | `library-save`、`library-rename`、`library-remove`、`library-assign`、`library-assign-many` | 全局源与独立实例副本 |
+| 检测 | `diagnostic-start`、`diagnostic-cancel`、`diagnostic-history`、`node-network-save` | 任务结果和网络设置作用范围 |
+| 扩展 | `extension-import`、`extension-configure`、`extension-remove`、`extension-open`、`extension-refresh` | 确认范围和真实扩展功能 |
+| 迁移 | `instance-export`、`instance-import-inspect`、`instance-import-commit` | 文件选择、归档复读校验与下游状态 |
+| 日志/更新 | `runtime-output`、`export-logs`、`export-diagnostics`、`update-check`、`update-download`、`update-install` | 当前日志覆盖、校验与确认退出 |
+| 浏览工具 | `toggle-devtools`、`navigate`、`audio-volume`、`audio-mute`、`quick-link-open` | 目标实例页面与 UI 跟随 |
+
+扩展移除需 `confirmed:true` 和本次确认的 `instanceIds`；启用范围发生变化则拒绝，需重新盘点。专用 DELETE 不替用户弹出确认，调用者先获得明确删除授权。导入/导出/目录选择仍可能要求原生交互，API 不伪造已选文件。安装要求 `confirmed:true`。
+
+## 精确选择网页 target
+
+targets 返回 instanceId、instanceName、webContentsId、targetId、URL 和 title。多个实例可访问同一 URL，名称可变，停止/重建页面后 targetId 变化；按 URL 或序号不能可靠定位。
+
+```js
+// targets.value 来自已认证 GET /v1/targets；instanceId、cdpAddress 从当前连接状态取得。
+const target = targets.value.find(x => x.instanceId === instanceId);
+if (!target?.targetId) throw new Error('目标实例没有可用网页');
+const browser = await chromium.connectOverCDP(cdpAddress);
+let page;
+for (const candidate of browser.contexts().flatMap(x => x.pages())) {
+  const session = await candidate.context().newCDPSession(candidate);
+  try {
+    const info = await session.send('Target.getTargetInfo');
+    if (info.targetInfo.targetId === target.targetId) page = candidate;
+  } finally {
+    await session.detach();
+  }
+  if (page) break;
+}
+if (!page) throw new Error('页面已变化，请重新查询 targets');
+```
+
+管理界面跟随通过实例 focus；网页 bringToFront 不等同于千面管理路由切换。HTTP API 令牌不同时保护原生 CDP；本机可访问调试端口的工具拥有较强页面控制能力。按需关闭外部控制并重启，以关闭 CDP。
