@@ -9,7 +9,7 @@ app.setPath('userData',userDataPath(app));
 const controlApiModule=require('./control-api.cjs');
 const controlConfigFile=path.join(app.getPath('userData'),'control-api.json');
 let controlSettings=controlApiModule.loadSettings(controlConfigFile);
-if(app.isPackaged)require('./runtime-output.cjs').installRuntimeOutput(app);
+require('./runtime-output.cjs').installRuntimeOutput(app);
 const appIcon=require('./window-identity.cjs').installWindowIdentity(app);
 require('./webrtc-policy.cjs').installWebRTCPolicy(app);
 require('./browser-network-policy.cjs').installBrowserNetworkPolicy(app);

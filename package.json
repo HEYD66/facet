@@ -10,7 +10,8 @@
   "scripts": {
     "build:installer": "node scripts/build-installer.cjs",
     "test:packaging": "node --test tests/packaging.test.cjs",
-    "test:diagnostics": "node --test tests/diagnostic-bundle.test.cjs",
+    "test:diagnostics": "node --test tests/diagnostic-bundle.test.cjs tests/detailed-diagnostics.test.cjs",
+    "test:diagnostics-electron": "node tests/detailed-diagnostics-runner.cjs",
     "test:installed": "node scripts/verify-installed.cjs",
     "build:process-host": "node scripts/build-process-host.cjs",
     "test:process-host": "node --test tests/process-host.test.cjs",

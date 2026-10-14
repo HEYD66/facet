@@ -98,12 +98,14 @@ class NodeNetwork {
     this.warning = '';
     return this.snapshot();
   }
-  async prepare(node, signal) {
+  async prepare(node, signal, onStage) {
+    const report=value=>{try{onStage?.(value);}catch{}};
     signal?.throwIfAborted();
     if (this.warning) throw safeError(this.warning);
     const settings = {...this.settings};
     const original = String(node.server || '').replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
     const host = net.isIP(original) ? original : domainToASCII(original);
+    report({stage:'node-host',host,dnsMode:settings.dnsMode,routeMode:settings.routeMode});
     if (fakeAddress(host)) throw safeError('节点地址是 Fake-IP，请重新导入真实节点地址');
     let selected = '';
     if (settings.routeMode !== 'system') {
@@ -120,8 +122,10 @@ class NodeNetwork {
       else {
         try {
           const answers = await systemAnswers(host, signal);
+          report({stage:'node-system-dns-answer',host,addresses:answers});
           if (answers.some(row => fakeAddress(row.address)) || !answers.length) { secure = true; reason = 'Fake-IP 兼容 DNS'; }
-        } catch {
+        } catch (error) {
+          report({stage:'node-system-dns-error',...require('./network-trace.cjs').errorFields(error)});
           signal?.throwIfAborted();
           secure = true; reason = '系统解析失败，使用安全 DNS';
         }
@@ -137,8 +141,10 @@ class NodeNetwork {
       // pin only this node hostname in this core's temporary hosts configuration.
       // A new start/probe resolves again; no resolved IP is written to the library.
       let answers;
+      report({stage:'node-doh-start',host});
       try { answers = await queryDohAddresses(host, {signal, nodeFallback: true, acceptAddress: isPublicAddress}); }
       catch (error) {
+        report({stage:'node-doh-error',fallback:!strictMode,...require('./network-trace.cjs').errorFields(error)});
         signal?.throwIfAborted();
         // Strict mode: refuse startup instead of resolving this node via system DNS.
         if (strictMode) {
@@ -154,6 +160,7 @@ class NodeNetwork {
       }
       signal?.throwIfAborted();
       if (answers) {
+        report({stage:'node-doh-answer',host,addresses:answers});
         if (!answers.length || answers.some(row => !isPublicAddress(row.address))) {
           // Strict mode: throw error
           if (strictMode) throw safeError('节点安全 DNS 未返回合法公网地址；请核对节点域名或切换到自动模式连接内网节点');
@@ -164,6 +171,7 @@ class NodeNetwork {
         }
       }
     }
+    report({stage:'node-dns-policy',reason,routeMode:settings.routeMode,proxy:true});
     return {overrides, summary: {dns: reason, route: selected ? '指定网卡：' + selected : '保留系统路由及节点设置'}};
   }
 }

@@ -1,27 +1,36 @@
 'use strict';
-const fs=require('node:fs'),path=require('node:path'),{StringDecoder}=require('node:string_decoder');
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{StringDecoder}=require('node:string_decoder');
 const {atomic}=require('./json-storage.cjs');
 const {redact}=require('./workspace.cjs');
-function safeLine(text){return redact(String(text).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'').replace(/\b(?:cookie|set-cookie|session|api[-_]?key|authorization)\s*[:=].*/gi,'[凭据已隐藏]').replace(/\b(?:password|passwd|token|secret|username)\s*[:=]\s*(?:"[^"]*"|'[^']*'|\S+)/gi,'[凭据已隐藏]'));}
+const OUTPUT_LIMIT=5000,MAX_FILE_BYTES=12*1024*1024;
+let activeOutput,writingEvent=false;
+function safeLine(text){return redact(String(text).replace(/\x1b\[[0-9;]*[A-Za-z]/g,'').replace(/\b(?:cookie|set-cookie|session|api[-_]?key|authorization)["']?\s*[:=].*/gi,'[凭据已隐藏]').replace(/\b(?:password|passwd|token|secret|username)["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,'[凭据已隐藏]').replace(/\b(?:Bearer|Basic)\s+[a-zA-Z0-9+/_=.-]+/gi,'[凭据已隐藏]').replace(/\b(?:ss|ssr|vmess|vless|trojan|socks5|wss?|ftp):\/\/[^\s<>"']+/gi,'[地址已隐藏]'));}
+function contextFields(value={}){const out={};for(const key of ['instanceId','taskId','sourceId','runId'])if(typeof value[key]==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(value[key]))out[key]=value[key];if(['application','core','page','control','operation'].includes(value.source))out.source=value.source;if(Number.isSafeInteger(value.pid)&&value.pid>0)out.pid=value.pid;return out;}
+function outputRow(value){const text=safeLine(value.text||'');return {time:String(value.time||'').slice(0,40),channel:value.channel==='stderr'?'stderr':'stdout',text,truncated:value.truncated===true||text.length>=700||text==='[超长输出已省略]',...contextFields(value)};}
 class RuntimeOutput {
- constructor(file){this.file=file;this.rows=[];this.streams=new Map();this.timer=null;this.warning='';}
- write(channel,chunk){let stream=this.streams.get(channel);if(!stream){stream={decoder:new StringDecoder('utf8'),pending:''};this.streams.set(channel,stream);}stream.pending+=stream.decoder.write(Buffer.isBuffer(chunk)?chunk:Buffer.from(String(chunk)));const lines=stream.pending.split(/\r?\n/);stream.pending=lines.pop();for(const line of lines)this.record(channel,line);if(stream.pending.length>16384)stream.pending='[超长输出已省略]';}
- record(channel,line){if(!line.trim())return;this.rows.push({time:new Date().toISOString(),channel,text:safeLine(line)});if(this.rows.length>1000)this.rows.splice(0,this.rows.length-1000);if(!this.timer){this.timer=setTimeout(()=>this.flush(),200);this.timer.unref?.();}}
- flush(){clearTimeout(this.timer);this.timer=null;try{atomic(this.file,{rows:this.rows,warning:this.warning},{backup:false});}catch{this.warning='运行输出写盘失败';}}
- close(){for(const [channel,stream]of this.streams){const tail=stream.pending+stream.decoder.end();if(tail.trim())this.record(channel,tail);}this.streams.clear();this.flush();}
+ constructor(file){this.file=file;this.rows=[];this.streams=new Map();this.timer=null;this.warning='';this.dropped=0;this.blocked=false;this.runId=crypto.randomUUID();this.startedAt=new Date().toISOString();try{if(fs.statSync(file).size>MAX_FILE_BYTES)throw Error('limit');const data=JSON.parse(fs.readFileSync(file,'utf8'));if(!Array.isArray(data.rows))throw Error('format');this.rows=data.rows.slice(-OUTPUT_LIMIT).map(outputRow);this.dropped=Math.max(0,Number(data.dropped)||0)+Math.max(0,data.rows.length-OUTPUT_LIMIT);}catch(error){if(error.code!=='ENOENT'){this.blocked=true;this.warning='旧运行输出无法读取，原文件已保留；本次输出仅在内存中保留';}}}
+ write(channel,chunk,context={}){const key=JSON.stringify([channel,context.source,context.instanceId,context.taskId,context.pid]);let stream=this.streams.get(key);if(!stream){stream={decoder:new StringDecoder('utf8'),pending:'',channel,context,discarding:false};this.streams.set(key,stream);}let decoded=stream.decoder.write(Buffer.isBuffer(chunk)?chunk:Buffer.from(String(chunk)));if(stream.discarding){const newline=decoded.indexOf('\n');if(newline<0)return;decoded=decoded.slice(newline+1);stream.discarding=false;}stream.pending+=decoded;const lines=stream.pending.split(/\r?\n/);stream.pending=lines.pop();for(const line of lines)this.record(channel,line.length>16384?'[超长输出已省略]':line,context);if(stream.pending.length>16384){stream.pending='';stream.discarding=true;this.record(channel,'[超长输出已省略]',context);}}
+ record(channel,line,context={}){if(!String(line).trim())return;this.rows.push(outputRow({time:new Date().toISOString(),channel,text:line,runId:this.runId,pid:process.pid,source:'application',...context}));if(this.rows.length>OUTPUT_LIMIT){this.dropped+=this.rows.length-OUTPUT_LIMIT;this.rows.splice(0,this.rows.length-OUTPUT_LIMIT);}if(!this.timer){this.timer=setTimeout(()=>this.flush(),1000);this.timer.unref?.();}}
+ snapshot(limit=OUTPUT_LIMIT){const count=Math.max(1,Math.min(OUTPUT_LIMIT,limit));return {version:2,rows:this.rows.slice(-count).map(outputRow),warning:this.warning,limit:OUTPUT_LIMIT,lineLengthLimit:700,longLinesTruncated:this.rows.filter(x=>x.truncated).length,retained:this.rows.length,dropped:this.dropped,omittedFromView:Math.max(0,this.rows.length-count),startedAt:this.startedAt,runId:this.runId,firstRetainedAt:this.rows[0]?.time||null,lastRetainedAt:this.rows.at(-1)?.time||null};}
+ flush(){clearTimeout(this.timer);this.timer=null;if(this.blocked)return;try{atomic(this.file,this.snapshot(),{backup:false});this.warning='';}catch{this.warning='运行输出写盘失败；尚未保存的输出仅在内存中保留';}}
+ endStream(channel,context={}){const key=JSON.stringify([channel,context.source,context.instanceId,context.taskId,context.pid]),stream=this.streams.get(key);if(!stream)return;const tail=stream.pending+stream.decoder.end();if(tail.trim())this.record(channel,tail,context);this.streams.delete(key);}
+ close(){for(const stream of [...this.streams.values()])this.endStream(stream.channel,stream.context);this.flush();}
 }
-function writeRuntimeEvent(row){
+function outputFor(dir){const file=path.join(dir,'runtime-output.json');return activeOutput?.file===file?activeOutput:new RuntimeOutput(file);}
+function writeRuntimeEvent(row,output=activeOutput){
  const scope={application:'应用',instance:'实例',subscription:'代理管理',diagnostic:'检测'}[row.scope]||'系统';
  const text=safeLine('['+scope+(row.instanceId?' '+String(row.instanceId).slice(0,8):'')+'] ['+row.level+'] '+row.text);
- if(row.level==='WARN'||row.level==='ERROR')console.error(text);else console.log(text);
+ const channel=row.level==='WARN'||row.level==='ERROR'?'stderr':'stdout';output?.record(channel,text,{source:'operation',instanceId:row.instanceId,sourceId:row.sourceId,taskId:row.taskId});const previous=writingEvent;writingEvent=true;try{if(channel==='stderr')console.error(text);else console.log(text);}finally{writingEvent=previous;}
 }
 function installRuntimeOutput(app){
  const output=new RuntimeOutput(path.join(app.getPath('userData'),'runtime-output.json'));
- process.env.FACET_RUNTIME_OUTPUT=output.file;output.flush();
+ activeOutput=output;process.env.FACET_RUNTIME_OUTPUT=output.file;output.record('stdout','应用运行开始；历史调试输出保留');output.flush();
  const restores=[];
- for(const [channel,stream]of [['stdout',process.stdout],['stderr',process.stderr]]){const write=stream.write;stream.write=function(chunk,encoding,callback){try{output.write(channel,typeof chunk==='string'?Buffer.from(chunk,typeof encoding==='string'?encoding:'utf8'):chunk);}catch{}return write.apply(this,arguments);};restores.push(()=>{stream.write=write;});}
- app.once('will-quit',()=>{for(const restore of restores)restore();output.close();});
+ const fatal=error=>{output.record('stderr',(error?.name||'Error')+': '+(error?.message||'未取得具体原因'));output.flush();};
+ process.on('uncaughtExceptionMonitor',fatal);process.once('exit',()=>output.close());
+ for(const [channel,stream]of [['stdout',process.stdout],['stderr',process.stderr]]){const write=stream.write;stream.write=function(chunk,encoding,callback){try{if(!writingEvent)output.write(channel,typeof chunk==='string'?Buffer.from(chunk,typeof encoding==='string'?encoding:'utf8'):chunk);}catch{}return write.apply(this,arguments);};restores.push(()=>{stream.write=write;});}
+ app.once('will-quit',()=>{for(const restore of restores)restore();process.removeListener('uncaughtExceptionMonitor',fatal);output.close();if(activeOutput===output)activeOutput=null;});
  return output;
 }
-function readRuntimeOutput(file=process.env.FACET_RUNTIME_OUTPUT){if(!file)return {rows:[],warning:'当前启动方式未接入运行输出。'};try{if(fs.statSync(file).size>4*1024*1024)throw Error('too large');const data=JSON.parse(fs.readFileSync(file,'utf8'));return {rows:Array.isArray(data.rows)?data.rows.slice(-1000).map(r=>({time:String(r.time||''),channel:r.channel==='stderr'?'stderr':'stdout',text:safeLine(r.text||'')})):[],warning:String(data.warning||'')};}catch(e){return {rows:[],warning:e.code==='ENOENT'?'等待运行输出…':'运行输出暂时不可读取'};}}
-module.exports={RuntimeOutput,readRuntimeOutput,safeLine,installRuntimeOutput,writeRuntimeEvent};
+function readRuntimeOutput(file=process.env.FACET_RUNTIME_OUTPUT,{limit=1000}={}){if(!file)return {rows:[],warning:'当前启动方式未接入运行输出。'};if(activeOutput?.file===file)return activeOutput.snapshot(limit);try{if(fs.statSync(file).size>MAX_FILE_BYTES)throw Error('too large');const data=JSON.parse(fs.readFileSync(file,'utf8'));if(!Array.isArray(data.rows))throw Error('format');const count=Math.max(1,Math.min(OUTPUT_LIMIT,limit));return {rows:data.rows.slice(-count).map(outputRow),warning:safeLine(data.warning||''),limit:OUTPUT_LIMIT,retained:data.rows.length,dropped:Math.max(0,Number(data.dropped)||0),omittedFromView:Math.max(0,data.rows.length-count),startedAt:data.startedAt||null,runId:data.runId||null,firstRetainedAt:data.rows[0]?.time||null,lastRetainedAt:data.rows.at(-1)?.time||null};}catch(e){return {rows:[],warning:e.code==='ENOENT'?'等待运行输出…':'运行输出暂时不可读取'};}}
+module.exports={RuntimeOutput,readRuntimeOutput,safeLine,installRuntimeOutput,writeRuntimeEvent,outputFor,OUTPUT_LIMIT};

@@ -19,7 +19,7 @@ function subscriptionURL(value) {
 }
 
 async function downloadSubscription(value, {
-  maxBytes = 2 * 1024 * 1024, timeoutMs = 20000, maxRedirects = 3, allowPrivateHosts = false
+  maxBytes = 2 * 1024 * 1024, timeoutMs = 20000, maxRedirects = 3, allowPrivateHosts = false, onStage
 } = {}) {
   const initial = subscriptionURL(value);
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 2 * 1024 * 1024 ||
@@ -29,18 +29,21 @@ async function downloadSubscription(value, {
   }
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
+  const started=Date.now(),report=value=>{try{onStage?.({...value,elapsedMs:Date.now()-started});}catch{}};
 
   async function one(url) {
     // The same overall deadline covers DNS, every redirect, TLS and the body.
-    const resolved = await resolvePublicHost(url, { allowPrivateHosts, signal: abort.signal });
+    report({stage:'request-start',host:normalizeHostname(url.hostname),port:Number(url.port)||(url.protocol==='https:'?443:80),protocol:url.protocol.slice(0,-1),route:'system'});
+    const resolved = await resolvePublicHost(url, { allowPrivateHosts, signal: abort.signal, onStage:report });
     if (abort.signal.aborted) throw safeError('订阅下载超时，原配置未改变');
     return new Promise((resolve, reject) => {
       const transport = url.protocol === 'https:' ? https : http;
       const agent = new transport.Agent({ keepAlive: false, rejectUnauthorized: true });
-      let req, body, settled = false;
+      let req, body, settled = false, wire=0, size=0, phase='tcp';
       const done = (error, result) => {
         if (settled) return;
         settled = true;
+        if(error)report({stage:phase+'-error',bytes:size,wireBytes:wire,...require('./network-trace.cjs').errorFields(error)});
         body?.destroy(); req?.destroy(); agent.destroy();
         error ? reject(error) : resolve(result);
       };
@@ -57,7 +60,9 @@ async function downloadSubscription(value, {
             'Accept-Encoding': 'gzip, deflate, br'
           }
         }, res => {
+          phase='http';
           const status = res.statusCode || 0;
+          report({stage:'response',status,encoding:String(res.headers['content-encoding']||'identity'),contentType:String(res.headers['content-type']||'').split(';')[0]});
           if ([301, 302, 303, 307, 308].includes(status)) {
             const location = res.headers.location;
             res.destroy();
@@ -66,7 +71,7 @@ async function downloadSubscription(value, {
           if (status !== 200) { res.destroy(); return done(safeError(`订阅服务器返回 HTTP ${status}，原配置未改变`)); }
           const htmlContentType = /(?:text\/html|application\/xhtml\+xml)/i.test(res.headers['content-type'] || '');
           if (Number(res.headers['content-length']) > maxBytes) { res.destroy(); return done(safeError('订阅内容超过 2MB 上限')); }
-          let wire = 0, size = 0;
+          phase='body';report({stage:'body-start'});
           const chunks = [];
           res.on('data', chunk => { wire += chunk.length; if (wire > maxBytes) done(safeError('订阅内容超过 2MB 上限')); });
           res.on('error', error => done(error));
@@ -84,6 +89,8 @@ async function downloadSubscription(value, {
           });
           body.on('error', error => done(error));
           body.on('end', () => {
+            report({stage:'body-complete',bytes:size,wireBytes:wire,encoding});
+            phase='content-validation';
             if (!size) return done(safeError('订阅内容为空，原配置未改变'));
             const text = Buffer.concat(chunks).toString('utf8');
             // Some providers label valid Clash YAML as HTML. Accept it only
@@ -97,6 +104,13 @@ async function downloadSubscription(value, {
             done(null, { text });
           });
         });
+        req.on('socket',socket=>{
+          report({stage:'tcp-start',address:resolved||undefined});
+          socket.once('lookup',(error,address,family)=>report({stage:error?'socket-dns-error':'socket-dns',address,family,...(error?require('./network-trace.cjs').errorFields(error):{})}));
+          socket.once('connect',()=>{report({stage:'tcp-connected',remoteAddress:socket.remoteAddress,port:socket.remotePort,family:net.isIP(socket.remoteAddress||'')});if(url.protocol==='https:'){phase='tls';report({stage:'tls-start'});}else phase='http';});
+          socket.once('secureConnect',()=>{phase='http';report({stage:'tls-connected',authorized:socket.authorized,protocol:socket.getProtocol()});});
+          socket.once('error',error=>report({stage:url.protocol==='https:'&&!socket.encrypted?'tcp-error':'socket-error',...require('./network-trace.cjs').errorFields(error)}));
+        });
         req.on('error', error => done(error));
         req.end();
       } catch (error) { done(error); }
@@ -107,7 +121,8 @@ async function downloadSubscription(value, {
     let url = initial;
     for (let i = 0; i <= maxRedirects; i++) {
       const result = await one(url);
-      if (!result.redirect) return { url: initial.href, text: result.text };
+      if (!result.redirect) {report({stage:'download-complete',result:'success'});return { url: initial.href, text: result.text };}
+      report({stage:'redirect',redirect:i+1});
       if (i === maxRedirects) throw safeError('订阅重定向次数过多');
       let next;
       try { next = subscriptionURL(new URL(result.redirect, url).href); }
@@ -117,6 +132,7 @@ async function downloadSubscription(value, {
     }
     throw safeError('订阅下载失败');
   } catch (error) {
+    report({stage:'download-error',result:abort.signal.aborted?'timeout':'failed',...require('./network-trace.cjs').errorFields(error),...(abort.signal.aborted?{code:'ETIMEDOUT'}:{})});
     if (abort.signal.aborted) throw safeError('订阅下载超时，原配置未改变');
     if (error.subscriptionSafe) throw error;
     throw safeError('订阅下载失败，请检查链接、网络或服务器证书；原配置未改变');

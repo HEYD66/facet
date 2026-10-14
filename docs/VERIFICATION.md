@@ -2,6 +2,13 @@
 
 更新：2026-10-14。当前源码版本 v0.2.13。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
 
+## 2026-10-14 详细日志修复验收
+
+- `test:diagnostics` 9/9：真实本机连接重置、TLS 证书拒绝、HTTP 错误、部分响应超时、导入与失败保留原配置；输出脱敏、截断、损坏文件保留、跨重启读取及实际 JSON 导出。
+- `test:diagnostics-electron` 7/7：真实 Electron 主页面与 fetch 失败、HTTP 503、Mihomo 输出、节点检测及备用目标失败关联、控制界面错误、UI → IPC → 文件导出、全新进程重读及退出清理。仅原生保存路径由测试适配器指定，未模拟业务采集或文件写入。
+- `test:subscription` 13/13，`test:hardening` 137 通过/1 跳过，`test:core` 13/13，`test:node-network` 9/9；基础检查与控制 API 通过。
+- 使用独立临时数据及本机故障服务器，没有修改真实用户数据或网络。未验证所有机场或所有设备；旧日志缺失不能补回。
+
 ## 当前验证方式
 
 | 范围 | 命令 | 证据边界 |
@@ -15,7 +22,7 @@
 | 指纹库/窗口图标 | `test:fingerprint`、`test:fingerprint-electron`、`test:window-identity` | 真实页面/重启及 Win32 图标与任务栏属性；不代表所有检测网站或设备 |
 | 实例操作/UI | `test:electron`、`test:instance-reset-electron`、`test:devtools-electron`、`test:grid-transition-electron`、`test:viewport-bookmarks` | 独立测试数据；页面/存储/真实点击和进程结果需一起检查 |
 | 迁移/删除 | `test:instance-archive`、`test:instance-transfer`、`test:export-delete` | 真实生成归档、复读校验、原数据与异常恢复 |
-| 日志/更新/打包 | `test:diagnostics`、`test:updates`、`test:packaging`、`test:installed` | 新构建要新验收，不能借旧包结果 |
+| 日志/更新/打包 | `test:diagnostics`、`test:diagnostics-electron`、`test:updates`、`test:packaging`、`test:installed` | 新构建要新验收，不能借旧包结果 |
 
 以上为 `npm.cmd run <脚本名>`；不是每次全部重跑。按照实际修改的风险和必须通过的项目门禁选择，不把未运行项写成通过。
 

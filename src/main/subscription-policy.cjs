@@ -90,12 +90,15 @@ function waitForLookup(promise, signal) {
   });
 }
 
-async function resolvePublicHost(url, { allowPrivateHosts = false, signal, lookup = dns.lookup } = {}) {
+async function resolvePublicHost(url, { allowPrivateHosts = false, signal, lookup = dns.lookup, onStage } = {}) {
+  const report=value=>{try{onStage?.(value);}catch{}};
+  const host = normalizeHostname(url.hostname);
+  report({stage:'dns-start',host});
   if (signal?.aborted) throw safeError('订阅下载超时，原配置未改变');
   // Internal opt-in for isolated loopback fixtures, never derived from a URL.
-  if (allowPrivateHosts === true) return null;
-  const host = normalizeHostname(url.hostname);
+  if (allowPrivateHosts === true) { report({stage:'dns-fixture',host,reason:'仅内部受控测试允许本机地址'}); return null; }
   if (net.isIP(host)) {
+    report({stage:'dns-literal',address:host,family:net.isIP(host),public:isPublicAddress(host)});
     if (!isPublicAddress(host)) throw safeError('订阅地址指向本机或内网（含保留地址），已阻止下载');
     return host;
   }
@@ -103,22 +106,26 @@ async function resolvePublicHost(url, { allowPrivateHosts = false, signal, looku
   try {
     rows = await waitForLookup(Promise.resolve().then(() => lookup(host, { all: true, verbatim: true })), signal);
   } catch (error) {
+    report({stage:'dns-error',...require('./network-trace.cjs').errorFields(error)});
     if (error.subscriptionSafe) throw error;
     throw safeError('订阅域名无法解析，原配置未改变');
   }
   if (!Array.isArray(rows) || rows.length === 0) throw safeError('订阅域名无法解析，原配置未改变');
+  report({stage:'dns-answer',host,addresses:rows});
   // A Fake-IP answer is a hint to resolve again, NEVER permission to connect to
   // the reserved range. Other private/malformed answers still fail immediately.
   if (rows.some(row => !row || (!isPublicAddress(row.address) && !isFakeIPAddress(row.address)))) {
     throw safeError('订阅地址解析到本机或内网（含保留地址），已阻止下载');
   }
   if (rows.some(row => isFakeIPAddress(row.address))) {
+    report({stage:'dns-public-recheck',host,reason:'系统返回 Fake-IP，沿用现有公网复核流程'});
     if (!doh.isPublicHostname(host)) {
       throw safeError('检测到 Fake-IP，但该域名不适合公共 DNS 查询，已阻止下载');
     }
     try {
       rows = await waitForLookup(doh.queryDohAddresses(host, { signal }), signal);
-    } catch {
+    } catch (error) {
+      report({stage:'dns-public-recheck-error',...require('./network-trace.cjs').errorFields(error)});
       if (signal?.aborted) throw safeError('订阅下载超时，原配置未改变');
       throw safeError('检测到 Fake-IP，但安全公网解析暂不可用；未放宽内网校验，原配置未改变');
     }
@@ -126,6 +133,7 @@ async function resolvePublicHost(url, { allowPrivateHosts = false, signal, looku
       throw safeError('Fake-IP 域名的公网复核没有安全公网地址或返回本机或内网，已阻止下载');
     }
   }
+  report({stage:'dns-selected',host,address:rows[0].address,family:net.isIP(rows[0].address),public:true});
   return rows[0].address;
 }
 

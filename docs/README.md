@@ -13,7 +13,8 @@
 | 本机 API、CDP、Playwright | [控制 API](CONTROL-API.md) |
 | 构建、发布、测试证据和验收边界 | [验证记录与当前检查](VERIFICATION.md)、[项目手册](PROJECT.md) |
 | 当前待做与阶段进度 | [交付状态](UX-DELIVERY-STATUS.md) |
-| 订阅指定代理与详细日志的在开发方案 | [专项方案](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md) |
+| 日志采集、导出和排查 | [详细诊断](DIAGNOSTICS.md) |
+| 订阅指定代理方案与历史诊断进度 | [专项方案](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md) |
 
 ## 专项文档
 

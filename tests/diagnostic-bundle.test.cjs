@@ -7,9 +7,9 @@ test('bundle uses explicit fields and re-redacts operations and debug output',()
  const s=JSON.stringify(b);for(const secret of ['never-export','private-ua','private-platform','private-notes','private-cookies','private-url','private-auth','private-event','private-node','private-event-cookie','private-session'])assert(!s.includes(secret),secret);
  assert.equal(b.format,'facet-diagnostics');assert.equal(b.instances[0].environment.customUA,true);assert.equal(b.nodeNetwork.dnsMode,'auto');assert.equal(b.debug.rows[0].channel,'stderr');assert.equal(b.events.length,1);
 });
-test('bundle keeps newest 1000 operations and last 1000 debug lines and reports missing output',()=>{
- const rows=Array.from({length:1100},(_,i)=>({text:String(i)}));const b=buildDiagnosticBundle(snapshot,rows,{rows,warning:'等待运行输出…'});
- assert.equal(b.events.length,1000);assert.equal(b.events[0].text,'0');assert.equal(b.events.at(-1).text,'999');assert.equal(b.debug.rows[0].text,'100');assert.equal(b.debug.rows.at(-1).text,'1099');assert.equal(b.debug.warning,'等待运行输出…');
+test('bundle keeps newest 1000 operations and last 5000 debug lines and reports missing output',()=>{
+ const rows=Array.from({length:5500},(_,i)=>({text:String(i)}));const b=buildDiagnosticBundle(snapshot,rows,{rows,warning:'等待运行输出…'});
+ assert.equal(b.events.length,1000);assert.equal(b.events[0].text,'0');assert.equal(b.events.at(-1).text,'999');assert.equal(b.debug.rows.length,5000);assert.equal(b.debug.rows[0].text,'500');assert.equal(b.debug.rows.at(-1).text,'5499');assert.equal(b.debug.warning,'等待运行输出…');
 });
 test('real file export is parseable, cancellation writes nothing, failure is explicit',async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facet-diagnostic-bundle-'));

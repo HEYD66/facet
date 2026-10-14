@@ -98,3 +98,7 @@ if (!page) throw new Error('页面已变化，请重新查询 targets');
 ```
 
 管理界面跟随通过实例 focus；网页 bringToFront 不等同于千面管理路由切换。HTTP API 令牌不同时保护原生 CDP；本机可访问调试端口的工具拥有较强页面控制能力。按需关闭外部控制并重启，以关闭 CDP。
+
+## 诊断导出（v0.2.13 待发布构建）
+
+`export-logs` 保持操作记录数组格式，界面名称为“导出操作记录”。`export-diagnostics` 通过原生保存框导出 `facet-diagnostics` v2 JSON；含跨重启输出、网络任务、检测历史和采集范围。返回条目计数和采集 warning。`runtime-output` 返回最新最多 1000 行，详细包最多 5000 行。API 不接受任意保存路径，返回取消不等于已生成文件。字段与限制见 [详细诊断](DIAGNOSTICS.md)。
