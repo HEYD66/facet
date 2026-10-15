@@ -10,7 +10,7 @@
 
 v0.2.13 补充常用扩展 API；实例隔离、实际验收与兼容边界见 [扩展兼容层](docs/EXTENSION-COMPATIBILITY.md)，不代表所有 Chrome 插件完整兼容。环境随机方案与组合规则见 [指纹候选库](docs/FINGERPRINT-CATALOG.md)。
 
-v0.2.13 待发布构建已接入[详细诊断日志](docs/DIAGNOSTICS.md)。订阅指定代理仍在开发，见 [方案与当前进度](docs/SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
+v0.2.13 已接入[详细诊断日志](docs/DIAGNOSTICS.md)。订阅指定代理仍在开发，见 [方案与当前进度](docs/SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
 
 如果千面对你有帮助，欢迎点一下 **Star**，帮助更多人发现这个项目。
 

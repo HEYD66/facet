@@ -4,7 +4,7 @@
 
 整体架构、数据/恢复、构建与发布见 [项目总览](PROJECT.md)，专题入口见 [文档索引](README.md)。v0.2.13 安装包一并附带项目 Markdown 文档；旧安装包仅附带当时构建配置指定的接手文件，不自动获得后来新增的文档。
 
-2026-10-14：详细诊断采集和导出已接入待发布构建，见 [日志说明](DIAGNOSTICS.md)。[订阅指定代理](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)仍未接线；不要把设计字段当作已可调用 API。
+2026-10-14：详细诊断采集和导出已在 v0.2.13 发布，见 [日志说明](DIAGNOSTICS.md)。[订阅指定代理](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)仍未接线；不要把设计字段当作已可调用 API。
 
 ## 1. 先确认项目和运行状态
 

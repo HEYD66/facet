@@ -83,7 +83,7 @@ async function main(){
  assert.equal((await call('snapshot')).versions.app,require('../package.json').version);
  const beforeCatalogEnvironment=(await call('snapshot')).instances.find(x=>x.id===a.id).environment;
  const plan=await call('fingerprint-preset',{preset:'library-v1',environment:{language:'ja-JP',timezone:'Asia/Tokyo'}});
- assert.equal(plan.fingerprint.template,'library-v1');assert.equal(plan.fingerprint.touch,0);assert(plan.fingerprint.renderer&&plan.fingerprint.vendor);assert.equal(plan.language,'ja-JP');assert.equal(plan.timezone,'Asia/Tokyo');
+ assert.equal(plan.width,0);assert.equal(plan.height,0);assert.equal(plan.fingerprint.template,'library-v1');assert.equal(plan.fingerprint.touch,0);assert(plan.fingerprint.renderer&&plan.fingerprint.vendor);assert.equal(plan.language,'ja-JP');assert.equal(plan.timezone,'Asia/Tokyo');
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,beforeCatalogEnvironment);
  pass('Packaged fingerprint catalog generates coherent desktop plans without changing saved instances');
  await ui.locator('#sidebar .nav[data-view="settings"]').click();await ui.waitForFunction(()=>view==='settings'&&!!document.querySelector('#nodeNetworkCard'));
@@ -173,7 +173,7 @@ async function main(){
  await ui.evaluate(id=>route('environment',id),b.id);await ui.locator('[data-action="reset-environment"]').click();await ui.locator('#modal [data-action="confirm"]').click();
  await ui.waitForFunction(id=>!modal&&current().id===id&&current().status==='stopped'&&!environmentChanged(),b.id);
  const savedReset=JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===b.id);
- assert.equal(savedReset.environment.fingerprint.template,'library-v1');
+ assert.equal(savedReset.environment.width,0);assert.equal(savedReset.environment.height,0);assert.equal(savedReset.environment.fingerprint.template,'library-v1');
  assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,0);
  assert.deepEqual(await ui.evaluate(()=>environmentFormValue().environment.fingerprint),savedReset.environment.fingerprint);
  await call('start',{id:b.id});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');
