@@ -4,7 +4,7 @@
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
-        <activity android:name=".ProfileOneActivity" android:process=":profile1" android:exported="false" />
-        <activity android:name=".ProfileTwoActivity" android:process=":profile2" android:exported="false" />
+        <activity android:name=".ProfileOneActivity" android:process=":profile1" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".ProfileTwoActivity" android:process=":profile2" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
 </manifest>

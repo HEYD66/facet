@@ -16,7 +16,9 @@ public class FacetInputTest extends UiAutomatorTestCase {
         AccessibilityNodeInfo node = new Field().node();
         assertNotNull(node);
         Bundle args = new Bundle();
-        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, getParams().getString("text", ""));
+        String value=getParams().getString("text", "");
+        if(getParams().containsKey("base64"))value=new String(android.util.Base64.decode(getParams().getString("base64"),android.util.Base64.DEFAULT),java.nio.charset.StandardCharsets.UTF_8);
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value);
         assertTrue(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,args));
     }
 }

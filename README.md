@@ -147,6 +147,8 @@ WebRTC 使用限制非代理 UDP 的策略，可能影响网页语音、视频�
 
 ## 源码开发
 
+Android ARM64 原型位于源码目录 `android/`（[仓库入口](https://github.com/HEYD66/facet/tree/main/android)），独立于 Windows Electron 客户端。已接入双实例、独立 Mihomo、节点导入与订阅下载；具体真机验证和限制以该目录说明为准，尚未具备完整指纹环境配置，也未作为正式 Android Release 发布。
+
 技术栈：**Electron + JavaScript + WebContentsView + Mihomo**。控制界面和实例网页进程隔离；远程网页不具备 Node.js 或管理 IPC 权限。
 
 需要 Windows x64 和 Node.js 22.12+：

@@ -15,6 +15,7 @@
 | 当前待做与阶段进度 | [交付状态](UX-DELIVERY-STATUS.md) |
 | 日志采集、导出和排查 | [详细诊断](DIAGNOSTICS.md) |
 | 订阅指定代理方案与历史诊断进度 | [专项方案](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md) |
+| Android 真机原型、构建与独立代理内核（源码中的独立原型） | [Android 开发与验收](https://github.com/HEYD66/facet/blob/main/android/README.md) |
 
 ## 专项文档
 
