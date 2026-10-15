@@ -52,7 +52,7 @@ test('full catalog plans remain coherent over 2000 seeds without mutating input 
   assert.equal(f.hardware,true);assert.equal(f.touch,0);assert.equal(f.colorDepth,24);assert([4,8].includes(f.memory));
   assert(GPUS.some(g=>g.vendor===f.vendor&&g.renderer===f.renderer));assert(CPUS.includes(plan.cpu));
   assert(SCREENS.some(s=>s.width===f.screenWidth&&s.height===f.screenHeight&&s.dpr===plan.scale));
-  assert(plan.width<=f.screenWidth&&plan.height<=f.availHeight);assert(f.memory!==4||plan.cpu<=8);
+  assert.equal(plan.width,0);assert.equal(plan.height,0);assert(plan.width<=f.screenWidth&&plan.height<=f.availHeight);assert(f.memory!==4||plan.cpu<=8);
   assert.deepEqual(environment(plan),plan);assert.deepEqual(preset(ID,base,'catalog-'+i),preset(ID,base,'catalog-'+i));
   seenGPU.add(f.renderer);seenCPU.add(plan.cpu);seenScreen.add([f.screenWidth,f.screenHeight,plan.scale].join(':'));seenMemory.add(f.memory);
  }

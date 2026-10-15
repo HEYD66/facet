@@ -121,7 +121,7 @@ function preset(id,base={},seed=crypto.randomBytes(16).toString('hex')){
   const screen=plan.screen;
   return {...base,colorScheme:['system','light','dark'][choice('color-scheme')%3],reducedMotion:choice('reduced-motion')%2?'reduce':'no-preference',
    userAgent:generatedUserAgent(),platform:'Win32',cpu:plan.cpu,
-   width:full?(base.width||screen.width):(base.width||0),height:full?(base.height||screen.availHeight):(base.height||0),scale:full?screen.dpr:(base.scale||0),
+   width:base.width||0,height:base.height||0,scale:full?screen.dpr:(base.scale||0),
    fingerprint:normalize({...current,enabled:true,hardware:full||!!(base.fingerprint?.enabled&&current.hardware),webgl:true,canvas:true,audio:true,seed,template:catalog.ID,
     screenWidth:full?screen.width:current.screenWidth,screenHeight:full?screen.height:current.screenHeight,availHeight:full?screen.availHeight:current.availHeight,
     memory:plan.memory,touch:0,colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.gpu.renderer})};
