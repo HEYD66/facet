@@ -1,0 +1,4 @@
+<resources>
+    <item name="download_system" type="id" />
+    <item name="download_instance" type="id" />
+</resources>

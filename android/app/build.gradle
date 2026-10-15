@@ -6,9 +6,39 @@ android {
         applicationId 'com.facet.browser.prototype'
         minSdk 28
         targetSdk 35
-        versionCode 1
-        versionName '0.1.0-prototype'
+        versionCode 2
+        versionName '0.2.0-prototype'
+        ndk { abiFilters 'arm64-v8a' }
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    packaging { jniLibs { useLegacyPackaging true; keepDebugSymbols += ['**/libfacet_mihomo.so'] } }
+    testOptions {
+        unitTests.all {
+            // Windows JVM workers can lose non-ASCII AGP output paths. Stage the
+            // unchanged test classpath under the existing Gradle cache on D:.
+            doFirst {
+                def stage = new File(gradle.gradleUserHomeDir, 'caches/facet-junit/' + UUID.randomUUID())
+                def testDirs = testClassesDirs.files
+                def stagedTests = []
+                def stagedClasspath = []
+                classpath.files.eachWithIndex { source, index ->
+                    if (source.exists()) {
+                        def target = new File(stage, String.valueOf(index) + (source.isDirectory() ? '' : '.jar'))
+                        if (source.isDirectory()) { project.copy { from source; into target } }
+                        else { target.parentFile.mkdirs(); java.nio.file.Files.copy(source.toPath(), target.toPath()) }
+                        stagedClasspath.add(target)
+                        if (testDirs.contains(source)) stagedTests.add(target)
+                    }
+                }
+                classpath = files(stagedClasspath)
+                testClassesDirs = files(stagedTests)
+            }
+        }
+    }
 }
-dependencies { implementation 'androidx.webkit:webkit:1.9.0' }
+dependencies {
+    implementation 'androidx.webkit:webkit:1.9.0'
+    implementation 'org.yaml:snakeyaml:2.4'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}

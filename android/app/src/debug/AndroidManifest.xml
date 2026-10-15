@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <receiver android:name=".CoreCrashTestReceiver" android:process=":profile1" android:exported="true" android:permission="android.permission.DUMP" />
+    </application>
+</manifest>

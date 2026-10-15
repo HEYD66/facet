@@ -1,0 +1,9 @@
+{
+  "version": "v1.19.31",
+  "architecture": "arm64-v8a",
+  "assetURL": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-android-arm64-v8-v1.19.31.gz",
+  "assetSHA256": "de00bc53ed151636ca078c812a82a5315687d8d52164db230f1935b2a37904f6",
+  "binarySHA256": "dbd8af275219a097d66362d543b32f65ba0d4de9d96a49bf5e9abdcdad3af6f1",
+  "sourceURL": "https://codeload.github.com/MetaCubeX/mihomo/tar.gz/refs/tags/v1.19.31",
+  "sourceSHA256": "5a04aa9cf4520e06fa1c13d37b6aca49209479690722d485c40034ab17f8581f"
+}
