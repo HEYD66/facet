@@ -78,3 +78,11 @@ git diff --check
 代码修改前检查点：`0a4487c`。此次文件和当时的未提交文档/草稿另存于任务报告中的备份目录。优先撤销本次功能提交，保留其他未提交工作；不要用 `git reset --hard` 清掉它们。
 
 恢复到不认识 `library-v1` 的旧软件前，先备份实际数据目录。新方案的字段可保留，通过当前界面将设备预设标识切为“自定义”并保存，再使用旧软件；旧版本能读取这些既有字段。只切换标识，不重新填入方案。涉及环境重置时，代码回滚不能找回已清除的网页数据。
+
+## 注入函数的 toString 兼容性（源码修改，尚未发布）
+
+2026-10-15：硬件 getter、Canvas、WebGL、Audio 和 ClientRects 的 JS 覆盖使用原函数作为 Proxy target，保留 name、length 和是否可构造；当前页面上下文的 Function.prototype.toString 仅对已注册替换返回原函数文本。其他函数和无效 receiver 仍交给原生实现。硬件 getter 同时保留原生 receiver 校验。
+
+验证入口：`node scripts/launch-electron.cjs tests/fingerprint-tostring-electron.cjs`。使用独立临时数据和本机 HTTP 页面，对比未注入基线，检查函数/属性描述、非法调用、同源 iframe、跨上下文借用、重复注入、导航和关闭注入；实际执行 Canvas PNG/Blob、音频读取、布局和点击。
+
+边界：这不是内核改造，也不保证无法检测。跨上下文借用 toString 时可能显示原生 Proxy 的匿名函数文本，而不是带名称的原生函数文本。Worker、未注入上下文和第三方风控判定不在此修复保证范围内。已运行实例需在加载新版主进程后重新启动才使用新注入脚本。

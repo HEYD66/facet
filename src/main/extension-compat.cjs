@@ -12,7 +12,9 @@ class ExtensionCompat{
   this.onKeys=(event,input)=>{if(input.type!=='keyDown'||input.isAutoRepeat)return;for(const ctx of this.endpoints.values())for(const [name,entry]of Object.entries(ctx.manifest.commands||{})){const shortcut=entry.suggested_key?.windows||entry.suggested_key?.default;if(!shortcut)continue;const parts=shortcut.toLowerCase().split('+'),key=parts.at(-1);if(input.key.toLowerCase()===key&&input.control===parts.includes('ctrl')&&input.alt===parts.includes('alt')&&input.shift===parts.includes('shift')){event.preventDefault();if(name==='_execute_action'||name==='_execute_browser_action')void this.actionClick(ctx);else this.emit(ctx.id,'commands.onCommand',[name,this.tabs.tab(this.tabs.root(),ctx)]);}}};host.runtime.view.webContents.on('before-input-event',this.onKeys);
  }
  match(p,u){return match(p,u);}matchText(p,v){return matchText(p,v);}
- context(ctx){const old=this.endpoints.get(ctx.id),record={...ctx,worker:ctx.worker||old?.worker,views:old?.views||new Set()};if(ctx.wc)record.views.add(ctx.wc);this.endpoints.set(ctx.id,record);if(!old)this.alarms.register(ctx);return ctx;}
+ context(ctx){const old=this.endpoints.get(ctx.id),record={...ctx,worker:ctx.worker||old?.worker,views:old?.views||new Set()};
+  const wc=ctx.wc;if(wc&&!wc.isDestroyed()&&!record.views.has(wc)){record.views.add(wc);wc.once('destroyed',()=>{record.views.delete(wc);const current=this.endpoints.get(ctx.id);if(current?.wc===wc)current.wc=null;});}
+  if(wc?.isDestroyed())record.wc=null;this.endpoints.set(ctx.id,record);if(!old)this.alarms.register(ctx);return ctx;}
  required(ctx){return [...(ctx.manifest.permissions||[]),...(ctx.manifest.host_permissions||[])];}
  granted(ctx){return this.state.data.permissions[ctx.id]||{permissions:[],origins:[]};}
  has(ctx,name){return this.required(ctx).includes(name)||this.granted(ctx).permissions.includes(name);}

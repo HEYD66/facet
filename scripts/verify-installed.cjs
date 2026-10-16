@@ -74,7 +74,7 @@ async function main(){
  await new Promise(r=>proxy.listen(0,'127.0.0.1',r));
  const store=new Store(root),a=store.create('安装验证·直连'),b=store.create('安装验证·代理');store.update(a.id,{url});store.update(b.id,{url,network:{mode:'mihomo',nodeName:'本机验证代理'}});store.saveNodes(b.id,[{name:'本机验证代理',type:'http',server:'127.0.0.1',port:proxy.address().port}],null);
  const extensionSource=path.join(root,'extension-source');fs.mkdirSync(extensionSource);
- fs.writeFileSync(path.join(extensionSource,'manifest.json'),JSON.stringify({manifest_version:3,name:'Packaged API verification',version:'1.0.0',permissions:['tabs','webNavigation','bookmarks'],host_permissions:['http://127.0.0.1/*'],action:{default_popup:'popup.html'}}));
+ fs.writeFileSync(path.join(extensionSource,'manifest.json'),JSON.stringify({manifest_version:3,name:'Packaged API verification',version:'1.0.0',permissions:['tabs','webNavigation','bookmarks','storage'],host_permissions:['http://127.0.0.1/*'],action:{default_popup:'popup.html'}}));
  fs.writeFileSync(path.join(extensionSource,'popup.html'),'<title>Packaged extension verification</title><p>Real packaged extension API</p>');
  const catalog=new ExtensionCatalog(root),extension=catalog.stage(extensionSource);catalog.accept(extension);catalog.setEnabled(b.id,extension.id,true);
  fs.writeFileSync(path.join(root,'workspace-tools.json'),JSON.stringify({nodes:[],ips:[],quickLinksRevision:1,quickLinks:[{id:'quick-ipip',name:'ipip.la',url:'https://ipip.la/disguise.html'},{id:'quick-arena',name:'Arena',url:'https://arena.ai/agent'},{id:'duplicate',name:'ipip.la',url:'https://ipip.la/'}]}));
@@ -166,7 +166,7 @@ async function main(){
  pass('Packaged extension durable data survives a completely new application process');
  const restarted=browser.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===url);assert((await Promise.all(restarted.map(p=>p.evaluate(()=>localStorage.getItem('facet-install-persistence'))))).includes('installed-check'));
  pass('Application restart retains renamed configuration, browser storage, migrated shortcuts and enabled API/CDP');
- const beforeReset=(await call('snapshot')).instances.find(x=>x.id===b.id);
+ await restartedPanel.evaluate(()=>chrome.storage.local.set({resetPackageProbe:'present'}));const beforeReset=(await call('snapshot')).instances.find(x=>x.id===b.id);
  const resetPage=await instancePage(b.id);
  await resetPage.evaluate(()=>{localStorage.setItem('reset-marker','present');document.cookie='reset-cookie=present; path=/';});
  assert.equal(await resetPage.evaluate(()=>localStorage.getItem('reset-marker')),'present');assert((await resetPage.evaluate(()=>document.cookie)).includes('reset-cookie'));
@@ -179,7 +179,7 @@ async function main(){
  await call('start',{id:b.id});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');
  const resetPageAfter=await instancePage(b.id);assert.notEqual(resetPageAfter,resetPage);
  const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,0);
- pass('Packaged reset clears website data, saves a fresh desktop environment, refreshes the form and preserves the proxy on restart');
+ const clearedPanel=await extensionPage(b.id,extension.id);assert.deepEqual(await clearedPanel.evaluate(()=>chrome.storage.local.get('resetPackageProbe')),{});assert.equal(savedReset.resetPending,null);pass('Packaged reset clears website and extension storage, saves a fresh desktop environment, refreshes the form and preserves the proxy on restart');
  const control=await call('control-status');await call('control-save',{enabled:false});await assert.rejects(()=>fetch('http://127.0.0.1:'+control.apiPort+'/v1/status'));pass('Disabling external control closes the packaged API listener');await close();
 }
 main().catch(e=>{errors.push(e.stack||String(e));console.error(e.message);}).finally(async()=>{
