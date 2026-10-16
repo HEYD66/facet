@@ -1,7 +1,7 @@
 'use strict';
 // 资源占用：Electron 全部进程（界面、GPU、各实例网页、扩展/工具进程）的 CPU 与内存，加上本应用启动的各 Mihomo 内核内存；
 // Windows 上另读千面自己进程的显卡利用率。同时按实例拆分（网页、弹窗、扩展页面所在进程 + 该实例的 Mihomo 内核）。
-// CPU 按电脑总核数折算（与任务管理器口径一致）；内存优先取私有内存（Windows），否则取工作集。
+// CPU 为 Electron 进程按总核数折算；Windows 内存统一用私有提交量，代理/保护/采样进程每 5 秒采样。
 const {app,webContents}=require('electron'),os=require('node:os'),{execFile,spawn}=require('node:child_process');
 const CORE_SAMPLE_MS=5000,GPU_IDLE_MS=8000,GPU_INTERVAL_S='2';
 const cores={at:0,kb:new Map(),pending:null};
@@ -13,8 +13,8 @@ function parsePs(text){const out=new Map();for(const line of String(text||'').sp
 function sampleCores(pids){
  if(cores.pending)return cores.pending;
  cores.pending=new Promise(resolve=>{
-  const done=(error,stdout)=>{cores.pending=null;cores.at=Date.now();if(!error)cores.kb=process.platform==='win32'?parseTasklist(stdout):parsePs(stdout);resolve();};
-  try{if(process.platform==='win32')execFile('tasklist',['/FO','CSV','/NH','/FI','IMAGENAME eq mihomo.exe'],{windowsHide:true,timeout:4000},done);else execFile('ps',['-o','pid=,rss=','-p',pids.join(',')],{timeout:4000},done);}catch(e){done(e,'');}
+  const done=(error,stdout)=>{cores.pending=null;cores.at=Date.now();cores.kb=error?new Map():parsePs(stdout);resolve();};
+  try{if(process.platform==='win32'){const ids=pids.filter(pid=>Number.isSafeInteger(pid)&&pid>0).join(',');const script=require('node:fs').readFileSync(require('node:path').join(__dirname,'process-memory.ps1'),'utf8');const command=Buffer.from("& {\n"+script+"\n} -ProcessIds '"+ids+"'",'utf16le').toString('base64');execFile('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',command],{windowsHide:true,timeout:4000},done);}else execFile('ps',['-o','pid=,rss=','-p',pids.join(',')],{timeout:4000},done);}catch(e){done(e,'');}
  });
  return cores.pending;
 }
@@ -53,12 +53,18 @@ async function appMetrics(controller){
  const list=app.getAppMetrics(),n=Math.max(1,os.cpus().length),byPid=new Map(list.map(p=>[p.pid,p])),share=cpuShares(list,n);let cpu=0,kb=0;
  for(const p of list){cpu+=share.get(p.pid)||0;kb+=memKb(p);}
  const running=[...(controller?.runtimes?.entries()||[])];
- const pids=running.map(([,r])=>r.core?.pid).filter(pid=>Number(pid)>0);
- // 内核内存每 5 秒采样一次；首次（或刚启动内核）等待采样结果，其余时间直接用缓存，避免拖慢 2 秒一次的刷新。
- if(pids.length&&(Date.now()-cores.at>CORE_SAMPLE_MS||pids.some(pid=>!cores.kb.has(pid)))){const job=sampleCores(pids);if(pids.some(pid=>!cores.kb.has(pid)))await job;}
- let coreKb=0;for(const pid of pids)coreKb+=cores.kb.get(pid)||0;
+ const corePids=[...new Set(running.map(([,r])=>r.core?.pid).filter(pid=>pid>0))];
+ const hostPids=[...new Set(running.map(([,r])=>r.core?.child?.pid).filter(pid=>pid>0&&!corePids.includes(pid)))];
+ const gpuValue=gpuSample(list),samplerPid=gpu.proc?.pid;
+ const pids=[...new Set([...corePids,...hostPids,...(samplerPid?[samplerPid]:[])])].filter(pid=>!byPid.has(pid));
+ if(pids.length&&(Date.now()-cores.at>CORE_SAMPLE_MS||pids.some(pid=>!cores.kb.has(pid))))await sampleCores(pids);
+ const external=pids.reduce((sum,pid)=>sum+(cores.kb.get(pid)||0),0);
+ const sumPids=ids=>ids.reduce((sum,pid)=>sum+(byPid.has(pid)?memKb(byPid.get(pid)):cores.kb.get(pid)||0),0)/1024;
+ const coreMB=sumPids(corePids),hostMB=sumPids(hostPids),samplerMB=samplerPid?sumPids([samplerPid]):0;
+ const breakdown={mainMB:0,rendererMB:0,gpuMB:0,utilityMB:0,coreMB,hostMB,samplerMB};
+ for(const p of list){const key=p.type==='Browser'?'mainMB':p.type==='Tab'?'rendererMB':p.type==='GPU'?'gpuMB':'utilityMB';breakdown[key]+=memKb(p)/1024;}
  const instances={};
- for(const [id,r] of running){if(r.status!=='running'||!r.view)continue;let icpu=0,ikb=0,count=0;for(const pid of instancePids(r)){const p=byPid.get(pid);if(!p)continue;icpu+=share.get(pid)||0;ikb+=memKb(p);count++;}const core=r.core?.pid?cores.kb.get(r.core.pid)||0:0;instances[id]={cpu:Math.max(0,Math.min(100,icpu)),memoryMB:(ikb+core)/1024,coreMB:core/1024,processes:count};}
- return {cpu:Math.max(0,Math.min(100,cpu)),gpu:gpuSample(list),memoryMB:(kb+coreKb)/1024,coreMB:coreKb/1024,processes:list.length,cores:pids.length,instances};
+ for(const [id,r] of running){if(r.status!=='running'||!r.view)continue;let icpu=0,ikb=0,count=0;for(const pid of instancePids(r)){const p=byPid.get(pid);if(!p)continue;icpu+=share.get(pid)||0;ikb+=memKb(p);count++;}const own=[...new Set([r.core?.pid,r.core?.child?.pid].filter(pid=>pid>0))],core=r.core?.pid?sumPids([r.core.pid]):0,host=own.filter(pid=>pid!==r.core?.pid);instances[id]={cpu:Math.max(0,Math.min(100,icpu)),memoryMB:ikb/1024+sumPids(own),coreMB:core,hostMB:sumPids(host),processes:count};}
+ return {cpu:Math.max(0,Math.min(100,cpu)),gpu:gpuValue,memoryMB:(kb+external)/1024,coreMB,hostMB,breakdown,memoryKind:process.platform==='win32'?'private-commit':'working-set',memoryComplete:pids.every(pid=>cores.kb.has(pid)),memorySampleAt:cores.at,processes:list.length,cores:corePids.length,totalProcesses:list.length+pids.length,instances};
 }
 module.exports={appMetrics,parseTasklist,parsePs,parseGpuHeader,gpuUsage};

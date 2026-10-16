@@ -27,6 +27,7 @@
 | 快捷网站与隐私检测入口 | [快捷网站](QUICK-LINKS.md) |
 | 固定视口、DPR 与历史 IP 收藏功能 | [视口与 IP](VIEWPORT-IP-BOOKMARKS.md) |
 | 指纹候选库、整套生成与验证边界 | [指纹候选库](FINGERPRINT-CATALOG.md) |
+| 内存统计口径、宫格截图限流及资源回收验证（源码待发布） | [内存与性能](MEMORY-PERFORMANCE.md) |
 | 统一收藏夹、普通随机与窗口保护 | [收藏夹](UNIFIED-FAVORITES.md) |
 | 最近发行说明 | [v0.2.13](releases/v0.2.13.md)、[v0.2.12](releases/v0.2.12.md)、[v0.2.11](releases/v0.2.11.md) |
 

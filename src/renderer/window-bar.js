@@ -36,7 +36,7 @@
   meter.querySelector('[data-cpu]').textContent=pct(v.cpu);
   const g=meter.querySelector('[data-gpu]');g.textContent=v.gpu==null?'—':pct(v.gpu);meter.querySelectorAll('.res-gpu').forEach(el=>el.hidden=v.gpu===undefined);
   meter.querySelector('[data-mem]').textContent=size(v.memoryMB);
-  meter.title=`千面整体占用：界面、GPU、各实例网页与扩展${v.cores?`，以及 ${v.cores} 个 Mihomo 内核（约 ${size(v.coreMB)}）`:''}；共 ${v.processes+v.cores} 个进程。\nCPU 按电脑总核数折算；GPU 为千面进程的显卡利用率（取最忙的引擎）；内存为私有内存，与任务管理器口径一致。`;
+  const d=v.breakdown;meter.title=(d?`内存分项：网页/扩展/界面 ${size(d.rendererMB)}；主进程 ${size(d.mainMB)}；GPU 进程 ${size(d.gpuMB)}；网络等 ${size(d.utilityMB)}；代理 ${size(d.coreMB)}；进程保护 ${size(d.hostMB)}；采样 ${size(d.samplerMB)}。\n`:'')+`共 ${v.totalProcesses??v.processes+v.cores} 个进程。Windows 内存为私有提交量（不是实际驻留物理内存）；代理与辅助进程每 5 秒采样。${v.memoryComplete===false?'部分进程采样失败，当前合计不完整。':''}\nCPU 为 Electron 进程按总核数折算；GPU 为最忙引擎利用率，GPU 进程内存不是专用显存。`;
  };
  const wanted=()=>!document.hidden&&(custom||(typeof view!=='undefined'&&view==='grid'));
  let busy=false;

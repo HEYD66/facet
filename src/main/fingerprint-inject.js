@@ -6,11 +6,38 @@
   var fp = /*__FACET_FP_PAYLOAD__*/null;
   if (!fp || typeof fp !== 'object') return;
 
-  var markNative = function(replacement) { return replacement; };
+  // Keep the original callable as the Proxy target: name/length, non-constructability
+  // and property descriptors then retain their native shape. Only registered
+  // replacements get an original source string; ordinary functions stay untouched.
+  var nativeToString = Function.prototype.toString;
+  var apply = Reflect.apply;
+  var sources = new WeakMap();
+  var markNative = function (replacement, original) {
+    if (typeof original !== 'function') return replacement;
+    var wrapped = new Proxy(original, {
+      apply: function (_target, receiver, args) { return apply(replacement, receiver, args); },
+    });
+    sources.set(wrapped, apply(nativeToString, original, []));
+    return wrapped;
+  };
+  var toString = new Proxy(nativeToString, {
+    apply: function (target, receiver, args) {
+      if (sources.has(receiver)) return sources.get(receiver);
+      return apply(target, receiver, args);
+    },
+  });
+  sources.set(toString, apply(nativeToString, nativeToString, []));
+  Object.defineProperty(Function.prototype, 'toString', {
+    ...Object.getOwnPropertyDescriptor(Function.prototype, 'toString'), value: toString,
+  });
   var define = function (obj, key, value) {
     try {
       var old = Object.getOwnPropertyDescriptor(obj, key);
-      var getter = function () { return value; };
+      var getter = markNative(function () {
+        // Preserve native receiver validation (e.g. Screen getter on {}).
+        if (old && old.get) apply(old.get, this, []);
+        return value;
+      }, old && old.get);
       Object.defineProperty(obj, key, {
         get: getter, configurable: true, enumerable: old ? old.enumerable : false,
       });
