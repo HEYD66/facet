@@ -32,7 +32,7 @@ async function resetMany(controller,ids){
   for(const item of items){
    if(controller.disposing)break;
    item.status='running';controller.emit();
-   try{await controller.resetEnvironment(item.id);item.status='reset';job.reset++;}
+   try{const result=await controller.resetEnvironment(item.id);item.newId=result.id;item.cleanupPending=result.cleanupPending;item.status='reset';job.reset++;}
    catch(error){item.status='failed';item.error=redact(error.message);job.failed++;}
    job.done++;controller.emit();await new Promise(resolve=>setImmediate(resolve));
   }

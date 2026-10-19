@@ -30,7 +30,7 @@ document.addEventListener('click',async event=>{const b=event.target.closest('[d
  if(a==='created-config'){const id=b.dataset.id;closeModal(true);await route('environment',id);return;}
  if(a==='created-retry'){b.disabled=true;try{await request('start',{id:b.dataset.id});closeModal(true);await route('browser',b.dataset.id);}catch(e){$('#modal .description').textContent='实例已存在，重试启动失败：'+e.message;}finally{if(b.isConnected)b.disabled=false;}return;}
  if(a==='return-assigned'){await route('browser',b.dataset.id);return;}
- if(a==='instance-open'){const id=b.dataset.id;b.disabled=true;try{const x=state.instances.find(x=>x.id===id);if(x?.status!=='running')await request('start',{id});await route('browser',id);}catch(e){toast('启动失败：'+e.message);await route('browser',id);}finally{if(b.isConnected)b.disabled=false;}return;}
+ if(a==='instance-open'){const id=b.dataset.id;b.disabled=true;try{const x=state.instances.find(x=>x.id===id);if(x?.status==='running'){await route('browser',id);}else{await request('start',{id});state=await request('snapshot');render();}}catch(e){toast('启动失败：'+e.message);}finally{if(b.isConnected)b.disabled=false;}return;}
  if(a==='instance-config'){await route('environment',b.dataset.id);return;}
  if(a==='instance-rename'){const menu=b.closest('details');if(menu){menu.open=false;menu.querySelector('summary')?.focus();}openModal('rename',b.dataset.id);return;}
 });

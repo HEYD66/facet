@@ -4,11 +4,11 @@ module.exports={
  productName:'千面 Facet',
  executableName:'Facet',
  directories:{output:'release',buildResources:'resources'},
- files:['src/**/*','package.json','LICENSE','README.md'],
+ files:['src/**/*','!src/main/subscription-proxy.cjs','package.json','LICENSE','README.md'],
  extraResources:[
   {from:'AGENTS.md',to:'AGENTS.md'},
   {from:'README.md',to:'README.md'},
-  {from:'docs',to:'docs',filter:['AI-CONTROL-HANDOFF.md','CONTROL-API.md','**/*.md']},
+  {from:'docs',to:'docs',filter:['README.md','AI-AGENT.md','AI-CONTROL-HANDOFF.md','CONTROL-API.md','PROJECT.md','CURRENT-SCOPE.md','DIAGNOSTICS.md','EXTENSION-COMPATIBILITY.md','EXTENSIONS.md','FINGERPRINT-CATALOG.md','APPEARANCE.md','QUICK-LINKS.md','VIEWPORT-IP-BOOKMARKS.md','MEMORY-PERFORMANCE.md','UNIFIED-FAVORITES.md','RESET-ENVIRONMENT.md','releases/v0.2.16.md']},
   {from:'resources/mihomo',to:'mihomo',filter:['mihomo.exe','LICENSE','ARTIFACT.json','mihomo-source.tar.gz']},
   {from:'resources/process-host',to:'process-host',filter:['facet-process-host.exe','manifest.json','ProcessHost.cs']},
   {from:'resources/facet.ico',to:'facet.ico'},

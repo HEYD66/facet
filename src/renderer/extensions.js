@@ -150,12 +150,12 @@ document.addEventListener('click',async e=>{
  }
  if(action==='reveal'&&row){try{await request('extension-reveal',{extensionId:row.id});}catch(err){toast(err.message);}return;}
  if(action==='refresh-all'){extensionBusy=true;extensionPopFor=null;extensionPage();
-  try{const r=await request('extension-refresh-all');if(r&&!r.cancelled){const parts=[r.updated?.length?'已更新 '+r.updated.map(u=>`${u.name} ${u.from} → ${u.version}`).join('、'):'没有发现新版本'];if(r.stopped?.length)parts.push(`已停止 ${r.stopped.join('、')}，请手动启动`);if(r.noSource?.length)parts.push(`${r.noSource.join('、')} 未记录来源，请在卡片上单独刷新`);if(r.failed?.length)parts.push('读取失败：'+r.failed.join('；'));toast(parts.join('；'));}state=await request('snapshot');}
+  try{const r=await request('extension-refresh-all');if(r&&!r.cancelled){const parts=[r.updated?.length?'已更新 '+r.updated.map(u=>`${u.name} ${u.from} → ${u.version}`).join('、'):'没有发现新版本'];if(r.restarted?.length)parts.push(`已重启 ${r.restarted.join('、')}`);if(r.restartFailed?.length)parts.push('重启失败：'+r.restartFailed.map(x=>x.name+'：'+x.error).join('；'));if(r.noSource?.length)parts.push(`${r.noSource.join('、')} 未记录来源，请在卡片上单独刷新`);if(r.failed?.length)parts.push('读取失败：'+r.failed.join('；'));toast(parts.join('；'));}state=await request('snapshot');}
   catch(err){toast(err.message);}
   finally{extensionBusy=false;if(view==='extensions')extensionPage();else render(true);}
   return;}
  if(action==='refresh'&&row){extensionBusy=true;extensionPage();
-  try{const r=await request('extension-refresh',{extensionId:row.id});if(r?.unchanged)toast(`「${row.name}」已是最新（${r.version}），原文件夹没有变化`);else if(r?.updated)toast(`已更新「${row.name}」${r.from} → ${r.version}`+(r.stopped?.length?`；已停止 ${r.stopped.join('、')}，请手动启动`:''));state=await request('snapshot');}
+  try{const r=await request('extension-refresh',{extensionId:row.id});if(r?.unchanged)toast(`「${row.name}」已是最新（${r.version}），原文件夹没有变化`);else if(r?.updated)toast(`已更新「${row.name}」${r.from} → ${r.version}`+(r.restarted?.length?`；已重启 ${r.restarted.join('、')}`:'')+(r.restartFailed?.length?'；重启失败：'+r.restartFailed.map(x=>x.name+'：'+x.error).join('；'):''));state=await request('snapshot');}
   catch(err){toast(err.message);}
   finally{extensionBusy=false;if(view==='extensions')extensionPage();else render(true);}
   return;}

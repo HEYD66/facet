@@ -4,3 +4,6 @@ release/
 *.log
 .DS_Store
 /Facet.lnk
+# Local unfinished work and personal notes are not release sources.
+/src/main/subscription-proxy.cjs
+/.local-dev/

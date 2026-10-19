@@ -1,0 +1,24 @@
+'use strict';
+const {app,BrowserWindow}=require('electron'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-refresh-audit-'));app.setPath('userData',root);
+const {Controller}=require('../src/main/controller.cjs'),{refreshOne,refreshAll}=require('../src/main/extension-refresh.cjs');
+let c,win,server;const results=[];
+const wait=async fn=>{for(let i=0;i<200;i++){if(await fn())return;await new Promise(r=>setTimeout(r,50));}throw Error('page verification timed out');};
+setTimeout(()=>app.exit(2),120000).unref();
+app.whenReady().then(async()=>{try{
+ server=http.createServer((q,r)=>r.end('<html><title>Refresh audit</title><body>Local verification</body></html>'));await new Promise(r=>server.listen(0,'127.0.0.1',r));const url=`http://127.0.0.1:${server.address().port}/`;
+ win=new BrowserWindow({show:false});c=new Controller(win,root,'');
+ const source=path.join(root,'source');fs.mkdirSync(source);
+ const write=v=>{fs.writeFileSync(path.join(source,'manifest.json'),JSON.stringify({manifest_version:3,name:'Refresh audit',version:v,content_scripts:[{matches:['http://127.0.0.1/*'],js:['content.js']}]}));fs.writeFileSync(path.join(source,'content.js'),`document.documentElement.dataset.refreshVersion=${JSON.stringify(v)}`);};
+ write('1.0');const cat=c.extensions.catalog,row=cat.stage(source);cat.accept(row);
+ const a=c.store.list()[0],b=c.store.create('Stopped'),other=c.store.create('Unrelated');for(const x of [a,b,other])c.store.update(x.id,{url});for(const x of [a,b])cat.setEnabled(x.id,row.id,true);
+ await c.start(a.id);await c.start(other.id);const untouched=c.runtimes.get(other.id).view;await wait(()=>c.runtimes.get(a.id).view.webContents.getURL()===url);await c.runtimes.get(a.id).session.cookies.set({url,name:'audit',value:'kept'});
+ const version=async v=>wait(()=>c.runtimes.get(a.id).view.webContents.executeJavaScript('document.documentElement.dataset.refreshVersion').then(x=>x===v));await version('1.0');
+ let consent=false;const dialog={showMessageBox:async(w,o)=>{assert.match(o.buttons[1],/更新并重启/);return {response:consent?1:0};}};
+ write('2.0');const previous=c.runtimes.get(a.id).view,previousContents=previous.webContents;assert.equal((await refreshOne(c,win,dialog,row.id)).cancelled,true);assert.equal(c.runtimes.get(a.id).view,previous);consent=true;
+ const one=await refreshOne(c,win,dialog,row.id);assert.deepEqual(one.restarted,[a.name]);assert.deepEqual(one.restartFailed,[]);assert(previousContents.isDestroyed());await version('2.0');assert.equal(c.runtimes.get(b.id),undefined);assert.equal(c.runtimes.get(other.id).view,untouched);assert.equal((await c.runtimes.get(a.id).session.cookies.get({url,name:'audit'})).length,1);results.push('Single update restarts affected instance, loads v2, retains cookie; cancel/stopped/unrelated safe');
+ write('3.0');const all=await refreshAll(c,win,dialog);assert.equal(all.updated.length,1);assert.deepEqual(all.restarted,[a.name]);await version('3.0');results.push('Batch update restarts and loads v3');
+ assert.equal((await refreshOne(c,win,dialog,row.id)).unchanged,true);
+ write('4.0');const start=c.start;c.start=async()=>{throw Error('Injected start failure');};let failure;try{failure=await refreshOne(c,win,dialog,row.id);}finally{c.start=start;}assert.equal(failure.updated,true);assert.equal(failure.restartFailed.length,1);assert.equal(failure.restarted.length,0);await c.start(a.id);await version('4.0');results.push('Restart failure is explicit; updated extension can subsequently start');
+ fs.writeFileSync(path.join(root,'report.json'),JSON.stringify({passed:true,results},null,2));console.log(JSON.stringify({root,results}));
+ }catch(e){console.error(e);process.exitCode=1;}finally{await c?.closeAll();win?.destroy();server?.close();app.exit(process.exitCode||0);}});

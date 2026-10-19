@@ -1,6 +1,6 @@
 # 内存统计与宫格截图
 
-2026-10-16，源码改动，尚未打包发布。
+适用版本：v0.2.15 及以上。
 
 ## 统计口径
 
@@ -19,26 +19,6 @@ PowerShell 脚本从资源中读取并以编码命令执行，兼容 asar 内路
 
 这主要限制截图峰值与重复工作，不承诺长期内存减少固定百分比。
 
-## 验证
+## 占用判断
 
-`node --test tests/grid-thumbnail-limit.test.cjs`：并发上限、单页失败、退出取消、renderer 去重和迟到响应。
-
-`node scripts/launch-electron.cjs tests/memory-lifecycle-electron.cjs`：独立临时资料、本机真实 HTTP 隧道和 Mihomo，实际扩展 MV3 后台、弹窗、网页 Worker 和 F12；两次启动/停止检查网页销毁、扩展后台退出、Mihomo 与保护 PID 消失，以及 localStorage 跨实例重启保留。真实 JPEG 可解码，内存分项合计和界面提示正确。
-
-进一步重复创建/删除实例、打开/关闭扩展弹窗，确认两处引用残留并修复：成功停止实例后解除网络请求采集监听并删除 session 记录；扩展页面销毁时移除 views 集合和当前 wc 引用，同一页面重复调用不会重复注册销毁监听。重新启动实例会重新注册网络采集，重新打开扩展仍可调用 API。没有新增清缓存、删除存储或强制终止共享进程的逻辑。
-
-设置 `FACET_MEMORY_CYCLES=12`、`FACET_MEMORY_AUDIT=1` 后执行上述生命周期测试：12 次启停通过；5 次创建/启动/删除后的采集残留均为 0（修复前逐次增长至 6）；6 次弹窗打开/查询/关闭后的已销毁视图残留均为 0（修复前逐次增长至 6）。报告保留在本机临时目录 `facet-memory-lifecycle-16kAC0/report.json`。
-
-补充扩展兼容回归 21 项通过，随后声明式网络规则拦截 fetch 断言失败；用修改前两个模块的备份做隔离对照，在同一断言失败，未归因于本次修改。该完整套件未通过，后续重启阶段未执行。误选的手动原生对话框测试已通过其测试控制接口结束，不计作通过。
-
-关闭后 Chromium 可能保留公共缓存；上述测试不代表长时间运行无泄漏，也不覆盖所有第三方扩展或网站后台服务，不能据此判断 17 个实例占用 9GB 的全部原因。
-
-相关回归：`npm.cmd run test:grid-transition-electron`、`npm.cmd run test:window-bar`。最低检查：`npm.cmd run check`、`npm.cmd run test:control-api`、`git diff --check`。
-
-## 生效与回滚
-
-重新启动千面主进程后生效；单纯刷新网页不更新主进程模块。验证仅使用隔离数据，未重启用户正在工作的实例。
-
-回滚时恢复本次 app-metrics、controller、renderer/grid 和 window-bar 修改，移除新 grid-thumbnails/process-memory 模块；不要撤销同工作区独立的 toString 修改或订阅代理草稿。代码回滚不需要更改用户数据。
-
-仅回滚本轮引用释放修复：使用 `C:\Users\24719\AppData\Local\Temp\facet-memory-fix-20261016-144240` 中 controller.cjs、extension-compat.cjs、memory-lifecycle-electron.cjs、MEMORY-PERFORMANCE.md 的修改前备份恢复各自原位置（若此后又有改动，先比较差异）。本轮未提交或打包。
+网页内容、扩展与后台任务都会影响内存。关闭实例后 Chromium 仍可能保留公共缓存；不能只凭实例数量判定是否泄漏。请结合进程明细和持续观察，并在反馈时附详细诊断。

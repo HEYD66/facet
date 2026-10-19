@@ -2,6 +2,11 @@
 
 更新：2026-10-14。适用版本：v0.2.13。兼容实现已在 Windows 隔离数据目录验收；当前运行的旧主进程需要退出后重新启动才能加载本版代码。
 
+## 扩展更新后重启（v0.2.16）
+
+单个扩展确认按钮改为「更新并重启」，批量更新为「全部更新并重启」。更新后自动启动本次停止的受影响实例，原本停止的实例不自动启动，无关实例保持运行。扩展绑定和已保存的数据保留；未保存的网页输入可能因重启丢失。重启失败会单独返回实例及错误，不能当作重启成功。
+
+
 ## 用途与入口
 
 补充 Electron 缺少的常用 Chrome 扩展接口。保留「扩展中心」导入、权限确认、按实例启用及更新流程；无需插件修改源码。Manifest V2 后台页、Manifest V3 Service Worker 和扩展面板可使用兼容接口，支持 Promise 和回调错误 `chrome.runtime.lastError`。
@@ -31,7 +36,7 @@
 | `alarms` | 创建、获取、枚举、清除与实际定时事件 | 持久化，实例停止暂停、再次启动恢复；重复间隔至少 0.5 分钟；不是严格实时计时器 |
 | `privacy/proxy` | WebRTC 防护策略及实际代理路由只读查询 | 返回不可由扩展控制；set/clear 明确报错，保留千面网络配置 |
 
-原生 `offscreen` 文档与 `declarativeNetRequest` 动态规则已通过实际执行验证；没有用空实现替换这些接口。`nativeMessaging`、浏览器账号/同步、商店安装、所有 Chrome API/参数并未补齐。Buster 本机辅助程序通信仍受 Electron 限制。
+原生 `offscreen` 可创建和运行；当前版本 DNR 动态规则可以保存，但实际拦截、跳转、改头未生效，不应把规则读回成功当作执行成功。`nativeMessaging`、浏览器账号/同步、商店安装、所有 Chrome API/参数并未补齐。Buster 本机辅助程序通信仍受 Electron 限制。
 
 导航只开放无 URL 登录凭据的 HTTP/HTTPS、about:blank 或本扩展页面，拒绝 file/javascript 等；截图另检查页面来源权限或真实 activeTab。导航事件过滤目前支持 hostEquals/urlContains，其他 Chrome URLFilter 字段尚未实现。会话、书签、历史和下载的字段也不是完整 Chrome 数据模型。
 

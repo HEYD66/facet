@@ -21,7 +21,7 @@ async function createInstance(controller,message){
   if(value.exitLocale&&node&&!value.configurationError){const sourceId=require('./instance-node.cjs').nodeDiagnosticKey(x.id,node),result={...value.exitLocale,kind:'ip',ok:true,sourceId,instanceId:x.id,name:node.name,at:new Date().toISOString()};controller.diagnostics.results.set(JSON.stringify([sourceId,node.name,'ip']),result);controller.diagnostics.history.record(result);}
   if(!value.configurationError&&message.syncTimezone===true&&!savedRegion){phase('按所选出口查询时区');try{const result=await controller.diagnostics.timezone(x.id,controller.store.get(x.id).network);controller.store.update(x.id,{environment:{...controller.store.get(x.id).environment,timezone:result.timezone}});}catch{value.timezoneError='出口时区查询失败，已保留原时区；可稍后手动同步';controller.log(x.id,value.timezoneError,'WARN');}}
   if(!value.configurationError&&message.start){phase('启动已创建的实例');try{await controller.start(x.id);value.started=true;}catch(e){value.startError=require('./workspace.cjs').redact(e.message);}}
-  controller.choose(x.id);controller.emit();return value;
+  if(message.background!==true)controller.choose(x.id);controller.emit();return value;
  }finally{controller.creationProgress=null;controller.emit();}
 }
 module.exports={prepareSettings,createInstance};
