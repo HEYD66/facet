@@ -36,7 +36,7 @@
 | `alarms` | 创建、获取、枚举、清除与实际定时事件 | 持久化，实例停止暂停、再次启动恢复；重复间隔至少 0.5 分钟；不是严格实时计时器 |
 | `privacy/proxy` | WebRTC 防护策略及实际代理路由只读查询 | 返回不可由扩展控制；set/clear 明确报错，保留千面网络配置 |
 
-原生 `offscreen` 可创建和运行；当前版本 DNR 动态规则可以保存，但实际拦截、跳转、改头未生效，不应把规则读回成功当作执行成功。`nativeMessaging`、浏览器账号/同步、商店安装、所有 Chrome API/参数并未补齐。Buster 本机辅助程序通信仍受 Electron 限制。
+原生 `offscreen` 可创建和运行。DNR（源码已修复，尚未发布）：v0.2.13～v0.2.16 不生效的根因是实例 Session 注册了诊断用 `webRequest` 监听，使 Electron 绕过扩展请求代理；诊断改为 CDP 采集后，动态规则的拦截、跳转及请求/响应改头已在真实 fetch 上验证执行（`test:extension-compat`）。静态规则集是否随加载启用、`getMatchedRules`/调试反馈和 `responseHeaders` 条件尚未验证。扩展调试器只有在该扩展自己调用 `Network.enable` 后才收到 Network 事件；它关闭 Network 或断开时，千面恢复诊断用的小缓冲设置，不关闭采集。`nativeMessaging`、浏览器账号/同步、商店安装、所有 Chrome API/参数并未补齐。Buster 本机辅助程序通信仍受 Electron 限制。
 
 导航只开放无 URL 登录凭据的 HTTP/HTTPS、about:blank 或本扩展页面，拒绝 file/javascript 等；截图另检查页面来源权限或真实 activeTab。导航事件过滤目前支持 hostEquals/urlContains，其他 Chrome URLFilter 字段尚未实现。会话、书签、历史和下载的字段也不是完整 Chrome 数据模型。
 

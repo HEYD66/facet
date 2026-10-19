@@ -61,8 +61,8 @@ class ExtensionHost{
   this.preloads=['extension-host-preload.cjs','extension-compat-preload.cjs'].flatMap(file=>['frame','service-worker'].map(type=>runtime.session.registerPreloadScript({type,filePath:path.join(__dirname,file)})));
   this.onWorker=event=>{const worker=runtime.session.serviceWorkers.getWorkerFromVersionID(event.versionId);if(worker&&!this.workers.has(worker)){this.workers.add(worker);worker.ipc.handle(channel,invoke);}};
   runtime.session.serviceWorkers.on('running-status-changed',this.onWorker);
-  this.onDebuggerMessage=(_event,method,params)=>{if(!this.debuggerAttached||!this.debuggerWorker||this.debuggerWorker.isDestroyed()||!['Network.responseReceived','Network.dataReceived','Network.loadingFinished','Network.loadingFailed'].includes(method))return;try{this.debuggerWorker.send('facet:extension-debugger-event',{type:'event',source:{tabId:this.runtime.view.webContents.id},method,params:params||{}});}catch(error){this.controller.log(this.instanceId,'扩展调试事件转发失败：'+require('./workspace.cjs').redact(error.message),'WARN');}};
-  this.onDebuggerDetach=(_event,reason)=>{const worker=this.debuggerWorker;this.debuggerAttached=false;this.debuggerOwner=null;this.debuggerWorker=null;if(worker&&!worker.isDestroyed())try{worker.send('facet:extension-debugger-event',{type:'detach',source:{tabId:this.runtime.view?.webContents?.id},reason});}catch{}};
+  this.onDebuggerMessage=(_event,method,params)=>{if(!this.debuggerAttached||!this.debuggerNetwork||!this.debuggerWorker||this.debuggerWorker.isDestroyed()||!['Network.responseReceived','Network.dataReceived','Network.loadingFinished','Network.loadingFailed'].includes(method))return;try{this.debuggerWorker.send('facet:extension-debugger-event',{type:'event',source:{tabId:this.runtime.view.webContents.id},method,params:params||{}});}catch(error){this.controller.log(this.instanceId,'扩展调试事件转发失败：'+require('./workspace.cjs').redact(error.message),'WARN');}};
+  this.onDebuggerDetach=(_event,reason)=>{const worker=this.debuggerWorker;this.debuggerAttached=false;this.debuggerNetwork=false;this.debuggerOwner=null;this.debuggerWorker=null;if(worker&&!worker.isDestroyed())try{worker.send('facet:extension-debugger-event',{type:'detach',source:{tabId:this.runtime.view?.webContents?.id},reason});}catch{}};
   runtime.view.webContents.debugger.on('message',this.onDebuggerMessage);
   runtime.view.webContents.debugger.on('detach',this.onDebuggerDetach);
   this.onContext=(_event,params)=>{const menu=this.buildMenu(params);if(menu){this.lastMenu=menu;menu.popup({window:controller.window,callback:()=>{if(this.lastMenu===menu)this.lastMenu=null;}});}};
@@ -78,20 +78,25 @@ class ExtensionHost{
   if(this.debuggerAttached&&this.debuggerOwner!==extensionId)throw Error('该实例页面的调试器已被其他扩展占用');
   const debug=this.runtime.view.webContents.debugger;
   if(!debug.isAttached())throw Error('实例页面调试器尚未就绪');
-  this.debuggerAttached=true;this.debuggerOwner=extensionId;this.debuggerWorker=worker;return undefined;
+  this.debuggerAttached=true;this.debuggerNetwork=false;this.debuggerOwner=extensionId;this.debuggerWorker=worker;return undefined;
  }
  debuggerDetach(extensionId,worker,target){
   this.debuggerTarget(target);if(!this.debuggerAttached)return undefined;
   if(this.debuggerOwner!==extensionId||this.debuggerWorker!==worker)throw Error('只能断开当前扩展创建的调试会话');
   // The application owns the underlying CDP connection. Stop forwarding events for this
   // extension, but keep the connection alive for Facet's environment and viewport controls.
-  this.debuggerAttached=false;this.debuggerOwner=null;this.debuggerWorker=null;return undefined;
+  // A Network domain the extension enabled is released back to Facet's diagnostics limits.
+  if(this.debuggerNetwork)require('./network-capture.cjs').releaseNetwork(this.runtime.view.webContents).catch(()=>{});
+  this.debuggerAttached=false;this.debuggerNetwork=false;this.debuggerOwner=null;this.debuggerWorker=null;return undefined;
  }
  async debuggerCommand(extensionId,worker,target,method,params){
   this.debuggerTarget(target);if(!this.debuggerAttached||this.debuggerOwner!==extensionId||this.debuggerWorker!==worker)throw Error('请先附加当前实例页面的调试器');
   if(typeof method!=='string'||!['Network.enable','Network.disable','Network.streamResourceContent','Network.getResponseBody'].includes(method))throw Error('此扩展不允许调用该调试器命令');
   if(!params||typeof params!=='object'||Array.isArray(params))throw Error('调试器命令参数无效');
-  return this.runtime.view.webContents.debugger.sendCommand(method,params);
+  const wc=this.runtime.view.webContents;
+  // Facet diagnostics share this CDP connection; disabling Network must not stop failure capture.
+  if(method==='Network.disable'){this.debuggerNetwork=false;return require('./network-capture.cjs').releaseNetwork(wc);}
+  const result=await wc.debugger.sendCommand(method,params);if(method==='Network.enable')this.debuggerNetwork=true;return result;
  }
  buildMenu(params){
   const template=[];

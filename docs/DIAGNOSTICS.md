@@ -33,11 +33,11 @@
 
 记录必要域名、IP、端口与关联信息，不保存网址路径/查询、请求头、响应正文、订阅配置、Cookie、密码、实例备注和网页内容。普通网页 console 不采集。应用/内核文本会脱敏再写盘，导出再次脱敏；反馈前仍可检查域名/IP是否涉及不希望公开的网络信息。
 
-Electron 网页事件不提供独立 DNS/TCP/TLS 阶段，只能提供失败事件或 HTTP 状态；完整阶段来自订阅下载器，内核输出作为关联证据。只记录 HTTP(S) 请求失败，成功网页浏览记录、所有协议抓包、崩溃转储、扩展完整控制台均不在范围内。无法承诺所有 bug 都能仅靠此包定位。
+Electron 网页事件不提供独立 DNS/TCP/TLS 阶段，只能提供失败事件或 HTTP 状态；完整阶段来自订阅下载器，内核输出作为关联证据。只记录 HTTP(S) 请求失败，成功网页浏览记录、所有协议抓包、崩溃转储、扩展完整控制台均不在范围内。无法承诺所有 bug 都能仅靠此包定位。页面请求失败的采集范围是千面已附加内部 CDP 的实例主页面、弹出窗口和扩展浏览窗口；跨站独立进程 iframe、Service Worker 与扩展后台发出的请求不在范围内。扩展主动拦截（`ERR_BLOCKED_BY_CLIENT`）、CORS 拒绝、预检请求和用户中止不计为失败。
 
 ## 维护与验证
 
-入口：`runtime-output.cjs`、`network-trace.cjs`、`network-capture.cjs`、`diagnostic-bundle.cjs`。网络采集仅观察，不修改 DNS、代理、路由或请求。Session 的 `onErrorOccurred` / `onCompleted` 在 network-capture 集中注册；Electron 每事件只保留一个 JS 监听器，后续功能须复用这里，不能覆盖。退出时移除本模块拥有的监听器。
+入口：`runtime-output.cjs`、`network-trace.cjs`、`network-capture.cjs`、`diagnostic-bundle.cjs`。网络采集仅观察，不修改 DNS、代理、路由或请求。页面请求失败经各页面已有的内部 CDP（Network 域，响应缓冲上限 1 MB、单资源 256 KB）采集。**禁止在实例 Session 上注册任何 `session.webRequest` 监听（包括只读的 `onCompleted` / `onErrorOccurred`）**：只要存在监听，Electron 就绕过扩展请求代理，扩展 DNR 规则（拦截、跳转、改头）会全部静默失效；`tests/network-capture.test.cjs` 含源码守卫。扩展经调试器关闭 Network 或断开时，只停止向该扩展转发，诊断采集保持开启。停止实例和退出时移除本模块拥有的监听器。
 
 执行 `npm.cmd run test:diagnostics`、`npm.cmd run test:diagnostics-electron`，以及项目要求的 check、test:control-api、git diff --check。真实测试使用临时用户目录和本机故障服务器，保存框由受控目标路径适配，生产采集、IPC 和写盘均实际运行。详见 [验证记录](VERIFICATION.md)。
 
