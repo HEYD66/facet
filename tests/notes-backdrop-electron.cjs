@@ -1,0 +1,26 @@
+'use strict';
+const {app,BrowserWindow}=require('electron'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),assert=require('node:assert/strict');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-notes-drag-'));app.setPath('userData',root);
+let c,win;const pause=()=>new Promise(r=>setTimeout(r,100));const wait=async fn=>{for(let i=0;i<100;i++){if(await fn())return;await pause();}throw Error('Timed out');};
+setTimeout(()=>app.exit(2),60000).unref();
+app.whenReady().then(async()=>{try{
+ win=new BrowserWindow({show:false,width:1400,height:900,webPreferences:{preload:path.join(__dirname,'../src/main/preload.cjs'),sandbox:true,contextIsolation:true}});
+ c=new(require('../src/main/controller.cjs').Controller)(win,root,'');require('../src/main/ipc.cjs').installIPC(win,c);
+ const id=c.store.list()[0].id;c.store.update(id,{notes:'Original note text to select'});
+ await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));const ui=s=>win.webContents.executeJavaScript(s);await wait(()=>ui('!!state?.instances?.length'));await ui("route('overview')");
+ const open=async()=>{await ui(`showInstanceNotes(${JSON.stringify(id)})`);await pause();};
+ const point=selector=>ui(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:Math.round(r.x+20),y:Math.round(r.y+20)}})()`);
+ const send=(type,p)=>win.webContents.sendInputEvent({type,...p,button:'left',clickCount:1});
+ const drag=async(a,b)=>{send('mouseMove',a);send('mouseDown',a);send('mouseMove',b);send('mouseUp',b);await pause();};
+ const outside={x:8,y:8};await open();const inside=await point('#instanceNotes');
+ await ui("document.querySelector('#instanceNotes').value='Unsaved text retained'");
+ await drag(inside,outside);assert.equal(await ui("!document.querySelector('#modalBackdrop').hidden"),true);assert.equal(await ui("document.querySelector('#instanceNotes').value"),'Unsaved text retained');
+ await drag(inside,{x:inside.x+120,y:inside.y});assert.equal(await ui('!!modal'),true);
+ await drag(outside,inside);assert.equal(await ui('!!modal'),true);
+ await ui("document.querySelector('[data-transfer=save-notes]').click()");await wait(()=>c.store.get(id).notes==='Unsaved text retained');await wait(()=>ui('!modal'));
+ const disk=new(require('../src/main/store.cjs').Store)(root);assert.equal(disk.get(id).notes,'Unsaved text retained');
+ await open();await drag(outside,outside);assert.equal(await ui('modal'),null);
+ await open();await ui("document.querySelector('[data-action=modal-close]').click()");assert.equal(await ui('modal'),null);
+ await open();win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});await pause();assert.equal(await ui('modal'),null);
+ const report={passed:true,checks:['inside to outside drag retains dialog and draft','inside selection retains dialog','outside to inside retains dialog','save persists to disk','outside click closes','close button works','Escape works']};fs.writeFileSync(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({root,...report}));
+ }catch(e){console.error(e);process.exitCode=1;}finally{await c?.closeAll();win?.destroy();app.exit(process.exitCode||0);}});

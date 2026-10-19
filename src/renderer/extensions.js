@@ -17,7 +17,7 @@ function extSize(b){b=Number(b)||0;return b>=1024**3?(b/1024**3).toFixed(1)+' GB
 function extTime(t){if(!t)return '—';const d=new Date(t);return isNaN(d)?'—':d.toLocaleString();}
 function extensionStateOf(row,inst){const info=extensionInfo(row,inst.id);return info.error?{cls:'error',text:info.error}:info.loaded?{cls:'loaded',text:'已加载'}:info.enabled?{cls:'waiting',text:`已启用 · 等待启动（${statusText(inst)}）`}:{cls:'off',text:'未启用'};}
 function extensionErrors(row){return (state.instances||[]).map(inst=>({inst,info:extensionInfo(row,inst.id)})).filter(x=>x.info.error);}
-function extensionRefreshTitle(row){return row.source?'从原文件夹重新读取并检查新版本：'+row.source:'选择原解压文件夹并检查新版本（之后会记住位置）';}
+function extensionRefreshTitle(row){return row.source?'从原文件夹或 ZIP 重新读取并检查新版本：'+row.source:'选择原解压文件夹并检查新版本（之后会记住位置）';}
 function extensionToggleHTML(row,inst){const info=extensionInfo(row,inst.id),on=extensionWanted(row,inst.id),changed=on!==info.enabled,st=extensionStateOf(row,inst);
  return `<button type="button" class="ext-chip ext-toggle-row ${on?'on':''} ${changed?'changed':''}" aria-pressed="${on}" data-extension="toggle" data-extension-id="${esc(row.id)}" data-instance-id="${esc(inst.id)}" title="${esc(inst.name+' · '+(changed?(on?'待启用':'待停用'):st.text))}"><span class="ext-check" aria-hidden="true">${on?'✓':''}</span><span class="ext-chip-name">${esc(inst.name)}</span><small class="ext-toggle-state ${changed?'changed':st.cls}">${esc(changed?(on?'待启用':'待停用'):st.cls==='error'?'加载失败':st.cls==='waiting'?'等待启动':st.text)}</small><i class="ext-state ${st.cls}" aria-hidden="true"></i></button>`;}
 function extensionPendingHTML(row){const changes=extensionChangeList(row);if(!changes.length)return '';const on=changes.filter(x=>x.enabled),off=changes.filter(x=>!x.enabled),running=changes.filter(x=>x.instance.status==='running'||x.instance.status==='starting');
@@ -56,7 +56,7 @@ function extensionDetailHTML(row){
  </div>`;
 }
 function extensionGridHTML(rows){const q=extensionQuery.trim().toLowerCase(),shown=q?rows.filter(r=>[r.name,r.description,r.chromeId,r.version].join(' ').toLowerCase().includes(q)):rows;
- return shown.map(extensionCard).join('')||(rows.length?`<div class="empty-list">没有匹配「${esc(extensionQuery.trim())}」的扩展。</div>`:'<div class="empty-list">尚未导入扩展。点「导入解压扩展」选择包含 manifest.json 的文件夹，导入后在卡片上选择要启用的实例。</div>');}
+ return shown.map(extensionCard).join('')||(rows.length?`<div class="empty-list">没有匹配「${esc(extensionQuery.trim())}」的扩展。</div>`:'<div class="empty-list">尚未导入扩展。选择「导入 ZIP」，或点「导入解压扩展」选择包含 manifest.json 的文件夹，导入后在卡片上选择要启用的实例。</div>');}
 function positionExtensionPop(){const pop=document.querySelector('.ext-pop');if(!pop)return;pop.classList.remove('up');const r=pop.getBoundingClientRect(),card=pop.closest('.ext-card').getBoundingClientRect(),host=$('#content').getBoundingClientRect();if(r.bottom>host.bottom-4&&card.top-host.top>r.height+8)pop.classList.add('up');}
 function extensionPage(){
  pruneExtensionPending();
@@ -64,7 +64,7 @@ function extensionPage(){
  if(extensionDetailId&&!rows.some(r=>r.id===extensionDetailId))extensionDetailId=null;
  if(extensionPopFor&&!rows.some(r=>r.id===extensionPopFor))extensionPopFor=null;
  const detail=extensionDetailId&&rows.find(r=>r.id===extensionDetailId);
- $('#content').innerHTML=`<section class="settings-card extension-center">${detail?extensionDetailHTML(detail):`<div class="ext-center-bar"><label class="ext-search">${icon('search')}<input id="extSearch" type="search" placeholder="搜索扩展程序" value="${esc(extensionQuery)}" aria-label="搜索扩展程序" autocomplete="off"></label><span class="ext-bar-gap"></span><button class="btn" data-extension="refresh-all" ${extensionBusy||!rows.length?'disabled':''} title="从各扩展的原文件夹重新读取，有新版本时一次确认">${icon('refresh')} 全部更新</button><button class="btn primary" data-extension="import" ${extensionBusy?'disabled':''}>${icon('plus')} 导入解压扩展</button></div>
+ $('#content').innerHTML=`<section class="settings-card extension-center">${detail?extensionDetailHTML(detail):`<div class="ext-center-bar"><label class="ext-search">${icon('search')}<input id="extSearch" type="search" placeholder="搜索扩展程序" value="${esc(extensionQuery)}" aria-label="搜索扩展程序" autocomplete="off"></label><span class="ext-bar-gap"></span><button class="btn" data-extension="refresh-all" ${extensionBusy||!rows.length?'disabled':''} title="从各扩展的原文件夹或 ZIP 重新读取，有新版本时一次确认">${icon('refresh')} 全部更新</button><button class="btn primary" data-extension="import" ${extensionBusy?'disabled':''}>${icon('plus')} 导入解压扩展</button><button class="btn" data-extension="import-zip" ${extensionBusy?'disabled':''}>导入 ZIP</button></div>
   <p class="ext-center-note">按实例启用：每个实例独立存储、沿用该实例的网络；启用或停用会停止目标实例，需手动启动。仅支持部分 Chrome 扩展 API，不支持商店和 CRX 直装。</p>
   <h4 class="ext-grid-title">所有扩展程序 <small>${rows.length}</small></h4><div class="ext-grid" id="extGrid">${extensionGridHTML(rows)}</div><p class="actions-note">只安装可信来源。扩展可读取或修改其权限范围内的网页；停用后重启可清除残留内容脚本，扩展已保存的数据会保留。</p>`}</section>`;
  positionExtensionPop();
@@ -155,12 +155,12 @@ document.addEventListener('click',async e=>{
   finally{extensionBusy=false;if(view==='extensions')extensionPage();else render(true);}
   return;}
  if(action==='refresh'&&row){extensionBusy=true;extensionPage();
-  try{const r=await request('extension-refresh',{extensionId:row.id});if(r?.unchanged)toast(`「${row.name}」已是最新（${r.version}），原文件夹没有变化`);else if(r?.updated)toast(`已更新「${row.name}」${r.from} → ${r.version}`+(r.restarted?.length?`；已重启 ${r.restarted.join('、')}`:'')+(r.restartFailed?.length?'；重启失败：'+r.restartFailed.map(x=>x.name+'：'+x.error).join('；'):''));state=await request('snapshot');}
+  try{const r=await request('extension-refresh',{extensionId:row.id});if(r?.unchanged)toast(`「${row.name}」已是最新（${r.version}），来源文件没有变化`);else if(r?.updated)toast(`已更新「${row.name}」${r.from} → ${r.version}`+(r.restarted?.length?`；已重启 ${r.restarted.join('、')}`:'')+(r.restartFailed?.length?'；重启失败：'+r.restartFailed.map(x=>x.name+'：'+x.error).join('；'):''));state=await request('snapshot');}
   catch(err){toast(err.message);}
   finally{extensionBusy=false;if(view==='extensions')extensionPage();else render(true);}
   return;}
  let op,payload={};
- if(action==='import')op='extension-import';
+ if(action==='import'||action==='import-zip'){op='extension-import';if(action==='import-zip')payload.format='zip';}
  else if(action==='confirm'&&extensionConfirm){op=extensionConfirm.action;payload=extensionConfirm.payload;}
  else return;
  extensionBusy=true;
