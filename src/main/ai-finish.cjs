@@ -26,7 +26,7 @@ async function finishStopped(agent,messages,start,reason,status){
  text=text.slice(0,12000);
  if(entry)entry.text=text;else agent.entry('assistant',text);
  messages.push({role:'assistant',content:text});
- agent.memory.add(r.scope,messages.slice(start));
+ agent.memory.add(r.scope,require('./ai-browser.cjs').stripShots(messages.slice(start)));
  r.history=[];r.partial='';r.status=status;agent.persistQuietly();
 }
 module.exports={finishStopped};

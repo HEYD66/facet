@@ -4,7 +4,8 @@ const privacySites=Object.freeze([
  {id:'ipleak',name:'ipleak.net',url:'https://ipleak.net/',note:'IP · DNS · WebRTC',icon:'search',tone:'blue'},
  {id:'browserleaks',name:'browserleaks.com/dns',url:'https://browserleaks.com/dns',note:'DNS 泄露检测',icon:'globe',tone:'purple'},
  {id:'dnsleaktest',name:'dnsleaktest.com',url:'https://dnsleaktest.com/',note:'标准 / 扩展 DNS 检测',icon:'monitor',tone:'green'},
- {id:'ippure',name:'ippure.com',url:'https://ippure.com/',note:'IP 信息与风险检测',icon:'shield',tone:'orange'}
+ {id:'ippure',name:'ippure.com',url:'https://ippure.com/',note:'IP 信息与风险检测',icon:'shield',tone:'orange'},
+ {id:'netcoffee',name:'ip.net.coffee',url:'https://ip.net.coffee/',note:'IP 与网络信息检测',icon:'globe',tone:'green'}
 ]);
 let privacyMenuFor=null,privacyMenuClosedAt=0,privacyMenuKey='';
 function privacySitesButtonHTML(){return `<button type="button" class="privacy-sites-trigger" data-privacy-toggle aria-label="隐私检测网站" title="展开隐私检测网站" aria-haspopup="dialog" aria-expanded="${privacyMenuFor===activeId}">${icon('shield')}<span>检测</span>${icon('chevron')}</button>`;}

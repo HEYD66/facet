@@ -39,13 +39,15 @@ app.whenReady().then(async()=>{let error;try{
   const base='http://127.0.0.1:'+server.address().port,a=c.store.list()[0];target=a.id;c.store.update(a.id,{url:base+'/blank'});await c.start(a.id);
   require('../src/main/ipc.cjs').installIPC(win,c);await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));
   const agent=c.aiAgent;agent.save({baseURL:base+'/v1',model:'local-stop-protocol'});
-  for(const scenario of ['normal','failure','empty','unexpected-tool','timeout','abort','limit','normal']){
-   mode=scenario;round=0;summaryCount=0;summaryStarted=false;requests=[];agent.clear();
+  for(const scenario of ['normal','failure','empty','unexpected-tool','timeout','abort','limit','unbounded','normal']){
+   mode=scenario==='unbounded'?'limit':scenario;round=0;summaryCount=0;summaryStarted=false;requests=[];agent.clear();
+   agent.save({baseURL:base+'/v1',model:'local-stop-protocol',maxRounds:scenario==='limit'?5:0});assert.equal(agent.settings().maxRounds,scenario==='limit'?5:0);
    agent.begin({prompt:'Read the test page',ids:[target],permission:'full'});
    if(mode==='abort'){await wait(()=>summaryStarted);agent.stop();}
    await wait(()=>!agent.run.busy);
-   assert.equal(summaryCount,1);assert.equal(round,mode==='limit'?16:3);
-   assert.equal(agent.run.status,mode==='abort'?'已停止':mode==='limit'?'已达到 16 轮上限':'已停止：无进展');
+   assert.equal(summaryCount,1);assert.equal(round,scenario==='limit'?5:scenario==='unbounded'?20:3);
+   assert.equal(agent.run.status,mode==='abort'?'已停止':scenario==='limit'?'已达到 5 轮上限':'已停止：无进展');
+   if(scenario==='unbounded')assert(agent.run.entries.some(x=>x.kind==='system'&&x.text.includes('原地循环')));
    assert(!agent.run.entries.some(x=>x.kind==='tool'&&x.text.startsWith('fill：')));
    if(mode!=='abort'){
     const answer=agent.run.entries.filter(x=>x.kind==='assistant').at(-1)?.text;assert(answer?.trim());
