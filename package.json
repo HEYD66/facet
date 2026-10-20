@@ -1,8 +1,8 @@
 {
   "name": "facet",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "private": true,
-  "description": "Independent multi-instance browser with explicit direct networking and bundled Mihomo",
+  "description": "Privacy-focused multi-instance browser with a built-in AI assistant, isolated sessions and per-instance proxies",
   "author": "HEYD66",
   "license": "MIT",
   "homepage": "https://github.com/HEYD66/facet",
@@ -62,6 +62,7 @@
     "test:node-network": "node --test tests/node-network.test.cjs",
     "test:node-network-electron": "node tests/node-network-runner.cjs",
     "test:control-api": "node --test tests/control-api.test.cjs",
+    "test:page-clipboard": "node scripts/launch-electron.cjs tests/page-clipboard-electron.cjs",
     "test:devtools-electron": "node scripts/launch-electron.cjs tests/devtools-electron.cjs",
     "test:instance-reset-electron": "node scripts/launch-electron.cjs tests/instance-reset-electron.cjs",
     "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs",

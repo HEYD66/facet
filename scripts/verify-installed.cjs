@@ -9,14 +9,15 @@ const {childEnvironment}=require('./electron-runtime.cjs');
 const buildManifest=path.resolve(__dirname,'../release/build-manifest.json');
 const executable=path.resolve(process.argv[2]||(fs.existsSync(buildManifest)?JSON.parse(fs.readFileSync(buildManifest,'utf8')).unpackedExecutable:'release/win-unpacked/Facet.exe'));
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-installed-中文-'));
-const results=[],errors=[];let server,proxy,child,browser,ui,proxyHits=0;
+const results=[],errors=[];let server,proxy,child,browser,ui,inspectorUrl,proxyHits=0,geoHits=0;
 const sockets=new Set(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const pass=name=>{results.push(name);console.log('PASS '+name);};
 async function wait(fn,label,timeout=30000){const end=Date.now()+timeout;while(Date.now()<end){if(await fn())return;await sleep(50);}throw Error('Timeout: '+label);}
 async function launch(){
  const portFile=path.join(root,'DevToolsActivePort');fs.rmSync(portFile,{force:true});
- child=spawn(executable,['--user-data-dir='+root,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1'],{env:childEnvironment(),windowsHide:false,stdio:['ignore','pipe','pipe']});
- child.stdout.on('data',d=>fs.appendFileSync(path.join(root,'stdout.log'),d));child.stderr.on('data',d=>fs.appendFileSync(path.join(root,'stderr.log'),d));
+ inspectorUrl=null;let inspectorOutput='';
+ child=spawn(executable,['--user-data-dir='+root,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1','--inspect=127.0.0.1:0'],{env:childEnvironment(),windowsHide:false,stdio:['ignore','pipe','pipe']});
+ child.stdout.on('data',d=>fs.appendFileSync(path.join(root,'stdout.log'),d));child.stderr.on('data',d=>{fs.appendFileSync(path.join(root,'stderr.log'),d);inspectorOutput=(inspectorOutput+d.toString()).slice(-8192);const match=inspectorOutput.match(/Debugger listening on (ws:\/\/127\.0\.0\.1:\d+\/[^\s]+)/);if(match)inspectorUrl=match[1];});
  let launchError;child.on('error',e=>launchError=e);
  const controlFile=path.join(root,'control-api.json'),control=fs.existsSync(controlFile)?JSON.parse(fs.readFileSync(controlFile,'utf8')):null;
  await wait(async()=>{if(launchError)throw launchError;if(child.exitCode!==null)throw Error('Installed app exited: '+child.exitCode);if(control?.enabled){try{return (await fetch('http://127.0.0.1:'+control.cdpPort+'/json/version')).ok;}catch{return false;}}return fs.existsSync(portFile);},'installed debugger ready',45000);
@@ -27,6 +28,18 @@ async function launch(){
  assert(ui.url().includes('app.asar'),'must load packaged source');
 }
 async function call(action,payload={}){const response=await ui.evaluate(({action,payload})=>bridge.request(action,payload),{action,payload});assert.equal(response.ok,true,response.error);return response.value;}
+async function setIsolatedGeoEndpoint(url){
+ // Change only the diagnostic destination in this isolated test process. Real
+ // reset, IPC, proxy, locale conversion and persistence code remain in use.
+ await wait(()=>!!inspectorUrl,'test main-process inspector');
+ await new Promise((resolve,reject)=>{
+  const socket=new WebSocket(inspectorUrl),timer=setTimeout(()=>finish(Error('Main-process fixture setup timed out')),10000);
+  function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve();}
+  socket.addEventListener('error',()=>finish(Error('Main-process fixture connection failed')),{once:true});
+  socket.addEventListener('open',()=>socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('./src/main/diagnostics.cjs').TARGETS.ip="+JSON.stringify(url),returnByValue:true}})),{once:true});
+  socket.addEventListener('message',event=>{const value=JSON.parse(event.data);if(value.id===1){if(value.error||value.result?.exceptionDetails)return finish(Error(JSON.stringify(value.error||value.result.exceptionDetails)));assert.equal(value.result.result.value,url);finish();}});
+ });
+}
 async function verifyTaskbar(){
  const native=JSON.parse((await promisify(execFile)('pwsh.exe',['-NoProfile','-File',path.join(__dirname,'../tests/window-identity-properties.ps1'),'-ProcessId',String(child.pid)],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
  assert.equal(native.pid,child.pid);assert.equal(native.appId,'Facet.MultiInstanceBrowser');
@@ -67,7 +80,7 @@ async function main(){
  const resources=path.join(path.dirname(executable),'resources');
  for(const file of ['app.asar','mihomo/mihomo.exe','mihomo/LICENSE','mihomo/mihomo-source.tar.gz','process-host/facet-process-host.exe','process-host/manifest.json','facet.ico','AGENTS.md','README.md','docs/README.md','docs/PROJECT.md','docs/CURRENT-SCOPE.md','docs/AI-CONTROL-HANDOFF.md','docs/CONTROL-API.md','docs/EXTENSION-COMPATIBILITY.md','docs/FINGERPRINT-CATALOG.md','docs/DIAGNOSTICS.md'])assert(fs.existsSync(path.join(resources,file)),file+' missing');
  pass('Installed resources include packaged code, core, process host, icon, licenses and source archive');
- server=http.createServer((req,res)=>{if(req.url.startsWith('/diagnostic-reset'))return req.socket.destroy();if(req.url.startsWith('/diagnostic-status'))res.statusCode=503;res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><title>Installed live fixture</title><h1>REAL_INSTALLED_PAGE</h1><script>window.ticks=0;function tick(){window.ticks++;requestAnimationFrame(tick)}tick();</script>');});
+ server=http.createServer((req,res)=>{if(req.url==='/geo'){geoHits++;res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ip:'203.0.113.40',country_code:'JP',country:'Japan',timezone:{id:'Asia/Tokyo'}}));}if(req.url.startsWith('/diagnostic-reset'))return req.socket.destroy();if(req.url.startsWith('/diagnostic-status'))res.statusCode=503;res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<!doctype html><title>Installed live fixture</title><h1>REAL_INSTALLED_PAGE</h1><script>window.ticks=0;function tick(){window.ticks++;requestAnimationFrame(tick)}tick();</script>');});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port+'/';
  proxy=http.createServer((req,res)=>{proxyHits++;const destination=new URL(req.url);const request=http.request(destination,{method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});request.on('error',()=>res.end());req.pipe(request);});
  proxy.on('connect',(req,downstream,head)=>{proxyHits++;const target=new URL('http://'+req.url);const upstream=net.connect(Number(target.port)||443,target.hostname,()=>{downstream.write('HTTP/1.1 200 Connection established\r\n\r\n');if(head.length)upstream.write(head);upstream.pipe(downstream);downstream.pipe(upstream);});for(const socket of [upstream,downstream]){sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));}});
@@ -102,11 +115,11 @@ async function main(){
  await ui.waitForFunction(()=>view==='global'&&!!document.querySelector('.github-support-card'));
  const info=await ui.locator('#content').textContent();
  assert(!info.includes('独立新项目')&&!info.includes('（原 Arena Core）')&&!info.includes('明确的边界'));
- for(const text of ['支持开源项目','github.com/HEYD66/facet','已接入','键盘快捷键','免责声明'])assert(info.includes(text),text+' missing');
+ for(const text of ['支持开源项目','github.com/HEYD66/facet','隐私保护与 AI 助手','模型服务','系统加密','键盘快捷键','免责声明'])assert(info.includes(text),text+' missing');
  assert.equal(await ui.locator('#content .section-intro').count(),0);
  assert(await ui.locator('[data-action="open-github"]').first().isEnabled());
  await ui.screenshot({path:path.join(root,'application-info.png')});
- pass('Application info removes the requested introduction and boundary card, retaining GitHub, shortcuts and disclaimer');
+ pass('Packaged application info explains privacy and AI data routing, retaining GitHub, shortcuts and disclaimer');
  for(const id of [a.id,b.id])await call('start',{id});
  await wait(async()=>{const snapshot=await call('snapshot');return snapshot.instances.every(x=>x.status==='running'&&x.title==='Installed live fixture'&&!x.error);},'both installed pages loaded',45000);
  assert(proxyHits>0);const proxyConfig=JSON.parse(fs.readFileSync(path.join(root,'core-runtime',b.id,'runtime.json'),'utf8'));assert.equal(proxyConfig.dns.enable,false);assert(!proxyConfig.hosts);assert(!proxyConfig['interface-name']);pass('Two independent real webpages load; packaged Mihomo and process host use original DNS and routing without hosts overrides');
@@ -170,16 +183,18 @@ async function main(){
  const resetPage=await instancePage(b.id);
  await resetPage.evaluate(()=>{localStorage.setItem('reset-marker','present');document.cookie='reset-cookie=present; path=/';});
  assert.equal(await resetPage.evaluate(()=>localStorage.getItem('reset-marker')),'present');assert((await resetPage.evaluate(()=>document.cookie)).includes('reset-cookie'));
+ await setIsolatedGeoEndpoint(url+'geo');const beforeGeoHits=geoHits;
  await ui.evaluate(id=>route('environment',id),b.id);await ui.locator('[data-action="reset-environment"]').click();await ui.locator('#modal [data-action="confirm"]').click();
  const oldId=b.id;await ui.waitForFunction(id=>!modal&&current().id!==id&&current().status==='stopped'&&!environmentChanged(),oldId);b.id=await ui.evaluate(()=>current().id);assert(!(await call('snapshot')).instances.some(x=>x.id===oldId));
  const savedReset=JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===b.id);
  assert.equal(savedReset.environment.width,0);assert.equal(savedReset.environment.height,0);assert.equal(savedReset.environment.fingerprint.template,'library-v1');
  assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,0);
+ assert(geoHits>beforeGeoHits,'reset must query exit through the real diagnostic path');assert.equal(savedReset.environment.language,'ja-JP');assert.equal(savedReset.environment.timezone,'Asia/Tokyo');
  assert.deepEqual(await ui.evaluate(()=>environmentFormValue().environment.fingerprint),savedReset.environment.fingerprint);
  await call('start',{id:b.id});await call('navigate',{id:b.id,url});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');
  const resetPageAfter=await instancePage(b.id);assert.notEqual(resetPageAfter,resetPage);
  const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,0);
- const diskCatalog=new ExtensionCatalog(root);assert.equal(diskCatalog.enabled(b.id).length,0);assert.equal(savedReset.resetPending??null,null);pass('Packaged reset uses a new ID and clean storage, resets extension enablement, refreshes the form and preserves the proxy on restart');
+ const diskCatalog=new ExtensionCatalog(root);assert.deepEqual(diskCatalog.enabled(b.id),[extension.id]);assert.equal(savedReset.resetPending??null,null);const freshPanel=await extensionPage(b.id,extension.id);assert.equal(await freshPanel.evaluate(async()=> (await chrome.storage.local.get('resetPackageProbe')).resetPackageProbe),undefined);pass('Packaged reset queries controlled exit through the real proxy, aligns locale, creates clean storage and preserves proxy and extension bindings while clearing extension data');
  await ui.locator('#aiToggle').click();await ui.waitForFunction(()=>!document.querySelector('#aiPanel').hidden);const originalSession=(await call('ai-state')).sessions.selectedId;await ui.locator('#aiClear').click();await wait(async()=>(await call('ai-state')).sessions.selectedId!==originalSession,'packaged new session');const sessionId=(await call('ai-state')).sessions.selectedId;await call('ai-session-rename',{sessionId,title:'Packaged session persistence'});await call('ai-session-select',{sessionId:originalSession});await call('ai-session-select',{sessionId});pass('Packaged AI panel creates, selects and renames independently persisted sessions');await close();await launch();const restoredAI=await call('ai-state');assert.equal(restoredAI.sessions.selectedId,sessionId);assert(restoredAI.sessions.items.some(x=>x.title==='Packaged session persistence'));pass('Packaged AI sessions restore after complete process restart');
  const control=await call('control-status');await call('control-save',{enabled:false});await assert.rejects(()=>fetch('http://127.0.0.1:'+control.apiPort+'/v1/status'));pass('Disabling external control closes the packaged API listener');await close();
 }
