@@ -25,7 +25,7 @@ app.whenReady().then(async()=>{let error;try{
    let body='';for await(const chunk of req)body+=chunk;const payload=JSON.parse(body);requests.push(payload);
    if(!payload.tools){summaryStarted=true;summaryCount++;
     const lastGroup=payload.messages.findLast(x=>x.tool_calls?.length);for(const t of lastGroup.tool_calls)assert(payload.messages.some(x=>x.role==='tool'&&x.tool_call_id===t.id));
-    if(mode==='failure'){res.writeHead(503);res.end();return;}
+    if(mode==='failure'){res.writeHead(503,{'Retry-After':'0'});res.end();return;}
     if(mode==='timeout'||mode==='abort'){req.on('close',()=>res.destroy());return;}
     res.setHeader('Content-Type','text/event-stream');
     const delta=mode==='empty'?{}:mode==='unexpected-tool'?{tool_calls:[{index:0,...call('unexpected','stop_instance',{instanceId:target})}]}:{content:'本次未完成：页面连续为空，已停止操作。下一步检查页面访问结果。'};
@@ -45,7 +45,7 @@ app.whenReady().then(async()=>{let error;try{
    agent.begin({prompt:'Read the test page',ids:[target],permission:'full'});
    if(mode==='abort'){await wait(()=>summaryStarted);agent.stop();}
    await wait(()=>!agent.run.busy);
-   assert.equal(summaryCount,1);assert.equal(round,scenario==='limit'?5:scenario==='unbounded'?20:3);
+   assert.equal(summaryCount,scenario==='failure'?3:1);assert.equal(round,scenario==='limit'?5:scenario==='unbounded'?20:3);
    assert.equal(agent.run.status,mode==='abort'?'已停止':scenario==='limit'?'已达到 5 轮上限':'已停止：无进展');
    if(scenario==='unbounded')assert(agent.run.entries.some(x=>x.kind==='system'&&x.text.includes('原地循环')));
    assert(!agent.run.entries.some(x=>x.kind==='tool'&&x.text.startsWith('fill：')));

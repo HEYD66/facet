@@ -51,3 +51,11 @@
 #aiModelPicker[hidden]{display:none}#aiModelChoices section{padding-top:12px}#aiModelChoices small{color:var(--muted)}#aiModelChoices button{display:block;width:100%;border:0;background:transparent;color:var(--text);text-align:left;padding:10px;border-radius:8px;white-space:normal;overflow-wrap:anywhere;cursor:pointer}#aiModelChoices button:hover{background:var(--accent-weak)}
 #aiModelBadge{max-width:55%;overflow:hidden;text-overflow:ellipsis;font-size:11px}
 #aiMemory{font-size:10px;color:var(--muted);white-space:nowrap}#aiAttachments{display:flex;gap:8px;flex-wrap:wrap}#aiAttachments>div{position:relative}#aiAttachments img{width:60px;height:60px;object-fit:cover;border-radius:8px}#aiAttachments button{position:absolute;right:0;top:0;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:50%}
+
+.ai-plan{flex:none;margin:10px 12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);max-height:30%;overflow:auto;font-size:12px}
+.ai-plan[hidden],.ai-edit-settings .ai-plan,.ai-show-sessions .ai-plan{display:none}
+.ai-plan summary{cursor:pointer;color:var(--text);font-weight:600;line-height:1.5}.ai-plan summary span{float:right;color:var(--muted);font-weight:400}
+.ai-plan ol{list-style:none;margin:10px 0 0;padding:0}.ai-plan li{display:flex;align-items:flex-start;gap:8px;padding:5px 0;line-height:1.5}
+.ai-plan-mark{flex:none;width:14px;text-align:center;color:var(--muted)}.ai-plan-title{flex:1;min-width:0;overflow-wrap:anywhere}.ai-plan li small{flex:none;font-size:10px;color:var(--muted);padding-top:1px}
+.ai-plan .in_progress .ai-plan-mark,.ai-plan .in_progress small{color:var(--accent)}.ai-plan .in_progress .ai-plan-title{font-weight:600}.ai-plan .completed .ai-plan-mark{color:var(--accent)}.ai-plan .completed .ai-plan-title{color:var(--muted)}.ai-plan .blocked .ai-plan-mark,.ai-plan .blocked small{color:var(--red)}
+.ai-plan p{margin:8px 0 0;font-size:11px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}

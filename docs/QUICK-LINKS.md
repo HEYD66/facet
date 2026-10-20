@@ -4,7 +4,7 @@
 
 默认五个快捷网站仍沿用当前实例会话和网络，点击导航同一网页；`MAX_LINKS` 当前为 21，名称 1–24 字符、网址上限 2048 字符。用户删除为空后不会自动补回。
 
-检测菜单单独包含 ipip.la、IPLeak、BrowserLeaks DNS、DNSLeakTest、IPPure；旧同名 ipip.la 快捷项通过 `quickLinksRevision:2` 一次性迁移清理。菜单由受控原生浮层叠在网页上，不占额外工具栏高度。普通快捷管理的弹窗和检测浮层不能按同一种层级处理。
+检测菜单单独包含 ipip.la、IPLeak、BrowserLeaks DNS、DNSLeakTest、IPPure 和 ip.net.coffee；旧同名 ipip.la 快捷项通过 `quickLinksRevision:2` 一次性迁移清理。菜单由受控原生浮层叠在网页上，不占额外工具栏高度。普通快捷管理的弹窗和检测浮层不能按同一种层级处理。
 
 下方 2026-09-27 的 20 项限制和布局验证是历史；当前设置以 `quick-links.cjs`、`privacy-sites.js` 为准。详见 [项目手册](PROJECT.md)。
 
