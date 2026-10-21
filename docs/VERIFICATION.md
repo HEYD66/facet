@@ -6,11 +6,21 @@
 
 - `test:fingerprint-contexts`：首次启动和全新 Electron 进程重启两轮通过已实现范围断言。两个并发实例的首段页面、Dedicated / Blob / module / 嵌套 Worker、网站 Service Worker、真正独立进程的跨站 iframe、iframe 内 Worker 和跨站导航读数对齐。实例重启、变更 CPU、仅变更时区、关闭再开启覆盖，以及其他实例不受影响均通过。
 - 必须保留限制：报告 `complete:false`；两实例的 SharedWorker 仍返回原生 UA / CPU / 内存 / 语言 / WebGL。未修改 Worker URL 或默认开放外部 CDP。不能把本节写成所有 Worker 或所有检测网站通过。
-- API 行为：透明画布、空 Canvas 导出、非法 receiver 与单次参数转换、WebGL 未启用扩展的错误码、AudioBuffer 引用/写入/copy、离线渲染稳定性及 complete/Promise/copy 一致、静音、空矩形均通过。OffscreenCanvas 的 DOM 所有权错误保持原生；其导出噪声一致性未实现。
+- API 行为：透明画布、空 Canvas 导出、非法 receiver 与单次参数转换、WebGL 未启用扩展的错误码、AudioBuffer 引用/写入/copy、离线渲染稳定性及 complete/Promise/copy 一致、静音、空矩形均通过。后续已补 OffscreenCanvas 导出噪声一致性，范围见下节。
 - `test:fingerprint` 13/13；`test:fingerprint-electron` 两轮保存/隔离/重启通过；`fingerprint-tostring-electron.cjs` 7 组真实 API / 描述符 / 导航 / 停用检查通过，新增离线音频构造器与渲染方法对照。
 - `test:extension-debugger-electron` 5 项、`test:devtools-electron` 5 项、`test:extensions` 16/16 通过。前两项在开启指纹覆盖的实例内验证扩展调试及 F12 开关后 Worker 仍正常。
 - 使用临时数据与本机服务器，保留每次的 JSON 报告；未重启用户应用或操作真实账号，未修改 DNS、代理或编译内核。Simprint 仅记录待办。当前 Windows / Electron 44.4.5；其他系统、所有自定义 UA、第三方验证码与长期负载未完成验收。
 - 最低基础检查和控制 API 通过；回滚检查点 `d69ee20`，最终变更应单独提交，不使用破坏式重置覆盖其他工作。
+
+### 同日续做：OffscreenCanvas 导出与 SharedWorker 入口
+
+- `test:fingerprint-offscreen`：真实原生基线与覆盖后对照，4 组检查通过。PNG / JPEG / WebP 与无效 MIME 回退、质量参数、参数读取/转换顺序与次数、冻结选项对象、已撤销 Proxy、抛出对象身份、同步/异步错误、零尺寸、分离、DOM 所有权和跨域污染均保留原生行为；调用后清空画布不改变导出快照，转换选项期间绘图会体现在快照中。
+- 原画布内容不变；替换网站侧构造器/getContext/drawImage/putImageData 和覆盖 width/height getter 不会被内部导出调用。保留 sRGB / Display P3 和 unorm8 / float16 原生编码，浮点像素不会被加上字节量级噪声。
+- 页面与 Dedicated Worker 的 PNG 字节一致，HTML 画布转移到 Worker 后仍能正常导出。WebGL / WebGL2 的默认缓冲及保留缓冲导出均含预期噪声。`test:fingerprint-contexts` 增加所有已实现上下文 PNG 字节断言，以及 SharedWorker 顶层首读和导出差异记录；两实例、导航、配置切换、实例重启和全新进程重启两轮各 31 项检查通过，`complete:false` 保留。
+- SharedWorker 仍未修复：独立入口探针中的 `setAutoAttach` 未暂停其首段；`autoAttachRelated` 仅支持 Browser target，页面请求 Browser target 为 `Not allowed`；SharedWorker 预加载注册被拒绝。手动附着成功时首读已经发生。没有将探针的全局目标发现接入生产。
+- 限制：无上下文、bitmaprenderer 或未跟踪上下文保留原生导出，不保证噪声一致性；高频大画布、任意 HDR、完整 GPU 能力和所有第三方检测站未验收。保留原生校验会多编码一个副本，增加单次导出的计算与瞬时内存开销，不增加代理或常驻浏览器进程。
+- 本次检查点 `6495038`；不打包、不推送、不重启真实用户应用。
+- 本轮回归：`check` 291 scripts、`test:control-api` 1/1、`test:fingerprint` 13/13；指纹 UI 保存/全新进程重启两轮、toString 7 组、扩展 debugger 5 项、F12 开发者工具 5 项通过。JSON 报告仅放隔离测试目录，不纳入 Git。
 
 ## 2026-10-14 详细日志修复验收
 

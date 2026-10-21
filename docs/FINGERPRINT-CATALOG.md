@@ -43,7 +43,7 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 ## 已知限制与内核后续
 
 - 字体、媒体设备、语音、WebGPU、完整 WebGL 能力、TLS 均未因导入库而改动。
-- 主页面、同源 iframe、跨站独立进程 iframe、Dedicated Worker 和网站 Service Worker 的所测设备字段已对齐，见下节。SharedWorker 仍有差异；OffscreenCanvas 导出、完整 GPU 能力等不完整覆盖，不能宣称所有上下文完全一致。
+- 主页面、同源 iframe、跨站独立进程 iframe、Dedicated Worker 和网站 Service Worker 的所测设备字段及 OffscreenCanvas PNG 导出已对齐，见下节。SharedWorker 仍有差异；bitmaprenderer 导出和完整 GPU 能力等不完整覆盖，不能宣称所有上下文完全一致。
 - 当前 Electron 44.4.5 的原生对照和库实例在受控 HTTPS 上均未发送 `Sec-CH-UA-*` 请求头；页面 `navigator.userAgentData` 与 UA 版本一致。不能把 JS 元数据验证写成 HTTP Client Hints 已完整支持。[该版本 Electron 源码](https://github.com/electron/electron/blob/v44.4.5/shell/browser/electron_browser_context.cc) 的 `GetClientHintsControllerDelegate` 返回空指针，相关支持需在内核阶段实现。
 - 第三方采样中的 Canvas/音频数值不通用，沿用千面现有固定种子扰动，不导入其签名或私有算法。
 
@@ -51,13 +51,18 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 - 每个网页只附着自己的 iframe / Dedicated Worker 后代。新目标先应用相同环境，再恢复首段脚本；递归处理 iframe 内 Worker 和嵌套 Worker。没有增加网络请求拦截器、浏览器范围的目标发现或外部 CDP 端口。
 - 网站 Service Worker 使用本会话的主世界预加载。CDP 在其启动暂停阶段的 Runtime / Emulation 命令不响应，因此不再将它挂在这条等待链路中。切换环境（含仅时区变化）或开关指纹覆盖时停止旧网站 Worker，保留注册和持久化网站数据。扩展 Service Worker 不执行此覆盖。
-- 空白 Canvas 不加噪，色值不从 255 环绕为 0；保留原生 receiver、参数转换和异常。OffscreenCanvas 的 2D 读取使用相同噪声规则；其 `convertToBlob` 保留原生方法，避免克隆绕过所有权检查或改变编码选项与快照时机，导出噪声一致性仍待做。
+- 透明 Canvas 不加噪，色值不从 255 环绕为 0；保留原生 receiver、参数转换和异常。OffscreenCanvas 的 2D 读取和 `convertToBlob` 使用相同固定种子规则。导出先调用原生方法校验原画布，再同步保存加噪副本；原生错误不会变成成功。编码选项只读取和转换一次，源画布不被修改。
+- OffscreenCanvas 通过弱引用映射记录已获取的绘图上下文，保留 sRGB / Display P3 和 unorm8 / float16；浮点像素使用归一化噪声，不按字节直接加 1。无上下文、未记录上下文或 bitmaprenderer 等无法可靠克隆的情况保留原生结果，不为了导出而改变源画布的上下文类型。该兜底不保证导出噪声覆盖。
 - 不再覆写 `AudioBuffer.getChannelData`：原生引用、手动写入、`copyFromChannel`、空白缓冲均保留。固定种子噪声仅作用于 OfflineAudioContext 渲染结果；在构造时登记完成事件处理，确保页面先注册的事件、返回 Promise 和拷贝读取一致，静音保持零。
 - WebGL 先执行原生查询，再覆盖已启用调试扩展所允许的厂商/渲染器字符串；保留未启用扩展的 null / INVALID_ENUM、非法 receiver 的 TypeError 和参数只转换一次。空元素矩形不偏移。
 
-实际验证入口：`npm.cmd run test:fingerprint-contexts`。独立临时 profile、本机受控 HTTPS、两个并发实例，记录首段脚本读数、跨站进程隔离、导航、实例重启、全新进程重启及配置开关切换。检查 UA / 平台 / CPU / 内存 / 语言列表 / 时区 / GPU，生成库方案的 JavaScript UA-CH 也与主页面比对。
+实际验证入口：`npm.cmd run test:fingerprint-contexts`。独立临时 profile、本机受控 HTTPS、两个并发实例，记录首段脚本读数、跨站进程隔离、导航、实例重启、全新进程重启及配置开关切换。检查 UA / 平台 / CPU / 内存 / 语言列表 / 时区 / GPU，生成库方案的 JavaScript UA-CH 和 OffscreenCanvas PNG 字节也与主页面比对。
+
+`npm.cmd run test:fingerprint-offscreen` 单独对照原生与覆盖后的真实导出：PNG / JPEG / WebP、质量与无效 MIME、参数 getter 顺序和次数、调用时快照、透明像素、非法 receiver、零尺寸、转移/分离、DOM 所有权及跨域污染错误。另测页面/Worker 相同输出、DOM 画布转移到 Worker、色彩空间/浮点精度和网站替换辅助方法。为保留原生校验，正常加噪导出会额外编码副本；大画布高频导出有额外 CPU 和瞬时内存开销，未做长期负载验收。
 
 报告中的 `passed` 表示已实现范围的断言通过；`complete:false` 和 `boundaries` 明确记录 SharedWorker 未完成，不得据退出码写成全上下文通过。测试不读取或修改真实用户实例；未用第三方注册/验证码成功率作为结果，也未宣称对任意自定义 UA 和所有检测站完整覆盖。仅当前 Windows / Electron 44.4.5 的受控场景已测。
+
+SharedWorker 入口探针确认：页面 CDP 的 `setAutoAttach` 即使包含 `shared_worker` 也没有在首段脚本前附着；`autoAttachRelated` 要求 Browser target，页面通道请求 Browser target 被拒绝，`registerPreloadScript` 也不接受 `shared-worker` 类型。运行后手动附着不算首段覆盖。探针未接入生产，不新增全局目标发现、请求拦截器或外部调试端口；后续需独立验证更底层启动入口。
 
 回归另包含 `test:fingerprint-electron`、`fingerprint-tostring-electron.cjs`、`test:extension-debugger-electron` 和 `test:devtools-electron`，验证生产保存流程、停用、扩展调试事件、Worker 与开发者工具兼容。代码回滚点为 `d69ee20`；修改后须重新启动主进程和实例才能使用新逻辑。
 
@@ -74,6 +79,7 @@ npm.cmd run check
 npm.cmd run test:fingerprint
 npm.cmd run test:fingerprint-electron
 npm.cmd run test:fingerprint-contexts
+npm.cmd run test:fingerprint-offscreen
 npm.cmd run test:control-api
 npm.cmd run test:instance-reset-electron
 node scripts/launch-electron.cjs tests/instance-batch-electron.cjs

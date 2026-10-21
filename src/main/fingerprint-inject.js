@@ -88,13 +88,15 @@
   var noisePixels = function (data, seed) {
     if (!data || data.length < 4) return data;
     var step = Math.max(4, Math.floor(data.length / 32 / 4) * 4);
-    var delta = (Math.abs(seed) % 3) + 1;
+    var normalized = data.BYTES_PER_ELEMENT > 1;
+    var limit = normalized ? 1 : 255;
+    var delta = ((Math.abs(seed) % 3) + 1) / (normalized ? 255 : 1);
     var start = Math.abs(seed) % Math.max(1, Math.min(step, data.length - 3));
     for (var i = start; i < data.length; i += step) {
       var p = i - (i % 4);
       // Transparent/empty pixels must stay transparent black. Saturate instead
       // of wrapping 255 to 0, which creates a visible discontinuity.
-      if (data[p + 3] !== 0) data[p] += data[p] > 255 - delta ? -delta : delta;
+      if (data[p + 3] !== 0 && data[p] >= 0 && data[p] <= limit) data[p] += data[p] > limit - delta ? -delta : delta;
     }
     return data;
   };
@@ -116,6 +118,19 @@
     var canvasHeight = root.HTMLCanvasElement && Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, 'height').get;
     var offscreenWidth = root.OffscreenCanvas && Object.getOwnPropertyDescriptor(OffscreenCanvas.prototype, 'width').get;
     var offscreenHeight = root.OffscreenCanvas && Object.getOwnPropertyDescriptor(OffscreenCanvas.prototype, 'height').get;
+    var NativeOffscreenCanvas = root.OffscreenCanvas;
+    var offscreenContext = NativeOffscreenCanvas && NativeOffscreenCanvas.prototype.getContext;
+    var offscreenDraw = root.OffscreenCanvasRenderingContext2D && OffscreenCanvasRenderingContext2D.prototype.drawImage;
+    var offscreenPut = root.OffscreenCanvasRenderingContext2D && OffscreenCanvasRenderingContext2D.prototype.putImageData;
+    var offscreenAttributes = root.OffscreenCanvasRenderingContext2D && OffscreenCanvasRenderingContext2D.prototype.getContextAttributes;
+    var glColorSpace = root.WebGLRenderingContext && Object.getOwnPropertyDescriptor(WebGLRenderingContext.prototype, 'drawingBufferColorSpace');
+    var gl2ColorSpace = root.WebGL2RenderingContext && Object.getOwnPropertyDescriptor(WebGL2RenderingContext.prototype, 'drawingBufferColorSpace');
+    var offscreenContexts = new WeakMap();
+    if (offscreenContext) NativeOffscreenCanvas.prototype.getContext = markNative(function () {
+      var context = apply(offscreenContext, this, arguments);
+      if (context) offscreenContexts.set(this, context);
+      return context;
+    }, offscreenContext);
     patchImageData(root.CanvasRenderingContext2D);
     patchImageData(root.OffscreenCanvasRenderingContext2D);
 
@@ -124,14 +139,31 @@
       // width/height getters on an invalid receiver or a genuine canvas.
       var width = apply(offscreen ? offscreenWidth : canvasWidth, self, []);
       var height = apply(offscreen ? offscreenHeight : canvasHeight, self, []);
-      var copy = offscreen ? new OffscreenCanvas(width, height) : document.createElement('canvas');
-      copy.width = width;
-      copy.height = height;
-      var ctx = copy.getContext('2d');
-      ctx.drawImage(self, 0, 0);
-      var image = apply(offscreen ? originalOffscreenImageData : originalImageData, ctx, [0, 0, copy.width, copy.height]);
+      var attributes, source2D;
+      if (offscreen) {
+        // Do not call getContext on the SOURCE: a context-less canvas must stay
+        // context-less, and an existing WebGL/bitmaprenderer must keep its mode.
+        var originalContext = offscreenContexts.get(self);
+        if (!originalContext) throw new Error('Canvas context not tracked');
+        try { attributes = apply(offscreenAttributes, originalContext, []); source2D = originalContext; }
+        catch (e) {
+          var colorSpace;
+          try { colorSpace = apply(glColorSpace.get, originalContext, []); }
+          catch (e) { colorSpace = apply(gl2ColorSpace.get, originalContext, []); }
+          attributes = { colorSpace: colorSpace };
+        }
+      }
+      var copy = offscreen ? new NativeOffscreenCanvas(width, height) : document.createElement('canvas');
+      if (!offscreen) { copy.width = width; copy.height = height; }
+      var ctx = offscreen ? apply(offscreenContext, copy, ['2d', attributes]) : copy.getContext('2d');
+      var imageArgs = [0, 0, width, height];
+      if (offscreen) imageArgs.push({ colorSpace: attributes.colorSpace, pixelFormat: attributes.colorType === 'float16' ? 'rgba-float16' : 'rgba-unorm8' });
+      // Direct native 2D readback preserves P3/float16 values; drawImage would
+      // introduce a color-conversion round trip before applying the same noise.
+      if (!source2D) { if (offscreen) apply(offscreenDraw, ctx, [self, 0, 0]); else ctx.drawImage(self, 0, 0); }
+      var image = apply(offscreen ? originalOffscreenImageData : originalImageData, source2D || ctx, imageArgs);
       noisePixels(image.data, fp.CanvasSeed);
-      ctx.putImageData(image, 0, 0);
+      if (offscreen) apply(offscreenPut, ctx, [image, 0, 0]); else ctx.putImageData(image, 0, 0);
       return copy;
     };
     var maybeClone = function (self, offscreen) {
@@ -150,8 +182,48 @@
         }, originalToBlob);
       }
     }
-    // Keep OffscreenCanvas.convertToBlob native: exporting a clone bypasses
-    // its ownership checks and can change snapshot/encoder-option semantics.
+    if (root.OffscreenCanvas && OffscreenCanvas.prototype.convertToBlob) {
+      var originalConvertToBlob = OffscreenCanvas.prototype.convertToBlob;
+      var promiseThen = Promise.prototype.then;
+      OffscreenCanvas.prototype.convertToBlob = markNative(function () {
+        var options = arguments[0], args = arguments;
+        var captured = { quality: undefined, type: undefined };
+        var converted = options === null || options === undefined;
+        if (options !== null && (typeof options === 'object' || typeof options === 'function')) {
+          // Let native code choose when/which dictionary members to read. Record
+          // their primitive values once, so encoding the snapshot cannot invoke
+          // a website's getters/valueOf/toString a second time.
+          // Use an empty facade target. Returning converted primitives from a
+          // Proxy over the user's frozen object would violate Proxy invariants.
+          args = [new Proxy(Object.create(null), { get: function (_target, key) {
+            var item = Reflect.get(options, key, options);
+            if (key === 'quality') {
+              captured.quality = item === undefined ? undefined : +item;
+              return captured.quality;
+            }
+            if (key === 'type') {
+              // WebIDL rejects Symbol (String(Symbol) by itself would not).
+              captured.type = item === undefined || typeof item === 'symbol' ? item : String(item);
+              converted = true;
+              return captured.type;
+            }
+            return item;
+          } })];
+        }
+        // Always validate the ORIGINAL canvas first. Its promise retains native
+        // ownership, origin-clean, detached, empty-size and receiver errors.
+        var result = apply(originalConvertToBlob, this, args);
+        if (!converted) return result;
+        var copy;
+        try { copy = cloneWithNoise(this, true); } catch (e) { return result; }
+        // Clone synchronously after native option conversion/snapshot, before
+        // callers can clear, resize, transfer or paint the original canvas.
+        // Native failure must never turn into successful clone export.
+        return apply(promiseThen, result, [function () {
+          return apply(originalConvertToBlob, copy, [captured]);
+        }]);
+      }, originalConvertToBlob);
+    }
   } catch (e) {}
 
   /* ---------------- WebGL vendor / renderer ----------------

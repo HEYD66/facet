@@ -18,10 +18,13 @@ async function sample(){
  const canvas=typeof document==='undefined'?new OffscreenCanvas(64,64):document.createElement('canvas');
  const gl=canvas.getContext('webgl');
  const ext=gl&&gl.getExtension('WEBGL_debug_renderer_info');
+ const drawing=new OffscreenCanvas(32,32),context=drawing.getContext('2d');context.fillStyle='#7296be';context.fillRect(0,0,32,32);
+ const blob=await drawing.convertToBlob(),encoded=Array.from(new Uint8Array(await blob.arrayBuffer()),x=>x.toString(16).padStart(2,'0')).join('');
  return {patched:!!globalThis.__arenaFingerprintV3Applied,ua:nav.userAgent,platform:nav.platform,cpu:nav.hardwareConcurrency,memory:nav.deviceMemory,
   language:nav.language,languages:Array.from(nav.languages),tz:Intl.DateTimeFormat().resolvedOptions().timeZone,
   vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null,
   screen:typeof screen==='undefined'?null:[screen.width,screen.height,screen.availHeight,screen.colorDepth],
+  canvasPng:encoded,
   hints:nav.userAgentData?await nav.userAgentData.getHighEntropyValues(['architecture','bitness','platformVersion','fullVersionList']):null};
 }
 const sampleSource='('+sample.toString()+')()';
@@ -32,6 +35,7 @@ function verify(value,env,label){
  observed[label]=value;
  for(const [key,v]of Object.entries(expected))assert.deepEqual(value[key],v,label+': '+key);
  if(observed[label.split(':')[0]+': main first script']?.hints)assert.deepEqual(value.hints,observed[label.split(':')[0]+': main first script'].hints,label+': UA-CH');
+ if(observed[label.split(':')[0]+': main first script']?.canvasPng)assert.equal(value.canvasPng,observed[label.split(':')[0]+': main first script'].canvasPng,label+': Offscreen export');
  if(value.screen)assert.deepEqual(value.screen,[env.fingerprint.screenWidth,env.fingerprint.screenHeight,env.fingerprint.availHeight,env.fingerprint.colorDepth],label+': screen');
  checks.push(label);
 }
@@ -98,7 +102,7 @@ app.whenReady().then(async()=>{let error;try{
    res.setHeader('Content-Type','text/javascript');
    if(url.pathname==='/worker.js')return res.end(sampleSource+'.then(value=>postMessage(value));');
    if(url.pathname==='/nested-worker.js')return res.end('const w=new Worker("/worker.js");w.onmessage=e=>{postMessage(e.data);w.terminate()};');
-   if(url.pathname==='/shared-worker.js')return res.end('onconnect=e=>{'+sampleSource+'.then(value=>e.ports[0].postMessage(value));};');
+   if(url.pathname==='/shared-worker.js')return res.end('const first='+sampleSource+';onconnect=e=>{first.then(value=>e.ports[0].postMessage(value));};');
    if(url.pathname==='/service-worker.js')return res.end('const first='+sampleSource+';self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("message",e=>e.waitUntil(first.then(value=>e.ports[0].postMessage(value))));');
   }
   res.setHeader('Content-Type','text/html');
@@ -131,6 +135,7 @@ app.whenReady().then(async()=>{let error;try{
   for(const [label,run]of [['shared worker',sharedWorker]]){
    let value;try{value=await run(wc);}catch(error){boundaries.push({instance:i,type:label,error:error.message});continue;}observed[i+': '+label]=value;
    const differences=['ua','cpu','memory','language','tz','vendor','renderer'].filter(key=>value[key]!==({ua:expected[i].userAgent,cpu:expected[i].cpu,memory:expected[i].fingerprint.memory,language:expected[i].language,tz:expected[i].timezone,vendor:expected[i].fingerprint.vendor,renderer:expected[i].fingerprint.renderer})[key]);
+   if(value.canvasPng!==observed[i+': main first script'].canvasPng)differences.push('Offscreen export');
    if(differences.length)boundaries.push({instance:i,type:label,differences});else checks.push(i+': '+label);
   }
   observed[i+': targets']={children:[...contextEnvironmentState(wc).children],pending:contextEnvironmentState(wc).pending.size,serviceWorkers:ses.serviceWorkers.getAllRunning()};
