@@ -44,6 +44,7 @@ function installIPC(window,controller){
     case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.scheduleNodePorts();controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
     case 'library-proxy-save':case 'library-proxy-test':case 'library-proxy-clipboard':case 'library-proxy-parse':return {ok:true,value:await require('./proxy-entry.cjs').proxyEntry(controller,message,clipboard)};
     case 'fingerprint-preset':return {ok:true,value:require('./environment.cjs').environment(require('./fingerprint.cjs').preset(message.preset,require('./environment.cjs').environment(message.environment)))};
+    case 'instance-new-plan':return {ok:true,value:{environment:require('./environment.cjs').environment(require('./fingerprint.cjs').preset('library-v1',require('./environment.cjs').environment(message.environment))),node:require('./node-evidence.cjs').selectForNewInstance(controller)}};
     case 'environment-timezone':return {ok:true,value:await controller.diagnostics.timezone(id,message.network)};
     case 'quick-link-save':controller.workspace.saveQuickLink(message.link||{});controller.emit();break;
     case 'open-github':await shell.openExternal('https://github.com/HEYD66/facet');break;

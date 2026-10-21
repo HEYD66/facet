@@ -42,5 +42,27 @@ function evidence(source,name,index){
 function describe(controller,sourceId,name){const source=controller.library.get(sourceId);controller.library.node(sourceId,name);return evidence(source,name,indexes(controller));}
 function activeNodePorts(controller){const ports=new Map(),{nodeKey}=require('./node-port-registry.cjs');for(const instance of controller.store.list()){const runtime=controller.runtimes?.get(instance.id),port=runtime?.core?.proxyPort;if(instance.network.mode!=='mihomo'||!['running','starting'].includes(runtime?.status)||!runtime?.core?.child||!Number.isInteger(port))continue;const node=controller.store.nodes(instance.id).find(n=>n.name===instance.network.nodeName);if(!node)continue;const key=nodeKey(node),rows=ports.get(key)||[];rows.push({instanceId:instance.id,instanceName:instance.name,port});ports.set(key,rows);}return ports;}
 function summaries(controller){const index=indexes(controller),ports=activeNodePorts(controller),{nodeKey}=require('./node-port-registry.cjs');return controller.library.summaries().map(source=>{const raw=controller.library.get(source.id),rawNodes=new Map(raw.nodes.map(node=>[node.name,node]));return {...source,nodes:source.nodes.map(node=>node.hint?node:{...node,evidence:evidence(raw,node.name,index),localProxy:controller.proxyPool?.lookup(rawNodes.get(node.name))||null,activeProxies:ports.get(nodeKey(rawNodes.get(node.name)))||[]})};});}
+function selectForNewInstance(controller){
+ const {nodeKey}=require('./node-port-registry.cjs'),usage=new Map(),index=indexes(controller),candidates=[];
+ // A stopped instance still owns its saved proxy assignment. Match full configuration, not just its display name.
+ for(const instance of controller.store.list()){
+  if(instance.network.mode!=='mihomo')continue;
+  const node=controller.store.nodes(instance.id).find(row=>row.name===instance.network.nodeName);
+  if(node){const key=nodeKey(node);usage.set(key,(usage.get(key)||0)+1);}
+ }
+ for(const summary of controller.library.summaries()){
+  const source=controller.library.get(summary.id),rawNodes=new Map(source.nodes.map(node=>[node.name,node]));
+  for(const row of summary.nodes){
+   if(row.hint)continue;
+   const node=rawNodes.get(row.name);
+   const valid=result=>result&&Number.isFinite(Date.parse(result.at))&&(!source.updatedAt||String(result.at)>=source.updatedAt)&&result.error!=='已取消';
+   const latest=[index.live.get(JSON.stringify([source.id,node.name,'latency'])),index.history.get(index.key(source.id,node.name))?.latency?.last].filter(valid).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at))[0];
+   if(!latest?.ok||!Number.isFinite(latest.latencyMs)||latest.latencyMs<0)continue;
+   candidates.push({sourceId:source.id,sourceName:source.name,name:node.name,usage:usage.get(nodeKey(node))||0,latencyMs:latest.latencyMs,checkedAt:latest.at});
+  }
+ }
+ candidates.sort((a,b)=>a.usage-b.usage||a.latencyMs-b.latencyMs||Date.parse(b.checkedAt)-Date.parse(a.checkedAt)||a.sourceId.localeCompare(b.sourceId)||a.name.localeCompare(b.name));
+ return candidates[0]||null;
+}
 function environmentFor(evidence,base){const locale=evidence?.locale;return {...base,...(locale?.language?{language:locale.language}:{}),...(locale?.timezone?{timezone:locale.timezone}:{})};}
-module.exports={infer,describe,summaries,environmentFor};
+module.exports={infer,describe,summaries,environmentFor,selectForNewInstance};
