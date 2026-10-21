@@ -53,8 +53,9 @@ async function appMetrics(controller){
  const list=app.getAppMetrics(),n=Math.max(1,os.cpus().length),byPid=new Map(list.map(p=>[p.pid,p])),share=cpuShares(list,n);let cpu=0,kb=0;
  for(const p of list){cpu+=share.get(p.pid)||0;kb+=memKb(p);}
  const running=[...(controller?.runtimes?.entries()||[])];
- const corePids=[...new Set(running.map(([,r])=>r.core?.pid).filter(pid=>pid>0))];
- const hostPids=[...new Set(running.map(([,r])=>r.core?.child?.pid).filter(pid=>pid>0&&!corePids.includes(pid)))];
+ const proxyCores=[...running.map(([,r])=>r.core),...[...(controller?.proxyPool?.groups||[])].map(group=>group.core)].filter(Boolean);
+ const corePids=[...new Set(proxyCores.map(core=>core.pid).filter(pid=>pid>0))];
+ const hostPids=[...new Set(proxyCores.map(core=>core.child?.pid).filter(pid=>pid>0&&!corePids.includes(pid)))];
  const gpuValue=gpuSample(list),samplerPid=gpu.proc?.pid;
  const pids=[...new Set([...corePids,...hostPids,...(samplerPid?[samplerPid]:[])])].filter(pid=>!byPid.has(pid));
  if(pids.length&&(Date.now()-cores.at>CORE_SAMPLE_MS||pids.some(pid=>!cores.kb.has(pid))))await sampleCores(pids);
@@ -63,8 +64,8 @@ async function appMetrics(controller){
  const coreMB=sumPids(corePids),hostMB=sumPids(hostPids),samplerMB=samplerPid?sumPids([samplerPid]):0;
  const breakdown={mainMB:0,rendererMB:0,gpuMB:0,utilityMB:0,coreMB,hostMB,samplerMB};
  for(const p of list){const key=p.type==='Browser'?'mainMB':p.type==='Tab'?'rendererMB':p.type==='GPU'?'gpuMB':'utilityMB';breakdown[key]+=memKb(p)/1024;}
- const instances={};
- for(const [id,r] of running){if(r.status!=='running'||!r.view)continue;let icpu=0,ikb=0,count=0;for(const pid of instancePids(r)){const p=byPid.get(pid);if(!p)continue;icpu+=share.get(pid)||0;ikb+=memKb(p);count++;}const own=[...new Set([r.core?.pid,r.core?.child?.pid].filter(pid=>pid>0))],core=r.core?.pid?sumPids([r.core.pid]):0,host=own.filter(pid=>pid!==r.core?.pid);instances[id]={cpu:Math.max(0,Math.min(100,icpu)),memoryMB:ikb/1024+sumPids(own),coreMB:core,hostMB:sumPids(host),processes:count};}
+ const instances={},owners=new Map();for(const [,r]of running)if(r.status==='running'&&r.core?.pid)owners.set(r.core.pid,(owners.get(r.core.pid)||0)+1);
+ for(const [id,r] of running){if(r.status!=='running'||!r.view)continue;let icpu=0,ikb=0,count=0;for(const pid of instancePids(r)){const p=byPid.get(pid);if(!p)continue;icpu+=share.get(pid)||0;ikb+=memKb(p);count++;}const own=[...new Set([r.core?.pid,r.core?.child?.pid].filter(pid=>pid>0))],divisor=owners.get(r.core?.pid)||1,core=r.core?.pid?sumPids([r.core.pid])/divisor:0,host=own.filter(pid=>pid!==r.core?.pid);instances[id]={cpu:Math.max(0,Math.min(100,icpu)),memoryMB:ikb/1024+sumPids(own)/divisor,coreMB:core,hostMB:sumPids(host)/divisor,sharedCoreUsers:divisor,processes:count};}
  return {cpu:Math.max(0,Math.min(100,cpu)),gpu:gpuValue,memoryMB:(kb+external)/1024,coreMB,hostMB,breakdown,memoryKind:process.platform==='win32'?'private-commit':'working-set',memoryComplete:pids.every(pid=>cores.kb.has(pid)),memorySampleAt:cores.at,processes:list.length,cores:corePids.length,totalProcesses:list.length+pids.length,instances};
 }
 module.exports={appMetrics,parseTasklist,parsePs,parseGpuHeader,gpuUsage};

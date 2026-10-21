@@ -2,13 +2,13 @@
 
 应用设置中的「外部控制（本机 API + CDP）」默认关闭。开启后，千面只在 `127.0.0.1` 监听，不接受局域网或公网连接。
 
-更新：2026-10-21；以 v0.2.18 发布候选的 `control-api.cjs` 和 `ipc.cjs` 为准。[项目手册](PROJECT.md) 说明架构、数据和恢复。端口/路径从当前界面获取，不写死。订阅指定代理字段尚未接入，见 [专项状态](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
+更新：2026-10-22；以 v0.2.18 基线及当前源码（含尚未发布的节点端口服务）的 `control-api.cjs` 和 `ipc.cjs` 为准。[项目手册](PROJECT.md) 说明架构、数据和恢复。端口/路径从当前界面获取，不写死。订阅指定代理字段尚未接入，见 [专项状态](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
 
 ## 端口和隔离
 
 - API 端口用于启停实例、跳转页面和查询状态。
 - CDP 端口是应用级端口，所有运行中的实例页面会作为独立 target 出现在该端口下。
-- 实例自己的 Mihomo 代理端口仍按实例独立分配，和 API/CDP 端口无关。
+- 当前源码的 Mihomo 代理端口按完整节点配置和网络策略分配：多个实例使用同配置节点时可共用端口，不同配置节点分开。它和 API/CDP 端口无关；Cookie 与网站存储仍按实例分区隔离。
 - API 令牌只保存在本机 `control-api.json`，界面可重新生成。
 
 v0.2.18 候选包包含的修复：外部 CDP 在原配置端口经过本机协调网关，内部仍使用私有命名管道；网页 / Worker 环境初始化完成后才转发相应附着事件和恢复命令，防止 Playwright 抢先恢复首段。`chromium.connectOverCDP` 的连接方式不变，支持 Browser 与 page WebSocket，多个客户端使用独立 CDP 会话。此通道目前支持 Windows x64。HTTP 发现入口支持 `/json/version`、`/json/list` 和 `/json`；未实现原生 `/json/protocol` 或托管 DevTools 前端，不能据此宣称所有第三方 CDP 工具兼容。
@@ -48,6 +48,21 @@ Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright
 API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，也不要把令牌提交到日志、工单或版本库。
 
 ## 请求和结果
+
+### 节点端口服务（当前源码）
+
+通过 `POST /v1/actions` 调用，仍要求本机控制 API 的 Bearer 令牌：
+
+| action | 参数 | 结果 |
+| --- | --- | --- |
+| `node-ports-set` | `enabled: true/false` | 持久化服务开关；开启时同步全部有效节点，返回 `started`、`failed` 等明细 |
+| `node-ports-sync` | 无 | 同步当前节点库并重试失败节点；服务需先开启 |
+| `node-port-copy` | `sourceId`、`name`、`protocol: "http"/"socks5"` | 仅对真实运行的端口复制地址，返回 `copied` 与 `port` |
+| `node-ports-copy` | 无 | 复制全部已运行节点地址，返回数量 |
+
+控制界面 `snapshot` 的 `nodePorts` 包含开关、共享进程数、监听端口数、同步状态及最近逐节点失败明细；`library[].nodes[].localProxy` 提供 `port`、`running`、`external`，不含节点配置或密码。`instances[].proxyPort` 可相同，不能把端口当作实例唯一身份。仍以实例 ID 和 CDP target 区分网页。
+
+停止端口服务只释放外部常驻引用；运行实例和检测继续保有租约。订阅变更产生新端口时，运行实例仍沿用保存的旧配置与端口。端口只监听回环，不能作为公网代理；HTTP API 令牌不用于 mixed 代理端口。关闭千面后代理端口也关闭。
 
 请求使用 `Authorization: Bearer <当前令牌>`，JSON 操作使用 `Content-Type: application/json`，请求体最多 128 KB。
 

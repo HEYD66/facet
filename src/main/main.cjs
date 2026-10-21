@@ -42,6 +42,7 @@ app.whenReady().then(async()=>{
  app.on('before-quit',event=>{if(!quitting&&window&&!window.isDestroyed()){event.preventDefault();window.close();}});
  await window.loadFile(path.join(__dirname,'../renderer/index.html'),customFrame?{query:{frame:'custom'}}:undefined);
  controller.updates.scheduleStartupCheck();
+ controller.restoreNodePorts().catch(e=>controller.workspace.log('application','节点端口服务恢复失败：'+require('./workspace.cjs').redact(e.message),'ERROR'));
  (transferStartup?Promise.allSettled(transferStartup.runningIds.filter(id=>controller.store.list().some(x=>x.id===id)).map(id=>controller.start(id))):controller.startOnLaunch()).catch(e=>controller.workspace.log('application','随应用启动任务失败：'+require('./workspace.cjs').redact(e.message),'ERROR'));
  window.once('closed',()=>{controller.controlApi?.stop().catch(()=>{});controller.updates.dispose();});
  console.log('千面 Facet '+require('./application-version.cjs').applicationVersion(app)+' ready; enabled instances start sequentially.');

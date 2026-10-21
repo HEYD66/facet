@@ -162,10 +162,14 @@ app.whenReady().then(async () => {
           assert.deepEqual(s.getSpellCheckerLanguages(), languages);
           const config = JSON.parse(fs.readFileSync(r.core.config));
           assert.equal(config.dns.enable, false); assert.equal(config.tun.enable, false);
-          assert.deepEqual(config.rules, ['MATCH,arena-upstream']);
+          assert.deepEqual(config.rules, ['MATCH,REJECT']);
+          const listener=config.listeners.find(item=>item.port===r.core.proxyPort);
+          assert(listener && listener.listen==='127.0.0.1' && listener.type==='mixed');
+          assert(config.proxies.some(node=>node.name===listener.proxy && node.server===up.node.server && node.port===up.node.port));
           return {x, r};
         };
         const A = await make('A', a), B = await make('B', b);
+        assert.equal(A.r.core.pid, B.r.core.pid, 'compatible node ports share one owned process');
         assert.notEqual(A.r.core.proxyPort, B.r.core.proxyPort);
         const wc = A.r.view.webContents;
         await wc.executeJavaScript("document.cookie='isolation=A';localStorage.setItem('isolation','A')");
@@ -183,7 +187,7 @@ app.whenReady().then(async () => {
           assert(up.requests.includes('CONNECT ws.' + suffix + ':443'));
           await wait(() => up.requests.some(url => /gvt1\.com|\.bdic/.test(url)), 'dictionary download released via upstream ' + up.node.name);
         }
-        pass('real Controller + two Mihomo cores: HTTP/image/fetch/HTTPS/WSS/iframe/popup through independent upstreams');
+        pass('real Controller + shared Mihomo: HTTP/image/fetch/HTTPS/WSS/iframe/popup through independent node ports and upstreams');
         pass('cookies/storage isolated; languages preserved; dictionaries wait for proxy');
         const {TARGETS} = require('../src/main/diagnostics.cjs');
         TARGETS.latency = 'https://tls.' + suffix + '/trace';
@@ -203,7 +207,7 @@ app.whenReady().then(async () => {
         await assert.rejects(controller.start(damaged.id), /拼写词典恢复记录/);
         assert.equal(fs.readFileSync(damagedFile, 'utf8'), '{bad-json');
         assert(!controller.runtimes.get(damaged.id).view);
-        pass('real HTTPS diagnostic cleans up its core; failed instance startup keeps dictionaries deferred');
+        pass('real HTTPS diagnostic releases its node lease; failed instance startup keeps dictionaries deferred');
         await sleep(1600); await netLog.stopLogging(); logging = false;
         const jobs = realResolverJobs(log);
         assert.deepEqual(jobs.filter(h => h.includes(suffix) || h.includes('gvt1.com')), [], 'proxied website/dictionary domains never reach local DNS');
@@ -228,6 +232,7 @@ app.whenReady().then(async () => {
         assert.equal(sentinelHits, 0);
         // Real unexpected core termination closes the view, and the session stays fixed.
         A.r.core.child.kill(); await wait(() => A.r.status === 'error' && !A.r.view, 'core failure closes view');
+        await wait(() => B.r.status === 'error' && !B.r.view, 'shared core failure closes every affected view');
         assert.equal(await A.r.session.resolveProxy('http://127.0.0.1:' + directPort), 'PROXY 127.0.0.1:' + A.r.core.proxyPort);
         await assert.rejects(A.r.session.fetch('http://127.0.0.1:' + directPort + '/stopped-core'));
         assert.equal(sentinelHits, 0);

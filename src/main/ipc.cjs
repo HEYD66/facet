@@ -34,8 +34,12 @@ function installIPC(window,controller){
     case 'ai-session-rename':ai.sessions.rename(message.sessionId,message.title);return {ok:true};
     case 'ai-session-delete':ai.sessions.remove(message.sessionId,message.confirmed);return {ok:true};
     case 'ai-approve':ai.approve(message.approvalId,message.allow);return {ok:true};
+    case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled)};
+    case 'node-ports-sync':return {ok:true,value:await controller.syncNodePorts()};
+    case 'node-ports-copy':{const rows=controller.nodePortNodes().map(node=>({name:node.name,...controller.proxyPool.lookup(node)})).filter(row=>row.running);if(!rows.length)throw Error('暂无已启动的节点端口');await clipboard.writeText(rows.map(row=>`${row.name.replace(/[\r\n\t]/g,' ')}\thttp://127.0.0.1:${row.port}\tsocks5://127.0.0.1:${row.port}`).join('\n'));return {ok:true,value:{copied:true,count:rows.length}};}
+    case 'node-port-copy':{const node=controller.library.node(message.sourceId,message.name),value=controller.proxyPool.lookup(node);if(!value.running)throw Error('节点端口尚未启动，请开启节点端口服务或启动使用该节点的实例');if(!['http','socks5'].includes(message.protocol||'http'))throw Error('代理协议无效');await clipboard.writeText(`${message.protocol||'http'}://127.0.0.1:${value.port}`);return {ok:true,value:{port:value.port,copied:true}};}
     case 'node-network-interfaces':return {ok:true,value:await controller.nodeNetwork.interfaces(true)};
-    case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
+    case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.scheduleNodePorts();controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
     case 'library-proxy-save':case 'library-proxy-test':case 'library-proxy-clipboard':case 'library-proxy-parse':return {ok:true,value:await require('./proxy-entry.cjs').proxyEntry(controller,message,clipboard)};
     case 'fingerprint-preset':return {ok:true,value:require('./environment.cjs').environment(require('./fingerprint.cjs').preset(message.preset,require('./environment.cjs').environment(message.environment)))};
     case 'environment-timezone':return {ok:true,value:await controller.diagnostics.timezone(id,message.network)};

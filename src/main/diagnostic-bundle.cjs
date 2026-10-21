@@ -28,9 +28,11 @@ function buildDiagnosticBundle(snapshot, events, runtime, now = new Date(), deta
     format: 'facet-diagnostics', version: 2, time: now.toISOString(),
     application: { app: text(snapshot.versions?.app), electron: text(snapshot.versions?.electron), platform: os.platform(), architecture: os.arch(), osRelease: os.release() },
     nodeNetwork: { dnsMode: text(snapshot.nodeNetwork?.settings?.dnsMode), routeMode: text(snapshot.nodeNetwork?.settings?.routeMode), warning: text(snapshot.nodeNetwork?.warning) },
+    nodePorts: {enabled:!!snapshot.nodePorts?.enabled,processes:Number(snapshot.nodePorts?.processes)||0,listeners:Number(snapshot.nodePorts?.listeners)||0,externalListeners:Number(snapshot.nodePorts?.externalListeners)||0,busy:!!snapshot.nodePorts?.busy},
     instances: (snapshot.instances || []).map(x => ({
       id: text(x.id), status: text(x.status), network: text(x.network?.mode),
       page: text(x.pageState), core: text(x.coreVersion), error: text(x.error),
+      proxyPort:Number.isInteger(x.proxyPort)?x.proxyPort:null,proxyProcessPid:Number.isInteger(x.pid)?x.pid:null,
       environment: { language: text(x.environment?.language), timezone: text(x.environment?.timezone), customUA: !!x.environment?.userAgent, customPlatform: !!x.environment?.platform }
     })),
     events: (events || []).slice(0, 1000).map(x => ({

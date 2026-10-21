@@ -29,6 +29,8 @@
     "test:ui": "node tests/ui.cjs",
     "setup:core": "node scripts/setup-core.cjs",
     "test:core": "node --test tests/core.test.cjs",
+    "test:shared-proxy": "node --test --test-concurrency=1 tests/shared-proxy.test.cjs",
+    "test:shared-proxy-electron": "node tests/shared-proxy-runner.cjs",
     "test:runtime-security": "node --test tests/runtime-security.test.cjs",
     "test:electron": "node scripts/launch-electron.cjs tests/electron-smoke.cjs",
     "test:subscription": "node --test tests/subscription.test.cjs tests/subscription-content-type.test.cjs",

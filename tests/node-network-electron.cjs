@@ -60,7 +60,7 @@ app.whenReady().then(async()=>{let failed=false;try{
   if(selected){
    const target=c.store.create('DNS compatibility instance',{mode:'mihomo',nodeName:selected.name});c.store.saveNodes(target.id,[selected],null);c.store.update(target.id,{url:'https://www.cloudflare.com/cdn-cgi/trace'});
    await c.start(target.id);const r=c.runtimes.get(target.id),config=JSON.parse(fs.readFileSync(r.core.config,'utf8'));
-   assert.equal(config.proxies[0].server,selected.server);assert.equal(config['interface-name'],physical.name);assert.equal(config.dns.enable,false);assert.equal(Object.keys(config.hosts).length,1);assert.deepEqual(config.rules,['MATCH,arena-upstream']);
+   const listener=config.listeners.find(item=>item.port===r.core.proxyPort),loaded=config.proxies.find(node=>node.name===listener?.proxy);assert.equal(loaded?.server,selected.server);assert.equal(config['interface-name'],physical.name);assert.equal(config.dns.enable,false);assert(Object.keys(config.hosts).length>=1);assert.deepEqual(config.rules,['MATCH,REJECT']);
    await wait(async()=>/\bip=/.test(await r.view.webContents.executeJavaScript('document.body.innerText').catch(()=>'')),'real instance HTTPS page');
    assert.equal(await r.session.resolveProxy('https://www.cloudflare.com/'),'PROXY 127.0.0.1:'+r.core.proxyPort);pass('Authenticated node loads a real HTTPS page through bundled core with scoped DNS and physical routing');
    const live=r.view.webContents;
