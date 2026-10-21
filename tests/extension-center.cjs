@@ -17,11 +17,11 @@ function fixture({extra=0}={}){
 async function openApp(browser,{size=[1440,960],data=fixture()}={}){
  const context=await browser.newContext({viewport:{width:size[0],height:size[1]}}),page=await context.newPage(),errors=[],calls=[];let snap=data;
  page.on('pageerror',e=>errors.push(e.message));
- await page.exposeFunction('__extRequest',async(action,m={})=>{calls.push({action,...m});switch(action){case 'snapshot':return {ok:true,value:snap};case 'activate':case 'layout':case 'extension-open':case 'extension-import':case 'extension-reveal':return {ok:true};case 'extension-refresh-all':return {ok:true,value:{updated:[{name:'Arena 对话导出',from:'1.8.0',version:'1.9.0'}],unchanged:[],noSource:[],failed:[],stopped:['主工作区']}};
-  case 'extension-configure':await new Promise(r=>setTimeout(r,30));snap={...snap,instances:snap.instances.map(x=>x.id===m.id?{...x,status:'stopped'}:x),extensions:snap.extensions.map(e=>e.id!==m.extensionId?e:{...e,instances:e.instances.map(i=>i.id===m.id?{...i,enabled:m.enabled,loaded:false}:i)})};return {ok:true};
+ await page.exposeFunction('__extRequest',async(action,m={})=>{calls.push({action,...m});switch(action){case 'snapshot':return {ok:true,value:snap};case 'activate':case 'layout':case 'extension-open':case 'extension-import':case 'extension-reveal':return {ok:true};case 'extension-refresh-all':return {ok:true,value:{updated:[{name:'Arena 对话导出',from:'1.8.0',version:'1.9.0'}],unchanged:[],noSource:[],failed:[],stopped:['主工作区'],restarted:['主工作区'],restartFailed:[]}};
+  case 'extension-configure':{await new Promise(r=>setTimeout(r,30));const instance=snap.instances.find(x=>x.id===m.id),running=instance.status==='running';snap={...snap,extensions:snap.extensions.map(e=>e.id!==m.extensionId?e:{...e,instances:e.instances.map(i=>i.id===m.id?{...i,enabled:m.enabled,loaded:running&&m.enabled}:i)})};return {ok:true,value:{changed:true,restarted:running?[instance.name]:[],restartFailed:[]}};}
   case 'extension-remove':snap={...snap,extensions:snap.extensions.filter(e=>e.id!==m.extensionId)};return {ok:true};
   default:return {ok:false,error:'Unmocked action '+action};}});
- await page.addInitScript(()=>{window.facet={request:(a,p)=>window.__extRequest(a,p),onState:fn=>window.__stateListener=fn};});
+ await page.addInitScript(()=>{window.facet={request:(a,p)=>window.__extRequest(a,p),onState:fn=>window.__stateListener=fn,onExternalFocus:()=>{}};});
  await page.goto(pageURL);await page.waitForSelector('#sidebar .nav');return {context,page,errors,calls};
 }
 const go=(page,v,id)=>page.evaluate(async([v,id])=>{await route(v,id);},[v,id]);
@@ -78,7 +78,7 @@ try{
  await cardA.locator('[data-extension="enable-menu"]').click();assert.equal(await cardA.locator('.ext-pop .ext-chip').count(),3);assert.equal(await cardA.locator('[data-extension="enable-menu"]').getAttribute('aria-expanded'),'true');
  await cardA.locator('[data-extension="select-all"]').click();assert.equal(await cardA.locator('.ext-pop .ext-chip[aria-pressed=true]').count(),3);assert.equal(calls.filter(c=>c.action==='extension-configure').length,0);await cardA.locator('[data-extension="select-none"]').click();assert.equal(await cardA.locator('.ext-pop .ext-chip[aria-pressed=true]').count(),0);await cardA.locator('[data-extension="cancel"]').click();assert.equal(await cardA.locator('.ext-pop .ext-chip[aria-pressed=true]').count(),2);
  await cardA.locator('.ext-chip[data-instance-id="inst-2"]').click();await cardA.locator('.ext-chip[data-instance-id="inst-1"]').click();
- assert.match(await cardA.locator('.ext-pop .ext-pending').innerText(),/将启用：2；将停用：主工作区[\s\S]*会停止运行中的 主工作区/);assert.match(await cardA.locator('.ext-enable').innerText(),/待应用 2/);
+ assert.match(await cardA.locator('.ext-pop .ext-pending').innerText(),/将启用：2；将停用：主工作区[\s\S]*会重启运行中的 主工作区/);assert.match(await cardA.locator('.ext-enable').innerText(),/待应用 2/);
  assert.equal(await page.evaluate(()=>document.activeElement.dataset.instanceId),'inst-1','focus stays on the toggled instance');
  await cardA.locator('[data-extension="cancel"]').click();assert.equal(await cardA.locator('.ext-pending').count(),0);assert.equal(calls.filter(c=>c.action==='extension-configure').length,0);assert.equal(await cardA.locator('.ext-pop').count(),1,'cancel keeps the pop-over open');
  await cardA.locator('.ext-chip[data-instance-id="inst-2"]').click();await cardA.locator('.ext-chip[data-instance-id="inst-2"]').click();assert.equal(await cardA.locator('.ext-pending').count(),0,'toggling back clears the change');
@@ -87,9 +87,9 @@ try{
  await cardA.locator('[data-extension="enable-menu"]').click();await cardA.locator('.ext-chip[data-instance-id="inst-2"]').click();await cardA.locator('.ext-chip[data-instance-id="inst-1"]').click();await cardA.locator('[data-extension="confirm"]').click();
  await page.waitForFunction(()=>!extensionBusy);
  assert.deepEqual(calls.filter(c=>c.action==='extension-configure').map(({id,extensionId,enabled,confirmed})=>({id,extensionId,enabled,confirmed})),[{id:'inst-2',extensionId:'ext-a',enabled:true,confirmed:true},{id:'inst-1',extensionId:'ext-a',enabled:false,confirmed:true}]);
- assert.match(await page.locator('#toast').innerText(),/已保存/);assert.equal(await cardA.locator('.ext-pop').count(),0,'pop-over closes after applying');assert.match(await cardA.locator('.ext-enable').innerText(),/启用于 2\/3/);
- ok('「启用于」pop-over: tick instances, one confirmation lists what gets stopped, cancel/Esc/outside click are free');
- // Detail page (the apply above stopped 主工作区 in the mock; start it again so panels are offered).
+ assert.match(await page.locator('#toast').innerText(),/已保存.*已恢复运行：主工作区/);assert.equal(await cardA.locator('.ext-pop').count(),0,'pop-over closes after applying');assert.match(await cardA.locator('.ext-enable').innerText(),/启用于 2\/3/);
+ ok('「启用于」pop-over: tick instances, one confirmation lists what gets restarted, cancel/Esc/outside click are free');
+ // Detail page: the running instance remains available after applying.
  await page.evaluate(()=>{state.instances.find(x=>x.id==='inst-1').status='running';render(true);});
  await page.locator('[data-extension-card="ext-b"] [data-extension="detail"]').first().click();await page.waitForSelector('.ext-detail');
  assert.equal(await page.locator('.ext-grid').count(),0);assert.equal(await page.locator('.ext-detail .ext-inst-row').count(),3);assert.match(await page.locator('.ext-detail').innerText(),/abcdefghijklmnop[\s\S]*D:\\ext\\ext-b[\s\S]*storage[\s\S]*https:\/\/arena\.ai\/\*/);
@@ -100,12 +100,12 @@ try{
  await page.locator('[data-extension="back"]').click();assert.equal(await page.locator('.ext-grid .ext-card').count(),3);assert.equal(await page.evaluate(()=>document.activeElement.dataset.extensionId),'ext-b','back returns focus to the card');
  await page.locator('[data-extension-card="ext-b"] [data-extension="detail"]').first().click();await go(page,'extensions');assert.equal(await page.locator('.ext-detail').count(),0,'navigating to the center shows the list');
  ok('Detail page: instances with enable state and panel/settings, ID, source folder, permissions; back returns to the grid');
- await page.locator('[data-extension="refresh-all"]').click();await page.waitForFunction(()=>!extensionBusy);assert(calls.some(c=>c.action==='extension-refresh-all'));assert.match(await page.locator('#toast').innerText(),/已更新 Arena 对话导出 1\.8\.0 → 1\.9\.0[\s\S]*已停止 主工作区/);
+ await page.locator('[data-extension="refresh-all"]').click();await page.waitForFunction(()=>!extensionBusy);assert(calls.some(c=>c.action==='extension-refresh-all'));assert.match(await page.locator('#toast').innerText(),/已更新 Arena 对话导出 1\.8\.0 → 1\.9\.0[\s\S]*已重启 主工作区/);
  assert.equal(await page.locator('[data-extension-card="ext-b"] [data-extension="remove"]').isDisabled(),false);await page.locator('[data-extension-card="ext-b"] [data-extension="remove"]').click();assert.match(await page.locator('[data-extension-card="ext-b"] .ext-pending').innerText(),/会停止.*正在运行.*不会删除/);await page.locator('[data-extension-card="ext-b"] [data-extension="cancel"]').click();
  await page.locator('[data-extension-card="ext-c"] [data-extension="remove"]').click();await page.locator('[data-extension-card="ext-c"] [data-extension="confirm"]').click();await page.waitForFunction(()=>!state.extensions.some(e=>e.id==='ext-c'));
  assert(calls.some(c=>c.action==='extension-remove'&&c.extensionId==='ext-c'));
  await page.locator('[data-extension="import"]').click();await page.waitForTimeout(50);assert(calls.some(c=>c.action==='extension-import'));
- ok('全部更新 reports versions and stopped instances; used extensions offer removal with affected-instance confirmation; import unchanged');
+ ok('全部更新 reports versions and restarted instances; used extensions offer removal with affected-instance confirmation; import unchanged');
  // Readability, both themes, center + toolbar + menu.
  const audit=[];for(const theme of ['light','dark']){await page.evaluate(t=>{document.documentElement.dataset.theme=t;},theme);await page.waitForTimeout(450);await go(page,'extensions');await page.locator('[data-extension-card="ext-b"] [data-extension="enable-menu"]').click();await page.locator('[data-extension-card="ext-b"] [data-instance-id="inst-2"]').click();audit.push(...(await readability(page)).map(x=>theme+'/center '+x));await page.locator('[data-extension-card="ext-b"] [data-extension="cancel"]').click();await page.keyboard.press('Escape');
   await page.locator('[data-extension-card="ext-a"] [data-extension="detail"]').first().click();audit.push(...(await readability(page)).map(x=>theme+'/detail '+x));await page.locator('[data-extension="back"]').click();
@@ -113,7 +113,7 @@ try{
  assert.deepEqual(audit,[]);await page.evaluate(()=>{document.documentElement.dataset.theme='light';});
  ok('Extension center, toolbar and menu: text >= 11px and >= 4.5:1 in day and night');
  await go(page,'extensions');assert.equal(await page.locator('#sidebar [data-view="browser"]').count(),1);assert.equal(await page.locator('#sidebar .back-to-instance').count(),0);assert.deepEqual(await page.locator('#sidebar .nav.active').evaluateAll(n=>n.map(x=>x.dataset.view)),['extensions']);
- const start=await page.locator('#sidebar [data-action="toggle"]').evaluate(b=>({text:b.innerText.trim(),cls:b.className}));assert.match(start.text,/启动当前实例/);assert.match(start.cls,/primary/);
+ const running=await page.locator('#sidebar [data-action="toggle"]').evaluate(b=>({text:b.innerText.trim(),cls:b.className}));assert.match(running.text,/停止当前实例/);assert.match(running.cls,/danger/);
  ok('Global pages keep the same sidebar; 停止当前实例 is a filled button as prominent as 启动');
  assert.deepEqual(errors,[]);await cur.context.close();
  for(const size of [[1024,768],[1280,800],[1440,960]]){cur=await openApp(browser,{size,data:fixture({extra:6})});({page,errors}=cur);

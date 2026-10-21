@@ -78,6 +78,8 @@ OPTIONS 预检不表示业务授权，CORS 不能代替令牌。`ok:true` 也不
 
 扩展移除需 `confirmed:true` 和本次确认的 `instanceIds`；启用范围发生变化则拒绝，需重新盘点。专用 DELETE 不替用户弹出确认，调用者先获得明确删除授权。导入/导出/目录选择仍可能要求原生交互，API 不伪造已选文件。安装要求 `confirmed:true`。
 
+`extension-configure` 仍需 `confirmed:true`。更改后自动恢复原先运行的目标实例，停止的实例保持停止；重复提交相同启用状态不重启。返回的 `value` 含 `id`、`extensionId`、`enabled`、`changed`、`stopped`、`restarted` 和 `restartFailed`；后两项分别是已恢复的实例名称列表与 `{id,name,error}` 失败列表。`ok:true` 可能表示配置已保存但恢复运行失败，必须继续检查 `restartFailed`、实例状态和网页 target。保存失败返回 `ok:false`，并尝试按原配置恢复；退出过程中不重新启动实例。网页会重建，未保存输入可能丢失。
+
 ## 精确选择网页 target
 
 targets 返回 instanceId、instanceName、webContentsId、targetId、URL 和 title。多个实例可访问同一 URL，名称可变，停止/重建页面后 targetId 变化；按 URL 或序号不能可靠定位。

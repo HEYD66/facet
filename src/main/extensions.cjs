@@ -14,7 +14,20 @@ class InstanceExtensions{
  unload(r){r.extensionHost?.close();r.extensionHost=null;for(const w of r.extensionWindows||[]){if(!w.isDestroyed())w.destroy();}r.extensionWindows?.clear();for(const e of r.loadedExtensions?.values()||[]){try{r.session.extensions.removeExtension(e.id);}catch(error){r.extensionUnloadError=error.message;return;}}r.loadedExtensions?.clear();}
  // Chrome enables manifest-default static DNR rulesets on install/update; Electron does not. Never blocks the start.
  async applyStaticRulesets(r,id){const items=[...r.loadedExtensions].map(([key,extension])=>{const row=this.catalog.get(key);return {key,extension,fingerprint:row.sha256||row.updatedAt||row.importedAt||row.version};});if(!items.some(x=>x.extension?.manifest?.declarative_net_request))return;const {redact}=require('./workspace.cjs');try{for(const x of await require('./extension-dnr-rulesets.cjs').applyDefaultRulesets(r.session,items)){const name=this.catalog.get(x.key).name;if(!x.ok)this.c.log(id,'扩展静态拦截规则未能启用（'+name+'）：'+redact(x.error)+'；下次启动时重试');else if(x.value?.enabled?.length)this.c.log(id,'已按扩展清单启用静态拦截规则（'+name+'）：'+x.value.enabled.join('、'));}}catch(e){this.c.log(id,'扩展静态拦截规则检查失败：'+redact(e.message));}}
- async configure(id,key,enabled){return this.c.queue(id,async()=>{this.c.store.get(id);this.catalog.get(key);if(typeof enabled!=='boolean')throw Error('启用状态无效');if(this.catalog.enabled(id).includes(key)===enabled)return;await this.c.stopInner(id);this.catalog.setEnabled(id,key,enabled);this.c.log(id,'扩展选择已保存；当前实例已停止，请手动启动');});}
+ async configure(id,key,enabled){return this.c.queue(id,async()=>{
+  const instance=this.c.store.get(id);this.catalog.get(key);if(typeof enabled!=='boolean')throw Error('启用状态无效');if(this.c.disposing)throw Error('应用正在退出');
+  const result={id,extensionId:key,enabled,changed:false,stopped:[],restarted:[],restartFailed:[]};if(this.catalog.enabled(id).includes(key)===enabled)return result;
+  const running=this.c.runtimes.get(id)?.status==='running';await this.c.stopInner(id);if(running)result.stopped.push(instance.name);
+  let saveError;try{if(this.c.disposing)throw Error('应用正在退出');this.catalog.setEnabled(id,key,enabled);result.changed=true;this.c.log(id,'扩展选择已保存'+(running?'；正在恢复实例运行':'；下次启动时生效'));}catch(e){saveError=e;}
+  if(running){try{
+   // Already inside this instance's queue: calling start(id) here would deadlock.
+   // Keep the same global start serialization as Controller.start.
+   const next=this.c.startTail.catch(()=>{}).then(()=>this.c.startInner(id));this.c.startTail=next;await next;
+   const runtime=this.c.runtimes.get(id);if(runtime?.status!=='running'||!!runtime.loadedExtensions?.has(key)!==this.catalog.enabled(id).includes(key))throw Error('实例或扩展未恢复到预期状态');
+   result.restarted.push(instance.name);this.c.log(id,saveError?'扩展选择保存失败；已按原配置恢复运行':'扩展选择更改后已自动恢复运行');
+  }catch(e){const error=require('./workspace.cjs').redact(e.message);result.restartFailed.push({id,name:instance.name,error});this.c.log(id,'扩展选择更改后恢复运行失败：'+error,'ERROR');}}
+  this.c.emit();if(saveError)throw Error('扩展选择未保存：'+require('./workspace.cjs').redact(saveError.message)+(result.restarted.length?'；已按原配置恢复运行':result.restartFailed.length?'；恢复运行失败：'+result.restartFailed[0].error:''));return result;
+ });}
  async open(id,key,kind){if(!['popup','options'].includes(kind))throw Error('无效的扩展界面');const r=this.c.runtimes.get(id),loaded=r?.loadedExtensions?.get(key),entry=kind==='popup'?(r?.extensionHost?.compat?.state.data.action[loaded?.id+':'+r?.view?.webContents?.id]?.popup??r?.extensionHost?.compat?.state.data.action[loaded?.id]?.popup??this.catalog.get(key).entries[kind]):this.catalog.get(key).entries[kind];if(!r||r.status!=='running'||!loaded)throw Error('请先启用扩展并启动对应实例');if(!entry)throw Error('此扩展未声明该界面');
  r.extensionHost.compat.tabs.focusedId=r.view.webContents.id;r.extensionHost.compat.grantActive({id:loaded.id,manifest:loaded.manifest});const url=new URL(entry,'chrome-extension://'+loaded.id+'/').href;
  r.extensionWindows??=new Set();for(const w of r.extensionWindows){if(!w.isDestroyed()&&w.webContents.getURL()===url&&this.windowKinds.get(w)===kind){w.focus();return;}}
