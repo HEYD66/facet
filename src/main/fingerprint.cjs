@@ -139,7 +139,7 @@ function generatedMetadata(env,native){
 }
 function script(env){const f=normalize(env.fingerprint);if(!f.enabled)return null;
  const seed=key=>crypto.createHash('sha256').update(f.seed+':'+key).digest().readUInt32LE(0);
- const payload={Hardware:f.hardware,WebGL:f.webgl,Canvas:f.canvas,Audio:f.audio,Rects:f.rects,DeviceMemory:f.memory,MaxTouchPoints:f.touch,ScreenWidth:f.screenWidth,ScreenHeight:f.screenHeight,AvailableScreenHeight:f.availHeight,ColorDepth:f.colorDepth,WebGlVendor:f.vendor,WebGlRenderer:f.renderer,CanvasSeed:seed('canvas'),AudioSeed:seed('audio'),ClientRectsSeed:seed('rects')};
+ const payload={Hardware:f.hardware,WebGL:f.webgl,Canvas:f.canvas,Audio:f.audio,Rects:f.rects,DeviceMemory:f.memory,MaxTouchPoints:f.touch,ScreenWidth:f.screenWidth,ScreenHeight:f.screenHeight,AvailableScreenHeight:f.availHeight,ColorDepth:f.colorDepth,WebGlVendor:f.vendor,WebGlRenderer:f.renderer,CanvasSeed:seed('canvas'),AudioSeed:seed('audio'),ClientRectsSeed:seed('rects'),WorkerUserAgent:env.userAgent||'',WorkerPlatform:env.platform||'',WorkerLanguage:env.language||'',WorkerCPU:env.cpu||0};
  const source=fs.readFileSync(path.join(__dirname,'fingerprint-inject.js'),'utf8'),slot='/*__FACET_FP_PAYLOAD__*/null';if(source.split(slot).length!==2)throw Error('指纹注入槽位无效');return source.replace(slot,()=>JSON.stringify(payload));
 }
 module.exports={normalize,preset,script,DEVICE_TEMPLATES,generatedMetadata,generatedUserAgent};

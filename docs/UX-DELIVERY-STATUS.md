@@ -11,6 +11,17 @@
 - 历史通知布局待办需按当前源码重新确认；本次文档整理未对旧待办逐项现场验收，不擅自勾选完成。
 - 验证证据按版本与范围记录，见 [VERIFICATION.md](VERIFICATION.md)。
 
+## 2026-10-21：指纹上下文一致性与内核候选
+
+- [ ] Simprint 内核评估与选择性移植：参考 https://github.com/Simprint/simprint-browser-kernel ，优先审查每实例固定种子、Worker / 跨站 iframe、Canvas / Audio / WebGL 的原生行为与版本升级成本。官方仓库已归档，已查分支为 `simprint/m144`（Chromium 144.0.7559.118，AGPLv3）；不得将配置项或补丁存在等同于运行验证通过，不直接替换现有 Electron 内核。
+- [x] Dedicated Worker（含 Blob、module、嵌套和跨站 iframe 内 Worker）与网页的 UA、语言、时区、CPU、内存和 WebGL 报告一致；两个并发实例及全新进程重启验证通过。
+- [x] 网站 Service Worker 在首段脚本前应用覆盖；变更环境或仅变更时区时停止本会话旧网站 Worker，使其再次启动时读取新配置；关闭覆盖后撤销预加载，开启后恢复。保留注册与网站数据，不处理扩展 Worker。
+- [ ] SharedWorker 仍返回原生 UA / CPU / 内存 / 语言 / GPU；现有页面 CDP 不能可靠覆盖它的首段脚本。本轮不重写 Worker URL、不默认开放外部调试端口；后续独立研究会话级入口或内核方案。
+- [x] 补齐跨站独立进程 iframe 的环境应用时机；首段脚本、跨站跳转后和全新 Electron 进程重启的读数通过。
+- [x] 修复已复现的 API 行为问题：空白画布保持透明黑，非法 Canvas receiver 不调用页面 getter，AudioBuffer 读取不修改数据，离线音频事件/Promise/copy 一致，WebGL 保留未启用扩展和非法调用的原生错误语义。保留固定种子。
+- 状态：已验证上述源码修复；SharedWorker 未完成，不能宣称所有上下文均一致或所有风控网站通过。OffscreenCanvas 仅覆盖 2D 读取及 WebGL 字符串，`convertToBlob` 保留原生实现。详见 [指纹说明](FINGERPRINT-CATALOG.md) 和 [验证记录](VERIFICATION.md)。
+- 本轮回滚检查点：`d69ee20`。使用隔离测试数据，未重启正在使用的应用，未修改真实实例数据、网络或 DNS；尚未打包发布。
+
 ## 2026-10-14：详细诊断导出
 
 - [x] 订阅 DNS/TCP/TLS/HTTP/解析阶段、节点准备、检测、内核输出和网页失败接入结构化采集。

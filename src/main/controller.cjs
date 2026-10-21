@@ -81,6 +81,7 @@ class Controller {
  wc.on('render-process-gone',(_event,details)=>{const trace=this.networkTrace.begin({operation:'renderer-exit',instanceId:id});this.networkTrace.record(trace,{stage:'process-exit',reason:details?.reason,exitCode:details?.exitCode});this.networkTrace.finish(trace,{result:'failed'});if(this.runtimes.get(id)===r){r.status='error';r.error='浏览进程退出，请停止后重启实例';this.log(id,r.error,'ERROR');this.stop(id).catch(()=>{});}});
  await wc.loadFile(path.join(__dirname,'../renderer/seed.html'));
  const native=await wc.executeJavaScript(`(async()=>({platform:navigator.platform,metadata:navigator.userAgentData?await navigator.userAgentData.getHighEntropyValues(['architecture','bitness','model','platformVersion','fullVersionList','wow64']):null}))()`);r.native=native;
+ wc.on('facet-environment-error',error=>this.log(id,error.message,'WARN'));
  wc.debugger.attach('1.3');await applyEnvironment(wc,x.environment,native,this.bounds||{width:this.window.getContentSize()[0],height:this.window.getContentSize()[1]});
  if(this.extensions.catalog.enabled(id).length)await this.extensions.load(r,id);
  r.status='running';this.transfer.consumeCookies(id);this.choose(this.activeId);this.log(id,x.network.mode==='direct'?'本机 IP 直连 · 已建立独立持久会话':'代理模式 · 连接失败不会回退直连');wc.loadURL(x.url).catch(e=>{if(e.code!=='ERR_ABORTED')this.log(id,'网页未能完成加载，请检查网址或网络','WARN');});
@@ -93,6 +94,7 @@ class Controller {
   pwc.setWindowOpenHandler(({url})=>{try{const next=safeURL(url);setImmediate(()=>{if(!pwc.isDestroyed())pwc.loadURL(next).catch(()=>{});});}catch{}return {action:'deny'};});
   const guard=(event,url)=>{if(url==='about:blank')return;try{safeURL(url);}catch{event.preventDefault();}};pwc.on('will-navigate',guard);pwc.on('will-redirect',guard);
   pwc.on('render-process-gone',()=>{if(!win.isDestroyed())win.destroy();});
+  pwc.on('facet-environment-error',error=>this.log(id,error.message,'WARN'));
   (async()=>{try{pwc.debugger.attach('1.3');const b=win.getContentBounds();await applyEnvironment(pwc,{...x.environment,width:0,height:0},r.native||{platform:'',metadata:null},{width:b.width,height:b.height});if(/^https?:/i.test(target)&&!pwc.isDestroyed())await pwc.loadURL(target).catch(()=>{});this.log(id,'网页打开了弹出窗口：与本实例同一登录、代理和环境');}catch(e){this.log(id,'弹出窗口未能套用实例环境，已关闭：'+e.message,'WARN');if(!win.isDestroyed())win.destroy();}})();}
  // 代理断开提醒（被动）：网页的单次主框架加载失败可能只是目标站点拒绝、限流或临时故障，不能据此判断节点断开。
  // 内核错误只作辅助记录；只有两个不同网站在短时间内都失败时才显示全局提醒。只提示，不自动切换节点、不改为直连。

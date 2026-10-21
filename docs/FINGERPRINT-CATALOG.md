@@ -1,6 +1,6 @@
 # 指纹候选库与组合规则
 
-更新：2026-10-15。v0.2.14 修正整套随机的默认视口。适用于 v0.2.13 中的 `library-v1`；旧发行版 v0.2.12 不包含该候选库。它扩充配置生成，仍使用现有 Electron/CDP 与页面 API 覆盖，不代表已经实现原生指纹内核。
+更新：2026-10-21。当前 v0.2.17 源码补齐部分 Worker / 跨站 iframe 覆盖并修正 API 行为；此修改尚未发布。v0.2.14 修正整套随机的默认视口。适用于 v0.2.13 中的 `library-v1`；旧发行版 v0.2.12 不包含该候选库。仍使用现有 Electron/CDP 与页面 API 覆盖，不代表已经实现原生指纹内核。
 
 ## 数据与数量
 
@@ -43,9 +43,23 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 ## 已知限制与内核后续
 
 - 字体、媒体设备、语音、WebGPU、完整 WebGL 能力、TLS 均未因导入库而改动。
-- 主页面和同源 iframe 的报告值已测；Worker/OffscreenCanvas 不完整覆盖。真实测试中 Worker 仍返回原生设备内存，不能宣称页面和 Worker 已完全一致。
+- 主页面、同源 iframe、跨站独立进程 iframe、Dedicated Worker 和网站 Service Worker 的所测设备字段已对齐，见下节。SharedWorker 仍有差异；OffscreenCanvas 导出、完整 GPU 能力等不完整覆盖，不能宣称所有上下文完全一致。
 - 当前 Electron 44.4.5 的原生对照和库实例在受控 HTTPS 上均未发送 `Sec-CH-UA-*` 请求头；页面 `navigator.userAgentData` 与 UA 版本一致。不能把 JS 元数据验证写成 HTTP Client Hints 已完整支持。[该版本 Electron 源码](https://github.com/electron/electron/blob/v44.4.5/shell/browser/electron_browser_context.cc) 的 `GetClientHintsControllerDelegate` 返回空指针，相关支持需在内核阶段实现。
 - 第三方采样中的 Canvas/音频数值不通用，沿用千面现有固定种子扰动，不导入其签名或私有算法。
+
+## 2026-10-21 上下文一致性与 API 行为修复
+
+- 每个网页只附着自己的 iframe / Dedicated Worker 后代。新目标先应用相同环境，再恢复首段脚本；递归处理 iframe 内 Worker 和嵌套 Worker。没有增加网络请求拦截器、浏览器范围的目标发现或外部 CDP 端口。
+- 网站 Service Worker 使用本会话的主世界预加载。CDP 在其启动暂停阶段的 Runtime / Emulation 命令不响应，因此不再将它挂在这条等待链路中。切换环境（含仅时区变化）或开关指纹覆盖时停止旧网站 Worker，保留注册和持久化网站数据。扩展 Service Worker 不执行此覆盖。
+- 空白 Canvas 不加噪，色值不从 255 环绕为 0；保留原生 receiver、参数转换和异常。OffscreenCanvas 的 2D 读取使用相同噪声规则；其 `convertToBlob` 保留原生方法，避免克隆绕过所有权检查或改变编码选项与快照时机，导出噪声一致性仍待做。
+- 不再覆写 `AudioBuffer.getChannelData`：原生引用、手动写入、`copyFromChannel`、空白缓冲均保留。固定种子噪声仅作用于 OfflineAudioContext 渲染结果；在构造时登记完成事件处理，确保页面先注册的事件、返回 Promise 和拷贝读取一致，静音保持零。
+- WebGL 先执行原生查询，再覆盖已启用调试扩展所允许的厂商/渲染器字符串；保留未启用扩展的 null / INVALID_ENUM、非法 receiver 的 TypeError 和参数只转换一次。空元素矩形不偏移。
+
+实际验证入口：`npm.cmd run test:fingerprint-contexts`。独立临时 profile、本机受控 HTTPS、两个并发实例，记录首段脚本读数、跨站进程隔离、导航、实例重启、全新进程重启及配置开关切换。检查 UA / 平台 / CPU / 内存 / 语言列表 / 时区 / GPU，生成库方案的 JavaScript UA-CH 也与主页面比对。
+
+报告中的 `passed` 表示已实现范围的断言通过；`complete:false` 和 `boundaries` 明确记录 SharedWorker 未完成，不得据退出码写成全上下文通过。测试不读取或修改真实用户实例；未用第三方注册/验证码成功率作为结果，也未宣称对任意自定义 UA 和所有检测站完整覆盖。仅当前 Windows / Electron 44.4.5 的受控场景已测。
+
+回归另包含 `test:fingerprint-electron`、`fingerprint-tostring-electron.cjs`、`test:extension-debugger-electron` 和 `test:devtools-electron`，验证生产保存流程、停用、扩展调试事件、Worker 与开发者工具兼容。代码回滚点为 `d69ee20`；修改后须重新启动主进程和实例才能使用新逻辑。
 
 ## 2026-10-15 视口修复验证
 
@@ -59,6 +73,7 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 npm.cmd run check
 npm.cmd run test:fingerprint
 npm.cmd run test:fingerprint-electron
+npm.cmd run test:fingerprint-contexts
 npm.cmd run test:control-api
 npm.cmd run test:instance-reset-electron
 node scripts/launch-electron.cjs tests/instance-batch-electron.cjs
@@ -85,4 +100,4 @@ git diff --check
 
 验证入口：`node scripts/launch-electron.cjs tests/fingerprint-tostring-electron.cjs`。使用独立临时数据和本机 HTTP 页面，对比未注入基线，检查函数/属性描述、非法调用、同源 iframe、跨上下文借用、重复注入、导航和关闭注入；实际执行 Canvas PNG/Blob、音频读取、布局和点击。
 
-边界：这不是内核改造，也不保证无法检测。跨上下文借用 toString 时可能显示原生 Proxy 的匿名函数文本，而不是带名称的原生函数文本。Worker、未注入上下文和第三方风控判定不在此修复保证范围内。已运行实例需在加载新版主进程后重新启动才使用新注入脚本。
+边界：这不是内核改造，也不保证无法检测。跨上下文借用 toString 时可能显示原生 Proxy 的匿名函数文本，而不是带名称的原生函数文本。本节历史测试主要覆盖页面；后续 Worker 的字段验证见 2026-10-21 节，SharedWorker 和第三方风控判定仍不在已修范围内。已运行实例需在加载新版主进程后重新启动才使用新注入脚本。

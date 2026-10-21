@@ -26,7 +26,7 @@ app.whenReady().then(async()=>{
   const ext=path.join(root,'extension');writeExtension(ext);
   win=new BrowserWindow({show:false,webPreferences:{sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
   controller=new Controller(win,root,path.join(__dirname,'../resources/mihomo',process.platform==='win32'?'mihomo.exe':'mihomo'));
-  const instance=controller.store.list()[0];controller.store.update(instance.id,{url});
+  const instance=controller.store.list()[0],environment=require('../src/main/fingerprint.cjs').preset('library-v1',{},'extension-context-compatibility');controller.store.update(instance.id,{url,environment});
   const entry=controller.extensions.catalog.stage(ext);controller.extensions.catalog.accept(entry);controller.extensions.catalog.setEnabled(instance.id,entry.id,true);
   await controller.start(instance.id);
   const runtime=controller.runtimes.get(instance.id);assert.equal(runtime.status,'running');
@@ -37,6 +37,8 @@ app.whenReady().then(async()=>{
   await wait(()=>runtime.view.webContents.executeJavaScript('JSON.parse(document.documentElement.dataset.debuggerStatus||"{}").events>0'),'Network event forwarding');
   const active=JSON.parse(await runtime.view.webContents.executeJavaScript('document.documentElement.dataset.debuggerStatus'));
   assert.equal(active.attached,true);assert(active.events>0);results.push('Network.responseReceived 事件已转发给扩展 service worker');
+  const worker=await runtime.view.webContents.executeJavaScript('new Promise((resolve,reject)=>{const u=URL.createObjectURL(new Blob(["postMessage({cpu:navigator.hardwareConcurrency,memory:navigator.deviceMemory})"],{type:"text/javascript"}));const w=new Worker(u);const t=setTimeout(()=>reject(Error("Worker timeout")),10000);w.onmessage=e=>{clearTimeout(t);w.terminate();URL.revokeObjectURL(u);resolve(e.data)};})');
+  assert.deepEqual(worker,{cpu:environment.cpu,memory:environment.fingerprint.memory});results.push('启用指纹覆盖时，扩展后台/CDP 与网页 Worker 覆盖可同时工作');
   const before=active.events;await runtime.view.webContents.executeJavaScript('void fetch("/probe?after=stop")');await new Promise(r=>setTimeout(r,100));
   // The fixture extension has no stop control in the page; invoke its background through a one-shot script.
   await runtime.view.webContents.executeJavaScript('window.postMessage({source:"facet-debugger-test",command:"stop"},"*")');

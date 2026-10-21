@@ -9,6 +9,7 @@ const probe=()=>{
   const ts=Function.prototype.toString;
   const failure=f=>{try{f();return null;}catch(e){return e.name;}};
   const funcs={toString:ts,canvas:HTMLCanvasElement.prototype.toDataURL,blob:HTMLCanvasElement.prototype.toBlob,image:CanvasRenderingContext2D.prototype.getImageData,audio:AudioBuffer.prototype.getChannelData,rect:Element.prototype.getBoundingClientRect,range:Range.prototype.getBoundingClientRect,gl:WebGLRenderingContext.prototype.getParameter,gl2:WebGL2RenderingContext.prototype.getParameter};
+  funcs.offlineConstructor=OfflineAudioContext;funcs.offlineRender=OfflineAudioContext.prototype.startRendering;
   for(const [proto,keys] of [[Navigator.prototype,['deviceMemory','maxTouchPoints']],[Screen.prototype,['width','height','availWidth','availHeight','colorDepth','pixelDepth']]])for(const key of keys){const d=Object.getOwnPropertyDescriptor(proto,key);if(d?.get)funcs[key]=d.get;}
   const rows={};for(const [key,f]of Object.entries(funcs))rows[key]={source:ts.call(f),direct:f.toString(),name:f.name,length:f.length,keys:Reflect.ownKeys(f).map(String),prototype:Object.hasOwn(f,'prototype'),construct:failure(()=>Reflect.construct(f,[])),badReceiver:failure(()=>Reflect.apply(f,{},[]))};
   const d=Object.getOwnPropertyDescriptor(Function.prototype,'toString');

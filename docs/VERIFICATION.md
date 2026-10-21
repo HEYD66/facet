@@ -1,6 +1,16 @@
 # 验证入口与历史记录
 
-更新：2026-10-14。当前源码版本 v0.2.13。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
+更新：2026-10-21。当前源码版本 v0.2.17。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
+
+## 2026-10-21 指纹上下文与 API 行为修复（源码，未发布）
+
+- `test:fingerprint-contexts`：首次启动和全新 Electron 进程重启两轮通过已实现范围断言。两个并发实例的首段页面、Dedicated / Blob / module / 嵌套 Worker、网站 Service Worker、真正独立进程的跨站 iframe、iframe 内 Worker 和跨站导航读数对齐。实例重启、变更 CPU、仅变更时区、关闭再开启覆盖，以及其他实例不受影响均通过。
+- 必须保留限制：报告 `complete:false`；两实例的 SharedWorker 仍返回原生 UA / CPU / 内存 / 语言 / WebGL。未修改 Worker URL 或默认开放外部 CDP。不能把本节写成所有 Worker 或所有检测网站通过。
+- API 行为：透明画布、空 Canvas 导出、非法 receiver 与单次参数转换、WebGL 未启用扩展的错误码、AudioBuffer 引用/写入/copy、离线渲染稳定性及 complete/Promise/copy 一致、静音、空矩形均通过。OffscreenCanvas 的 DOM 所有权错误保持原生；其导出噪声一致性未实现。
+- `test:fingerprint` 13/13；`test:fingerprint-electron` 两轮保存/隔离/重启通过；`fingerprint-tostring-electron.cjs` 7 组真实 API / 描述符 / 导航 / 停用检查通过，新增离线音频构造器与渲染方法对照。
+- `test:extension-debugger-electron` 5 项、`test:devtools-electron` 5 项、`test:extensions` 16/16 通过。前两项在开启指纹覆盖的实例内验证扩展调试及 F12 开关后 Worker 仍正常。
+- 使用临时数据与本机服务器，保留每次的 JSON 报告；未重启用户应用或操作真实账号，未修改 DNS、代理或编译内核。Simprint 仅记录待办。当前 Windows / Electron 44.4.5；其他系统、所有自定义 UA、第三方验证码与长期负载未完成验收。
+- 最低基础检查和控制 API 通过；回滚检查点 `d69ee20`，最终变更应单独提交，不使用破坏式重置覆盖其他工作。
 
 ## 2026-10-14 详细日志修复验收
 

@@ -38,10 +38,11 @@ app.whenReady().then(async()=>{try{
  }
  assert.notEqual(samples[0].renderer,samples[1].renderer);assert.notEqual(samples[0].cpu,samples[1].cpu);
  const first=c.runtimes.get(ids[0]).view.webContents;const worker=await first.executeJavaScript(`new Promise(resolve=>{const w=new Worker('/worker.js');w.onmessage=e=>{resolve(e.data);w.terminate()};})`);
+ assert.deepEqual(worker,{cpu:expected[0].cpu,memory:expected[0].fingerprint.memory,platform:expected[0].platform});
  await c.stop(ids[0]);await c.start(ids[0]);const restarted=c.runtimes.get(ids[0]).view.webContents;await wait(()=>!restarted.isLoading()&&restarted.getTitle()==='Catalog verification','restart');const again=await restarted.executeJavaScript(read);check(again,expected[0]);assert.equal(again.canvas,samples[0].canvas);assert.deepEqual(again.audio,samples[0].audio);
  const live=await c.runtimes.get(ids[1]).view.webContents.executeJavaScript(read);check(live,expected[1]);
  const catalogHeaders=headers.slice(firstCatalogHeader);assert(catalogHeaders.some(h=>h['user-agent']===expected[0].userAgent));
  if(nativeHints)assert(catalogHeaders.some(h=>h['sec-ch-ua-platform']==='"Windows"'&&h['sec-ch-ua']?.includes('Chromium')));
  else assert(catalogHeaders.every(h=>!h['sec-ch-ua']),'Current Electron native baseline omits Client Hint headers; catalog must not invent them');
- console.log(JSON.stringify({passed:true,phase:resume?'fresh-process-restart':'UI-save-and-isolation',gpuCandidates:require('../src/main/fingerprint-catalog.cjs').GPUS.length,mainAndIframe:true,stableCanvasAndAudio:true,nativeClientHintHeaders:nativeHints,workerReport:worker,workerBoundary:'Hardware/GPU JS overrides are not installed in workers',profile:root,screenshot:resume?undefined:path.join(root,'catalog-environment.png')},null,2));
+ console.log(JSON.stringify({passed:true,phase:resume?'fresh-process-restart':'UI-save-and-isolation',gpuCandidates:require('../src/main/fingerprint-catalog.cjs').GPUS.length,mainAndIframe:true,stableCanvasAndAudio:true,nativeClientHintHeaders:nativeHints,workerReport:worker,workerBoundary:'Dedicated Worker verified; SharedWorker remains a documented limitation',profile:root,screenshot:resume?undefined:path.join(root,'catalog-environment.png')},null,2));
  }catch(e){console.error(e.stack||String(e));process.exitCode=1;}finally{try{await c?.closeAll();}catch{}win?.destroy();server?.close();app.exit(process.exitCode||0);}});
