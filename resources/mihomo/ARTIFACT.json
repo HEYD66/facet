@@ -1,12 +1,15 @@
 {
-  "version": "v1.19.31",
+  "version": "alpha-3f27ef3",
   "platform": "win32",
   "architecture": "x64",
-  "assetURL": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.31/mihomo-windows-amd64-compatible-v1.19.31.zip",
-  "assetSHA256": "93d14e9a13b49b2f2d256202d02cc8d14a7c4695edf084cae0f941986bc9c218",
-  "binarySHA256": "1fa8055e03596fc35167f70e9ecd1890517d38d960a39177445746a1b0defc2b",
-  "sourceURL": "https://codeload.github.com/MetaCubeX/mihomo/tar.gz/refs/tags/v1.19.31",
-  "sourceSHA256": "5a04aa9cf4520e06fa1c13d37b6aca49209479690722d485c40034ab17f8581f",
-  "licenseURL": "https://raw.githubusercontent.com/MetaCubeX/mihomo/v1.19.31/LICENSE",
-  "releaseURL": "https://github.com/MetaCubeX/mihomo/releases/tag/v1.19.31"
+  "goVersion": "go1.26.10",
+  "sourceRef": "3f27ef39f8c96bbfbc8b0b9bb10f5c9ef60149d8",
+  "prerelease": true,
+  "assetURL": "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo-windows-amd64-compatible-alpha-3f27ef3.zip",
+  "assetSHA256": "44827dd7ecfc65e556e8127a92d700be0f912706109712c3ed698ea734c7082a",
+  "binarySHA256": "ddf0fbc045263ab67e039c310d402ee8977375ac772fbdd332728729c06b3848",
+  "sourceURL": "https://codeload.github.com/MetaCubeX/mihomo/tar.gz/3f27ef39f8c96bbfbc8b0b9bb10f5c9ef60149d8",
+  "sourceSHA256": "ecda5f8c8a8a1d60bc088c2640c85d92c8f002c0686234a26bdf671735afe216",
+  "licenseURL": "https://raw.githubusercontent.com/MetaCubeX/mihomo/3f27ef39f8c96bbfbc8b0b9bb10f5c9ef60149d8/LICENSE",
+  "releaseURL": "https://github.com/MetaCubeX/mihomo/releases/tag/Prerelease-Alpha"
 }

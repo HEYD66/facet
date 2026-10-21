@@ -6,6 +6,8 @@ function verifyArtifacts(){
  const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
  const core=path.join(root,'resources/mihomo'),artifact=JSON.parse(fs.readFileSync(path.join(core,'ARTIFACT.json'),'utf8'));
  if(artifact.platform!=='win32'||artifact.architecture!=='x64'||hash(path.join(core,'mihomo.exe'))!==artifact.binarySHA256||hash(path.join(core,'mihomo-source.tar.gz'))!==artifact.sourceSHA256)throw Error('Mihomo 发行文件校验失败');
+ const release=require('../src/main/core-release.cjs');
+ if(artifact.version!==release.version||artifact.goVersion!==release.goVersion||artifact.sourceRef!==release.sourceRef||artifact.assetSHA256!==release.assets.win32.digest||artifact.sourceSHA256!==release.sourceSHA256)throw Error('Mihomo 未包含当前固定的安全更新，请运行 npm run setup:core');
  const host=path.join(root,'resources/process-host'),manifest=JSON.parse(fs.readFileSync(path.join(host,'manifest.json'),'utf8'));
  if(manifest.architecture!=='x64'||hash(path.join(host,'facet-process-host.exe'))!==manifest.binarySHA256||hash(path.join(host,'ProcessHost.cs'))!==manifest.sourceSHA256)throw Error('进程保护组件校验失败，请运行 npm run build:process-host');
  const environmentPipe=path.join(root,'resources/environment-pipe'),environmentManifest=JSON.parse(fs.readFileSync(path.join(environmentPipe,'manifest.json'),'utf8'));

@@ -29,6 +29,7 @@
     "test:ui": "node tests/ui.cjs",
     "setup:core": "node scripts/setup-core.cjs",
     "test:core": "node --test tests/core.test.cjs",
+    "test:runtime-security": "node --test tests/runtime-security.test.cjs",
     "test:electron": "node scripts/launch-electron.cjs tests/electron-smoke.cjs",
     "test:subscription": "node --test tests/subscription.test.cjs tests/subscription-content-type.test.cjs",
     "test:library": "node --test tests/library.test.cjs",
@@ -80,7 +81,7 @@
     "node": ">=22.12.0"
   },
   "devDependencies": {
-    "electron": "44.4.5",
+    "electron": "44.9.3",
     "electron-builder": "26.15.3",
     "playwright": "1.63.0"
   },

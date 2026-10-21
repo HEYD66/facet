@@ -1,6 +1,7 @@
 'use strict';
 
 const {readCompletion}=require('./ai-stream.cjs');
+const {safeFetch}=require('./safe-http.cjs');
 const MAX_ATTEMPTS=3,MAX_DELAY=30000;
 const RETRY_STATUS=new Set([408,429,500,502,503,504]);
 const NETWORK_CODES=new Set(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EAI_AGAIN','ENETUNREACH','EHOSTUNREACH','UND_ERR_SOCKET','UND_ERR_CONNECT_TIMEOUT','UND_ERR_HEADERS_TIMEOUT','UND_ERR_BODY_TIMEOUT']);
@@ -22,7 +23,7 @@ async function completionRequest({url,headers,body,signal,onText=()=>{},onRetry=
   signal.throwIfAborted();if(retry)onRetry({...retry,phase:'requesting'});
   let response,reason='',delay=null,error;
   try{
-   response=await fetch(url,{method:'POST',redirect:'error',headers,body,signal:deadline});
+   response=await safeFetch(url,{method:'POST',redirect:'error',headers,body,signal:deadline});
    if(!response.ok){
     const status=response.status;delay=retryAfter(response.headers.get('retry-after'));await response.body?.cancel();
     error=Error('模型接口返回 HTTP '+status+'，请检查密钥、模型和服务状态');
@@ -31,6 +32,7 @@ async function completionRequest({url,headers,body,signal,onText=()=>{},onRetry=
   }catch(e){
    if(signal.aborted)throw Error('任务已停止');
    if(deadline.aborted)throw Error('模型接口请求超过 90 秒，请稍后重试');
+   if(e.code==='ERR_UNSAFE_CONTENT_ENCODING')throw Error(e.message);
    const code=networkCode(e);
    error=Error(code?'模型连接暂时中断（'+code+'），请检查接口及网络':response?'模型回复未完整接收：'+String(e.message).slice(0,220):'模型接口连接失败，请检查接口地址及网络');
    if(code)reason='网络连接暂时中断';

@@ -8,7 +8,7 @@
 
 千面是以用户隐私保护为核心、内置 AI 助手的 Windows x64 多实例浏览工作台：在一个应用中管理隔离的登录存储、环境参数、代理节点、扩展与实时宫格，并由 AI 按授权协助操作实例和网页。实例资料保存在本机；使用 AI 时，相关网页内容、图片、上下文和工具结果会发送给用户配置的模型服务。它不提供代理账号或节点，也不是系统 TUN 客户端。
 
-技术栈为 Electron 44.4.5、JavaScript、WebContentsView、Mihomo；应用更新使用 electron-updater，构建使用 electron-builder/NSIS，测试使用 Node 和 Playwright。准确版本以 `package.json`、lockfile 和资源校验清单为准。源码需要 Node.js 22.12+，Windows 使用 PowerShell 和 `npm.cmd`；安装版不要求用户安装 Node。
+技术栈为 Electron 44.9.3、JavaScript、WebContentsView、Mihomo；应用更新使用 electron-updater，构建使用 electron-builder/NSIS，测试使用 Node 和 Playwright。准确版本以 `package.json`、lockfile 和资源校验清单为准。源码需要 Node.js 22.12+，建议使用包含 2026 年 10 月安全修复的 Node 22.23.4 / 24.22.1 或更新受支持版本；Windows 使用 PowerShell 和 `npm.cmd`，安装版不要求用户安装 Node。当前源码运行时安全更新及尚未被 Electron 上游完整回补的 Node 风险见[安全更新](RUNTIME-SECURITY.md)。
 
 Linux 的部分测试记录属于辅助证据，正式发行目标是 Windows x64。环境覆盖不等于物理硬件改变，也不保证匿名、不可检测或完全无泄漏。
 

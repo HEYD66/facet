@@ -16,6 +16,7 @@
 | 构建、发布、测试证据和验收边界 | [验证记录与当前检查](VERIFICATION.md)、[项目手册](PROJECT.md) |
 | 当前待做与阶段进度 | [交付状态](UX-DELIVERY-STATUS.md) |
 | 日志采集、导出和排查 | [详细诊断](DIAGNOSTICS.md) |
+| 运行时安全更新、临时防护与验收边界（源码待发布） | [安全更新](RUNTIME-SECURITY.md) |
 | 订阅指定代理方案与历史诊断进度 | [专项方案](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md) |
 | Android 真机原型、构建与独立代理内核（源码中的独立原型） | [Android 开发与验收](https://github.com/HEYD66/facet/blob/main/android/README.md) |
 

@@ -1,15 +1,15 @@
 'use strict';
 const http = require('node:http');
 const https = require('node:https');
-const zlib = require('node:zlib');
 const net = require('node:net');
+const {networkURL,checkServerIdentity,decodeResponse,acceptEncoding}=require('./safe-http.cjs');
 const { safeError, normalizeHostname, resolvePublicHost, pinnedLookup } = require('./subscription-policy.cjs');
 
 function subscriptionURL(value) {
   let url;
   try {
     if (typeof value !== 'string' || !value.trim() || value.length > 8192) throw Error();
-    url = new URL(value.trim());
+    url = networkURL(value.trim());
   } catch { throw safeError('请输入完整的 HTTP/HTTPS 订阅链接'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw safeError('订阅只允许 HTTP/HTTPS，不允许 URL 内嵌用户名密码');
@@ -38,7 +38,7 @@ async function downloadSubscription(value, {
     if (abort.signal.aborted) throw safeError('订阅下载超时，原配置未改变');
     return new Promise((resolve, reject) => {
       const transport = url.protocol === 'https:' ? https : http;
-      const agent = new transport.Agent({ keepAlive: false, rejectUnauthorized: true });
+      const agent = new transport.Agent({ keepAlive: false, rejectUnauthorized: true, checkServerIdentity });
       let req, body, settled = false, wire=0, size=0, phase='tcp';
       const done = (error, result) => {
         if (settled) return;
@@ -50,14 +50,14 @@ async function downloadSubscription(value, {
       const host = normalizeHostname(url.hostname);
       try {
         req = transport.request(url, {
-          method: 'GET', agent, signal: abort.signal,
+          method: 'GET', agent, signal: abort.signal, checkServerIdentity,
           lookup: resolved ? pinnedLookup(resolved) : undefined,
           family: resolved ? net.isIP(resolved) : undefined,
           servername: net.isIP(host) ? undefined : host,
           headers: {
-            'User-Agent': 'clash.meta/1.19.31 Facet/'+require('../../package.json').version,
+            'User-Agent': 'clash.meta/'+require('./core-release.cjs').version.replace(/^v/,'')+' Facet/'+require('../../package.json').version,
             Accept: 'application/yaml, text/yaml, application/json, text/plain, */*',
-            'Accept-Encoding': 'gzip, deflate, br'
+            'Accept-Encoding': acceptEncoding
           }
         }, res => {
           phase='http';
@@ -77,11 +77,8 @@ async function downloadSubscription(value, {
           res.on('error', error => done(error));
           res.on('aborted', () => done(safeError('订阅传输中断，原配置未改变')));
           const encoding = String(res.headers['content-encoding'] || 'identity').trim().toLowerCase();
-          if (encoding === 'gzip') body = res.pipe(zlib.createGunzip());
-          else if (encoding === 'deflate') body = res.pipe(zlib.createInflate());
-          else if (encoding === 'br') body = res.pipe(zlib.createBrotliDecompress());
-          else if (encoding === 'identity' || !encoding) body = res;
-          else { res.destroy(); return done(safeError('订阅使用了不支持的压缩格式')); }
+          try { body = decodeResponse(res); }
+          catch (error) { return done(safeError(error.message)); }
           body.on('data', chunk => {
             size += chunk.length;
             if (size > maxBytes) return done(safeError('订阅解压后超过 2MB 上限'));
