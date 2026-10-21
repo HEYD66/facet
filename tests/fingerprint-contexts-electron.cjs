@@ -12,6 +12,9 @@ app.commandLine.appendSwitch('disable-background-networking');
 app.commandLine.appendSwitch('site-per-process');
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.test 127.0.0.1');
 app.commandLine.appendSwitch('disable-gpu');
+const testCdp=process.argv.find(x=>x.startsWith('--test-cdp='));
+if(testCdp)app.commandLine.appendSwitch('remote-debugging-port',testCdp.slice('--test-cdp='.length));
+require('../src/main/environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app);
 
 async function sample(){
  const nav=navigator;
@@ -102,7 +105,7 @@ app.whenReady().then(async()=>{let error;try{
    res.setHeader('Content-Type','text/javascript');
    if(url.pathname==='/worker.js')return res.end(sampleSource+'.then(value=>postMessage(value));');
    if(url.pathname==='/nested-worker.js')return res.end('const w=new Worker("/worker.js");w.onmessage=e=>{postMessage(e.data);w.terminate()};');
-   if(url.pathname==='/shared-worker.js')return res.end('const first='+sampleSource+';onconnect=e=>{first.then(value=>e.ports[0].postMessage(value));};');
+   if(url.pathname==='/shared-worker.js')return res.end('const entry={patched:!!globalThis.__arenaFingerprintV3Applied,entryUA:navigator.userAgent,entryCPU:navigator.hardwareConcurrency,entryLanguage:navigator.language};const first=('+sample.toString()+')().then(value=>({...value,...entry}));onconnect=e=>first.then(value=>e.ports[0].postMessage(value));');
    if(url.pathname==='/service-worker.js')return res.end('const first='+sampleSource+';self.addEventListener("install",()=>self.skipWaiting());self.addEventListener("activate",e=>e.waitUntil(clients.claim()));self.addEventListener("message",e=>e.waitUntil(first.then(value=>e.ports[0].postMessage(value))));');
   }
   res.setHeader('Content-Type','text/html');
@@ -134,7 +137,8 @@ app.whenReady().then(async()=>{let error;try{
   verify(await serviceWorker(wc),expected[i],i+': service worker first script');
   for(const [label,run]of [['shared worker',sharedWorker]]){
    let value;try{value=await run(wc);}catch(error){boundaries.push({instance:i,type:label,error:error.message});continue;}observed[i+': '+label]=value;
-   const differences=['ua','cpu','memory','language','tz','vendor','renderer'].filter(key=>value[key]!==({ua:expected[i].userAgent,cpu:expected[i].cpu,memory:expected[i].fingerprint.memory,language:expected[i].language,tz:expected[i].timezone,vendor:expected[i].fingerprint.vendor,renderer:expected[i].fingerprint.renderer})[key]);
+   const differences=['patched','entryUA','entryCPU','entryLanguage'].filter((key)=>value[key]!==({patched:true,entryUA:expected[i].userAgent,entryCPU:expected[i].cpu,entryLanguage:expected[i].language})[key]);
+   differences.push(...['ua','cpu','memory','language','tz','vendor','renderer'].filter(key=>value[key]!==({ua:expected[i].userAgent,cpu:expected[i].cpu,memory:expected[i].fingerprint.memory,language:expected[i].language,tz:expected[i].timezone,vendor:expected[i].fingerprint.vendor,renderer:expected[i].fingerprint.renderer})[key]));
    if(value.canvasPng!==observed[i+': main first script'].canvasPng)differences.push('Offscreen export');
    if(differences.length)boundaries.push({instance:i,type:label,differences});else checks.push(i+': '+label);
   }
@@ -196,13 +200,18 @@ app.whenReady().then(async()=>{let error;try{
  assert.equal(failing.errors.length,1);assert.match(failing.errors[0],/expected fixture failure/);
  failing.dispose();assert.equal(contextEnvironmentState(win.webContents),undefined);
  checks.push('failed child configuration resumes real worker and disposes listeners');
+ const {sharedWorkerEnvironmentSnapshot}=require('../src/main/environment-shared-worker.cjs');
+ const channel=sharedWorkerEnvironmentSnapshot(),expectedMode=testCdp?'existing-cdp':'private-pipe';
+ if(channel.mode!==expectedMode)boundaries.push({type:'browser control channel',expected:expectedMode,actual:channel.mode});
+ checks.push('browser control channel: '+channel.mode);
  }catch(e){error=e.stack||String(e);console.error(error);}
  finally{
   try{await controller?.closeAll();}catch(e){error=error||e.stack;}
   if(win&&!win.isDestroyed())win.destroy();server?.close();
   const report=path.join(root,resume?'contexts-restart-report.json':'contexts-report.json');
-  fs.writeFileSync(report,JSON.stringify({passed:!error,complete:!error&&!boundaries.length,phase:resume?'fresh-process-restart':'initial',checks,boundaries,observed,error},null,2));
-  console.log(JSON.stringify({passed:!error,complete:!error&&!boundaries.length,phase:resume?'fresh-process-restart':'initial',checks,boundaries,report},null,2));
-  app.exit(error?1:0);
+  const passed=!error&&!boundaries.length,phase=testCdp?'existing-cdp-reuse':resume?'fresh-process-restart':'initial';
+  fs.writeFileSync(report,JSON.stringify({passed,complete:passed,phase,checks,boundaries,observed,error},null,2));
+  console.log(JSON.stringify({passed,complete:passed,phase,checks,boundaries,report},null,2));
+  app.exit(passed?0:1);
  }
 });

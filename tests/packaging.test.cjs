@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
-const {userDataPath,resourcePath}=require('../src/main/app-paths.cjs');
+ const {userDataPath,resourcePath}=require('../src/main/app-paths.cjs');
 const {RuntimeOutput,readRuntimeOutput}=require('../src/main/runtime-output.cjs');
 test('Fresh data uses Facet, existing installations retain data, and explicit paths isolate launches',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facet-paths-'));
@@ -24,6 +24,7 @@ test('Installer preserves data and only ships explicit application and verified 
  const config=require('../electron-builder.config.cjs');
  assert.equal(config.appId,'Facet.MultiInstanceBrowser');assert.equal(config.nsis.deleteAppDataOnUninstall,false);assert.equal(config.nsis.runAfterFinish,false);
  assert.equal(config.nsis.allowToChangeInstallationDirectory,true);assert(!config.files.includes('**/*'));
+ assert(config.extraResources.some(x=>x.from==='resources/environment-pipe'&&x.to==='environment-pipe'&&x.filter.includes('environment-pipe.node')&&x.filter.includes('environment-pipe.cc')&&x.filter.includes('manifest.json')),'installer must ship the verified SharedWorker startup helper');
  assert(config.extraResources.some(x=>x.from==='AGENTS.md'&&x.to==='AGENTS.md'),'installer must include the AI entry guide');
  assert(config.extraResources.some(x=>x.from==='docs'&&x.to==='docs'&&x.filter.includes('AI-CONTROL-HANDOFF.md')&&x.filter.includes('CONTROL-API.md')),'installer must include the linked control guides');
  assert(config.files.includes('!src/main/subscription-proxy.cjs'),'unfinished subscription draft must not ship');

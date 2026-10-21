@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "platform": "win32",
+  "architecture": "x64",
+  "nodeApiVersion": 8,
+  "sourceSHA256": "c733255b6c9216d0ea03120a1da3bce577cc1820eb00595063d3bc74807d7962",
+  "binarySHA256": "cba5cb86b81ee414a42724b4f1d4d55579ed68253171dc436766ad191ec6773b"
+}

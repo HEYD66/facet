@@ -1,0 +1,20 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
+if(process.platform!=='win32'||process.arch!=='x64')throw Error('Environment pipe build requires Windows x64');
+const latest=dir=>fs.readdirSync(dir,{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort((a,b)=>b.localeCompare(a,undefined,{numeric:true}))[0];
+const vswhere=path.join(process.env['ProgramFiles(x86)'],'Microsoft Visual Studio/Installer/vswhere.exe');
+const vs=execFileSync(vswhere,['-latest','-products','*','-requires','Microsoft.VisualStudio.Component.VC.Tools.x86.x64','-property','installationPath'],{encoding:'utf8',windowsHide:true}).trim();
+if(!vs)throw Error('Visual C++ build tools not found');
+const vcRoot=path.join(vs,'VC/Tools/MSVC'),vc=path.join(vcRoot,latest(vcRoot));
+const kit=process.env.WINDOWS_KITS_ROOT||path.join(process.env['ProgramFiles(x86)'],'Windows Kits/10'),sdk=latest(path.join(kit,'Include'));
+const cached=path.join(process.env.LOCALAPPDATA,'node-gyp/Cache');
+const headers=process.env.NODE_API_INCLUDE||path.join(cached,latest(cached),'include/node');
+if(!fs.existsSync(path.join(headers,'node_api.h')))throw Error('Set NODE_API_INCLUDE to an existing official Node.js include/node directory');
+const root=path.resolve(__dirname,'../resources/environment-pipe'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'facet-environment-pipe-build-'));
+const source=path.join(root,'environment-pipe.cc'),binary=path.join(root,'environment-pipe.node');
+const args=['/nologo','/LD','/MD','/O2','/W4','/WX','/wd4191','/EHsc','/std:c++17','/guard:cf',...['include'].map(x=>'/I'+path.join(vc,x)),...['ucrt','shared','um'].map(x=>'/I'+path.join(kit,'Include',sdk,x)),'/I'+headers,source,'/Fo'+path.join(tmp,'environment-pipe.obj'),'/link','/OUT:'+binary,'/IMPLIB:'+path.join(tmp,'environment-pipe.lib'),'/LIBPATH:'+path.join(vc,'lib/x64'),...['ucrt','um'].map(x=>'/LIBPATH:'+path.join(kit,'Lib',sdk,x,'x64')),'Advapi32.lib','/DYNAMICBASE','/NXCOMPAT'];
+try{process.stdout.write(execFileSync(path.join(vc,'bin/Hostx64/x64/cl.exe'),args,{windowsHide:true,encoding:'utf8'}));
+ const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+ fs.writeFileSync(path.join(root,'manifest.json'),JSON.stringify({version:1,platform:'win32',architecture:'x64',nodeApiVersion:8,sourceSHA256:hash(source),binarySHA256:hash(binary)},null,2)+'\n');
+ console.log('Built and hashed private environment pipe helper');
+}finally{fs.rmSync(tmp,{recursive:true,force:true});}

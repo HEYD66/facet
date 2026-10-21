@@ -8,7 +8,8 @@
   "homepage": "https://github.com/HEYD66/facet",
   "main": "src/main/main.cjs",
   "scripts": {
-    "build:installer": "node scripts/build-installer.cjs",
+    "build:environment-pipe": "node scripts/build-environment-pipe.cjs",
+    "build:installer": "npm.cmd run build:environment-pipe && node scripts/build-installer.cjs",
     "test:packaging": "node --test tests/packaging.test.cjs",
     "test:diagnostics": "node --test tests/diagnostic-bundle.test.cjs tests/detailed-diagnostics.test.cjs tests/network-capture.test.cjs",
     "test:network-capture": "node --test tests/network-capture.test.cjs",

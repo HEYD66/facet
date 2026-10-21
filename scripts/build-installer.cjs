@@ -8,6 +8,8 @@ function verifyArtifacts(){
  if(artifact.platform!=='win32'||artifact.architecture!=='x64'||hash(path.join(core,'mihomo.exe'))!==artifact.binarySHA256||hash(path.join(core,'mihomo-source.tar.gz'))!==artifact.sourceSHA256)throw Error('Mihomo 发行文件校验失败');
  const host=path.join(root,'resources/process-host'),manifest=JSON.parse(fs.readFileSync(path.join(host,'manifest.json'),'utf8'));
  if(manifest.architecture!=='x64'||hash(path.join(host,'facet-process-host.exe'))!==manifest.binarySHA256||hash(path.join(host,'ProcessHost.cs'))!==manifest.sourceSHA256)throw Error('进程保护组件校验失败，请运行 npm run build:process-host');
+ const environmentPipe=path.join(root,'resources/environment-pipe'),environmentManifest=JSON.parse(fs.readFileSync(path.join(environmentPipe,'manifest.json'),'utf8'));
+ if(environmentManifest.architecture!=='x64'||environmentManifest.platform!=='win32'||environmentManifest.nodeApiVersion!==8||hash(path.join(environmentPipe,'environment-pipe.node'))!==environmentManifest.binarySHA256||hash(path.join(environmentPipe,'environment-pipe.cc'))!==environmentManifest.sourceSHA256)throw Error('SharedWorker 环境管道组件校验失败，请运行 npm run build:environment-pipe');
 }
 async function main(){
  if(process.platform!=='win32'||process.arch!=='x64')throw Error('当前安装包构建支持 Windows x64');

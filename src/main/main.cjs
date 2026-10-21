@@ -17,6 +17,7 @@ app.commandLine.appendSwitch('disable-quic');
 // 外部控制默认关闭。开启后由应用级 CDP 端口承载所有实例页面，端口只监听本机。
 const cdpStarted=controlSettings.enabled&&!!controlSettings.cdpPort;
 if(cdpStarted){app.commandLine.appendSwitch('remote-debugging-port',String(controlSettings.cdpPort));app.commandLine.appendSwitch('remote-debugging-address','127.0.0.1');}
+require('./environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app);
 const locked=app.requestSingleInstanceLock();if(!locked)app.quit();
 let window,controller,quitting=false,closing=false;
 // Windows：去掉系统黑色标题栏，改由界面自绘一行（颜色跟随主题），最小化/最大化/关闭仍用系统按钮（titleBarOverlay）。

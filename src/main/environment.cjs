@@ -13,8 +13,8 @@ async function applyEnvironment(wc,env,native,bounds){
  const source=require('./fingerprint.cjs').script({...env,userAgent,platform:env.platform||native.platform});
  await require('./environment-service-worker.cjs').installServiceWorkerEnvironment(wc,source,JSON.stringify([userAgent,env.platform||native.platform,env.language,env.timezone,env.cpu,metadata]));
  if(source){await wc.debugger.sendCommand('Page.enable');await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument',{source,runImmediately:true});}
- const applyNative=async(sessionId,type='page')=>{
-  const send=(method,params)=>require('./environment-contexts.cjs').targetCommand(wc,method,params,sessionId);
+ const applyNative=async(sessionId,type='page',dispatch)=>{
+  const send=dispatch||((method,params)=>require('./environment-contexts.cjs').targetCommand(wc,method,params,sessionId));
   await send('Emulation.setUserAgentOverride',{userAgent,acceptLanguage:env.language,platform:env.platform||native.platform,...(metadata?{userAgentMetadata:metadata}:{})});
   await shared(send('Emulation.setTimezoneOverride',{timezoneId:env.timezone}));
   await shared(send('Emulation.setLocaleOverride',{locale:env.language}));
@@ -30,5 +30,6 @@ async function applyEnvironment(wc,env,native,bounds){
  await applyNative();
  await require('./viewport.cjs').applyViewport(wc,env,bounds);
  await require('./environment-contexts.cjs').installContextEnvironment(wc,{source,applyNative});
+ await require('./environment-shared-worker.cjs').installSharedWorkerEnvironment(wc,{source,applyNative,nativeKey:JSON.stringify([userAgent,env.platform||native.platform,env.language,env.timezone,env.cpu,metadata])});
 }
 module.exports={LANGUAGES,environment,applyEnvironment,sanitizeElectronUserAgent};
