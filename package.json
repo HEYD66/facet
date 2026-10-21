@@ -1,6 +1,6 @@
 {
   "name": "facet",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "description": "Privacy-focused multi-instance browser with a built-in AI assistant, isolated sessions and per-instance proxies",
   "author": "HEYD66",

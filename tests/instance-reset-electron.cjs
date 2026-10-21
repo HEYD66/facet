@@ -13,13 +13,13 @@ const wait=async(fn,label,timeout=20000)=>{const end=Date.now()+timeout;while(Da
 
 let win,controller,server;
 app.whenReady().then(async()=>{try{
- server=http.createServer((_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><script>document.title="reset-fixture";</script>');});
+ server=http.createServer((_req,res)=>{if(_req.url==='/geo'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ip:'203.0.113.40',country_code:'JP',timezone:{id:'Asia/Tokyo'}}));}res.setHeader('Content-Type','text/html');res.end('<!doctype html><script>document.title="reset-fixture";</script>');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
- const url='http://127.0.0.1:'+server.address().port+'/';
+ const url='http://127.0.0.1:'+server.address().port+'/';require('../src/main/diagnostics.cjs').TARGETS.ip=url+'geo';
  win=new BrowserWindow({show:false,width:1400,height:900,webPreferences:{preload:path.resolve(__dirname,'../src/main/preload.cjs'),sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
  controller=new Controller(win,root,path.join(__dirname,'../resources/mihomo',process.platform==='win32'?'mihomo.exe':'mihomo'));
  installIPC(win,controller);
- const instance=controller.store.list()[0];controller.store.update(instance.id,{url,notes:'保留管理备注'});
+ let instance=controller.store.list()[0];controller.store.update(instance.id,{url,notes:'保留管理备注'});
  const other=controller.store.create('其他实例');
  await win.loadFile(path.resolve(__dirname,'../src/renderer/index.html'));
  const ui=code=>win.webContents.executeJavaScript(code);
@@ -38,10 +38,11 @@ app.whenReady().then(async()=>{try{
  await ui(`document.querySelector('[data-action="reset-environment"]').click();`);
  await ui(`document.querySelector('#modal [data-action="confirm"]').click();`);
  await wait(()=>ui('!modal&&!environmentDrafts.has(activeId)&&!!current().environment.fingerprint.seed'),'reset completion');
- assert.equal(controller.runtimes.get(instance.id).status,'stopped');
+ const originalId=instance.id;assert.equal(controller.runtimes.has(originalId),false);
+ instance=controller.store.list().find(x=>x.name===before.name);assert(instance);assert.notEqual(instance.id,originalId);
  const after=controller.store.get(instance.id);
  assert.deepEqual(after.network,before.network);
- assert.equal(after.notes,before.notes);
+ assert.equal(after.notes,'');assert.equal(after.environment.language,'ja-JP');assert.equal(after.environment.timezone,'Asia/Tokyo');
  assert.notEqual(after.environment.fingerprint.seed,before.environment.fingerprint.seed);
  assert.equal(after.environment.fingerprint.touch,0);
  assert.equal(after.environment.fingerprint.hardware,true);
@@ -56,7 +57,7 @@ app.whenReady().then(async()=>{try{
  assert.equal(await ui('environmentUndo.has(activeId)'),false);
  assert.equal(await ui(`environmentDrafts.get(${JSON.stringify(other.id)}).value.environment.cpu`),63);
  assert.equal(await ui(`environmentUndo.has(${JSON.stringify(other.id)})`),true);
- await controller.start(instance.id);
+ controller.store.update(instance.id,{url});await controller.start(instance.id);
  const restarted=controller.runtimes.get(instance.id);
  await wait(()=>restarted.view?.webContents.getTitle()==='reset-fixture','restarted fixture page');
  const reported=await restarted.view.webContents.executeJavaScript('({touch:navigator.maxTouchPoints,memory:navigator.deviceMemory})');
@@ -74,6 +75,7 @@ app.whenReady().then(async()=>{try{
  assert.equal(await ui('environmentDrafts.size'),0);
  assert.equal(await ui('environmentUndo.size'),0);
  await ui(`document.querySelector('#modal [data-action="confirm"]').click();`);
+ const batchOldId=instance.id;instance=controller.store.list().find(x=>x.name===before.name);assert(instance);assert.notEqual(instance.id,batchOldId);
  await ui(`route('environment',${JSON.stringify(instance.id)})`);
  const batchAfter=controller.store.get(instance.id);
  assert.notEqual(batchAfter.environment.fingerprint.seed,previousSeed);

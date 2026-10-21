@@ -125,12 +125,12 @@ async function main(){
  assert(proxyHits>0);const proxyConfig=JSON.parse(fs.readFileSync(path.join(root,'core-runtime',b.id,'runtime.json'),'utf8'));assert.equal(proxyConfig.dns.enable,false);assert(!proxyConfig.hosts);assert(!proxyConfig['interface-name']);pass('Two independent real webpages load; packaged Mihomo and process host use original DNS and routing without hosts overrides');
  await ui.evaluate(id=>route('browser',id),a.id);await ui.waitForFunction(()=>view==='browser');
  assert.deepEqual(await ui.locator('[data-quick="open"]').allTextContents(),['Arena']);
- assert.deepEqual(await ui.evaluate(()=>privacySites.map(x=>x.id)),['ipip','ipleak','browserleaks','dnsleaktest','ippure']);
+ assert.deepEqual(await ui.evaluate(()=>privacySites.map(x=>x.id)),['ipip','ipleak','browserleaks','dnsleaktest','ippure','netcoffee']);
  await ui.locator('[data-privacy-toggle]').click();let menu;
  await wait(()=>{menu=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().endsWith('/src/renderer/overlay.html'));return !!menu;},'packaged privacy menu');
- await menu.locator('[data-privacy-site]').first().waitFor();assert.equal(await menu.locator('[data-privacy-site="ipip"]').count(),1);assert.equal(await menu.locator('[data-privacy-site]').count(),5);
+ await menu.locator('[data-privacy-site]').first().waitFor();assert.equal(await menu.locator('[data-privacy-site="ipip"]').count(),1);assert.equal(await menu.locator('[data-privacy-site="netcoffee"]').count(),1);assert.equal(await menu.locator('[data-privacy-site]').count(),6);
  await menu.screenshot({path:path.join(root,'privacy-menu.png')});await menu.keyboard.press('Escape');
- pass('Packaged toolbar removes both legacy ipip shortcuts and opens a real native menu containing exactly one ipip entry');
+ pass('Packaged toolbar removes both legacy ipip shortcuts and opens a real native menu containing exactly one ipip and one Net.Coffee entry');
  const pages=browser.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===url);assert.equal(pages.length,2);
  await ui.locator('[data-action="toggle-devtools"]').click();
  await wait(()=>browser.contexts().flatMap(c=>c.pages()).some(p=>p.url().startsWith('devtools://')),'packaged developer tools');

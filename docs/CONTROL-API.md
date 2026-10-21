@@ -2,7 +2,7 @@
 
 应用设置中的「外部控制（本机 API + CDP）」默认关闭。开启后，千面只在 `127.0.0.1` 监听，不接受局域网或公网连接。
 
-更新：2026-10-14；以 v0.2.13 的 `control-api.cjs` 和 `ipc.cjs` 为准。[项目手册](PROJECT.md) 说明架构、数据和恢复。端口/路径从当前界面获取，不写死。订阅指定代理字段尚未接入，见 [专项状态](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
+更新：2026-10-21；以 v0.2.18 发布候选的 `control-api.cjs` 和 `ipc.cjs` 为准。[项目手册](PROJECT.md) 说明架构、数据和恢复。端口/路径从当前界面获取，不写死。订阅指定代理字段尚未接入，见 [专项状态](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)。
 
 ## 端口和隔离
 
@@ -11,7 +11,7 @@
 - 实例自己的 Mihomo 代理端口仍按实例独立分配，和 API/CDP 端口无关。
 - API 令牌只保存在本机 `control-api.json`，界面可重新生成。
 
-2026-10-21 源码修复（尚未发布）：外部 CDP 在原配置端口经过本机协调网关，内部仍使用私有命名管道；网页 / Worker 环境初始化完成后才转发相应附着事件和恢复命令，防止 Playwright 抢先恢复首段。`chromium.connectOverCDP` 的连接方式不变，支持 Browser 与 page WebSocket，多个客户端使用独立 CDP 会话。此通道目前支持 Windows x64。HTTP 发现入口支持 `/json/version`、`/json/list` 和 `/json`；未实现原生 `/json/protocol` 或托管 DevTools 前端，不能据此宣称所有第三方 CDP 工具兼容。
+v0.2.18 候选包包含的修复：外部 CDP 在原配置端口经过本机协调网关，内部仍使用私有命名管道；网页 / Worker 环境初始化完成后才转发相应附着事件和恢复命令，防止 Playwright 抢先恢复首段。`chromium.connectOverCDP` 的连接方式不变，支持 Browser 与 page WebSocket，多个客户端使用独立 CDP 会话。此通道目前支持 Windows x64。HTTP 发现入口支持 `/json/version`、`/json/list` 和 `/json`；未实现原生 `/json/protocol` 或托管 DevTools 前端，不能据此宣称所有第三方 CDP 工具兼容。
 
 Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright 对 Electron 不认识的上下文可能都归入同一个默认 `BrowserContext` 包装对象，因此不要用 `page.context()` 是否相同判断实例存储是否隔离。继续按 API 的 instanceId 与 CDP targetId 选页；本次真实测试另核对 Cookie / localStorage 和重启持久化。
 
