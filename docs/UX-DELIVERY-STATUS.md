@@ -13,6 +13,9 @@
 
 ## 2026-10-21：指纹上下文一致性与内核候选
 
+- [x] 注入辅助方法兼容性：网页重写 WeakMap / WeakSet、Math、Reflect 等方法不再破坏 toString、画布、WebGL、离线音频与布局读取；原生对照覆盖页面、iframe 和 Worker，跨上下文及重启回归通过。真实检测页非交互 PASS，托管仍需点击，不能作为免点击提升的证据。
+- [ ] 继续评估原生 HTTP Client Hints、完整 GPU / WebGPU 能力和 Chrome 专属 API 的兼容实现；不以伪造接口存在或硬编码显卡能力代替真实可用性。托管验证免点击差异尚未定位。
+
 - [x] 修复私有调试管道意外启用 AutomationControlled 的回归：正常手动浏览保留原生 webdriver=false，SharedWorker 与外部 CDP 协调保留；同节点真实检测页非交互验证恢复服务端 PASS，托管验证等待点击，未代点。补充页面 / 跨站 iframe 首段及重启回归；源码未发布，现有用户进程未重启。
 
 - [ ] Simprint 内核评估与选择性移植：参考 https://github.com/Simprint/simprint-browser-kernel ，优先审查每实例固定种子、Worker / 跨站 iframe、Canvas / Audio / WebGL 的原生行为与版本升级成本。官方仓库已归档，已查分支为 `simprint/m144`（Chromium 144.0.7559.118，AGPLv3）；不得将配置项或补丁存在等同于运行验证通过，不直接替换现有 Electron 内核。

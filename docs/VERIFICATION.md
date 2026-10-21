@@ -2,6 +2,16 @@
 
 更新：2026-10-21。当前源码版本 v0.2.17。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
 
+## 2026-10-21 兼容性优化：网页重写 JavaScript 辅助方法
+
+- 原生/注入实际对照发现：网页替换 `WeakMap.has/get/set`、`WeakSet.has/add`、`Math` 方法、`Reflect.get/construct`、`Array.slice`、`Function.apply` 或部分构造器后，注入的 toString、画布、WebGL、离线音频和布局读取会意外调用网页方法，出现额外异常，或静默退回未处理的导出结果。原生浏览器 API 不依赖这些被替换的方法。
+- 修复：在注入初始化时保留内部需要的原生方法与构造器引用，后续通过保留的 Reflect.apply 调用；网页自身的替换仍保留，固定种子和实例环境配置不变。没有添加 Chrome API 假实现、伪造 HTTP Client Hints 或篡改 GPU 能力上限。
+- `fingerprint-tostring-electron.cjs`：9 组检查通过，新增页面与同源 iframe 各 19 项、Dedicated Worker 14 项原生对照。测试先在未修改实现上失败，再在修复后通过；核对网页方法调用次数为零、输出/错误与原生一致。保留方法描述符、非法 receiver、参数转换、导航、重复注入和停用检查。
+- `test:fingerprint-offscreen` 4 组通过；`test:fingerprint-contexts` 三轮各 40 项通过；`test:cdp-workers` 17 项流程 / 34 次 SharedWorker 首段采样通过。`check` 297 scripts、`test:control-api` 1/1、`test:fingerprint` 13/13 和差异空白检查通过。
+- 真实 `ip.net.coffee/cloudflare/` 复测：隔离会话复用运行实例的环境参数与同一代理，不复制原登录、扩展或 Cookie；非交互验证服务端 PASS（本次 36 ms），托管模式仍需点击，未代点。不能把本次兼容修复写成免点击成功，亦未确定 Cloudflare 对托管模式作此决定的具体原因。
+- 本机核对即时 about:blank iframe 和 srcdoc 首段未发现所测 CPU/内存/触点/屏幕/语言漏覆盖，语言请求头与页面及 Worker 保持同一配置。HTTP Client Hints、完整 GPU / WebGPU 能力、Chrome 专属 API 仍有原生实现差异，不属于已修复范围。
+- 使用独立临时数据，用户主进程与实例未重启。回滚检查点 `b2d1e86`；本次提交可单独撤销，原始复测记录在 Git 忽略的 `.local-dev/cf-version-compare/intrinsics-report.json`。
+
 ## 2026-10-21 回归修复：私有调试管道改变手动浏览状态
 
 - 原因：新增 `--remote-debugging-pipe` 后，Chromium 同时启用 AutomationControlled，正常手动浏览的原生 `navigator.webdriver` 变为 `true`。前序本机字段测试漏测了该项。

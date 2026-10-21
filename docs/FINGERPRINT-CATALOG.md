@@ -70,6 +70,12 @@ SharedWorker 使用 Chromium Browser target 的 `Target.setAutoAttach`，通过 
 
 前序回归另包含 `test:fingerprint-electron`、`fingerprint-tostring-electron.cjs`、`test:extension-debugger-electron` 和 `test:devtools-electron`，验证生产保存流程、停用、扩展调试事件、Worker 与开发者工具兼容。本次外部 CDP 修复重跑了后两项；加载新主进程和实例后才会生效，源码修复尚未发布。
 
+### 网页脚本兼容性加固（2026-10-21）
+
+注入内部的弱引用映射、参数转换、噪声计算、构造和布局调用使用启动时保存的原生方法。网页后续替换 WeakMap / WeakSet、Math、Reflect、部分构造器和 Function.apply 时，不会再让浏览器 API 意外执行网页辅助方法或抛出额外错误。此优化保留固定种子、已有用户配置和网页自己的方法替换，不等于实现了原生指纹内核。
+
+`node scripts/launch-electron.cjs tests/fingerprint-tostring-electron.cjs` 比较未注入基线与生产注入：页面和 iframe 各 19 项、Dedicated Worker 14 项，并保留描述符、非法 receiver、导航和停用回归。真实检测页非交互服务端 PASS，托管模式仍需点击；没有证据证明本次修改提高免点击通过率。原生 HTTP Client Hints、GPU 能力和 Chrome API 差异继续按已知限制处理，不能直接填入假数据。
+
 ## 2026-10-15 视口修复验证
 
 公开 v0.2.13 的整套随机曾将随机屏幕宽高填入实际视口。1050 像素宽的浏览区域遇到 3840×2120 视口时，生产适配逻辑缩至约 27%，已在隔离 Electron 中复现。当前源码默认生成 0×0 自适应，保留显式固定尺寸；不自动改写旧实例。

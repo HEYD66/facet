@@ -13,22 +13,30 @@
   // replacements get an original source string; ordinary functions stay untouched.
   var nativeToString = Function.prototype.toString;
   var apply = Reflect.apply;
+  // Browser APIs do not depend on helpers a site replaces after startup.
+  // Retain those intrinsics for our own bookkeeping and conversions as well.
+  var construct = Reflect.construct, reflectGet = Reflect.get;
+  var mapHas = WeakMap.prototype.has, mapGet = WeakMap.prototype.get, mapSet = WeakMap.prototype.set;
+  var setHas = WeakSet.prototype.has, setAdd = WeakSet.prototype.add;
+  var slice = Array.prototype.slice, create = Object.create;
+  var NativeProxy = Proxy, NativeString = String, NativeDOMRect = root.DOMRect, toPrimitive = Symbol.toPrimitive;
+  var abs = Math.abs, floor = Math.floor, max = Math.max, min = Math.min;
   var sources = new WeakMap();
   var markNative = function (replacement, original) {
     if (typeof original !== 'function') return replacement;
-    var wrapped = new Proxy(original, {
+    var wrapped = new NativeProxy(original, {
       apply: function (_target, receiver, args) { return apply(replacement, receiver, args); },
     });
-    sources.set(wrapped, apply(nativeToString, original, []));
+    apply(mapSet, sources, [wrapped, apply(nativeToString, original, [])]);
     return wrapped;
   };
-  var toString = new Proxy(nativeToString, {
+  var toString = new NativeProxy(nativeToString, {
     apply: function (target, receiver, args) {
-      if (sources.has(receiver)) return sources.get(receiver);
+      if (apply(mapHas, sources, [receiver])) return apply(mapGet, sources, [receiver]);
       return apply(target, receiver, args);
     },
   });
-  sources.set(toString, apply(nativeToString, nativeToString, []));
+  apply(mapSet, sources, [toString, apply(nativeToString, nativeToString, [])]);
   Object.defineProperty(Function.prototype, 'toString', {
     ...Object.getOwnPropertyDescriptor(Function.prototype, 'toString'), value: toString,
   });
@@ -87,11 +95,11 @@
    * 否则会把噪点写回用户可见的画布，页面自己看得出来。            */
   var noisePixels = function (data, seed) {
     if (!data || data.length < 4) return data;
-    var step = Math.max(4, Math.floor(data.length / 32 / 4) * 4);
+    var step = max(4, floor(data.length / 32 / 4) * 4);
     var normalized = data.BYTES_PER_ELEMENT > 1;
     var limit = normalized ? 1 : 255;
-    var delta = ((Math.abs(seed) % 3) + 1) / (normalized ? 255 : 1);
-    var start = Math.abs(seed) % Math.max(1, Math.min(step, data.length - 3));
+    var delta = ((abs(seed) % 3) + 1) / (normalized ? 255 : 1);
+    var start = abs(seed) % max(1, min(step, data.length - 3));
     for (var i = start; i < data.length; i += step) {
       var p = i - (i % 4);
       // Transparent/empty pixels must stay transparent black. Saturate instead
@@ -128,7 +136,7 @@
     var offscreenContexts = new WeakMap();
     if (offscreenContext) NativeOffscreenCanvas.prototype.getContext = markNative(function () {
       var context = apply(offscreenContext, this, arguments);
-      if (context) offscreenContexts.set(this, context);
+      if (context) apply(mapSet, offscreenContexts, [this, context]);
       return context;
     }, offscreenContext);
     patchImageData(root.CanvasRenderingContext2D);
@@ -143,7 +151,7 @@
       if (offscreen) {
         // Do not call getContext on the SOURCE: a context-less canvas must stay
         // context-less, and an existing WebGL/bitmaprenderer must keep its mode.
-        var originalContext = offscreenContexts.get(self);
+        var originalContext = apply(mapGet, offscreenContexts, [self]);
         if (!originalContext) throw new Error('Canvas context not tracked');
         try { attributes = apply(offscreenAttributes, originalContext, []); source2D = originalContext; }
         catch (e) {
@@ -195,15 +203,15 @@
           // a website's getters/valueOf/toString a second time.
           // Use an empty facade target. Returning converted primitives from a
           // Proxy over the user's frozen object would violate Proxy invariants.
-          args = [new Proxy(Object.create(null), { get: function (_target, key) {
-            var item = Reflect.get(options, key, options);
+          args = [new NativeProxy(create(null), { get: function (_target, key) {
+            var item = reflectGet(options, key, options);
             if (key === 'quality') {
               captured.quality = item === undefined ? undefined : +item;
               return captured.quality;
             }
             if (key === 'type') {
               // WebIDL rejects Symbol (String(Symbol) by itself would not).
-              captured.type = item === undefined || typeof item === 'symbol' ? item : String(item);
+              captured.type = item === undefined || typeof item === 'symbol' ? item : NativeString(item);
               converted = true;
               return captured.type;
             }
@@ -239,14 +247,14 @@
         // Let native WebIDL perform receiver validation before converting the
         // argument. Capture object coercion so user valueOf runs exactly once.
         if (parameter !== null && (typeof parameter === 'object' || typeof parameter === 'function')) {
-          args = Array.prototype.slice.call(arguments);
-          args[0] = { [Symbol.toPrimitive]: function () {
+          args = apply(slice, arguments, []);
+          args[0] = { [toPrimitive]: function () {
             var number = +parameter; converted = number >>> 0; return number;
           } };
         }
         var result = apply(original, this, args);
         if (result === null) return result;
-        var enumValue = converted === undefined ? Number(parameter) >>> 0 : converted;
+        var enumValue = converted === undefined ? +parameter >>> 0 : converted;
         if (enumValue === 37445 && fp.WebGlVendor) return fp.WebGlVendor;
         if (enumValue === 37446 && fp.WebGlRenderer) return fp.WebGlRenderer;
         return result;
@@ -263,14 +271,14 @@
       var originalAudio = AudioBuffer.prototype.getChannelData;
       var rendered = new WeakSet();
       var noiseAudio = function (buffer) {
-        if (!buffer || rendered.has(buffer)) return buffer;
-        rendered.add(buffer);
+        if (!buffer || apply(setHas, rendered, [buffer])) return buffer;
+        apply(setAdd, rendered, [buffer]);
         for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
           var data = apply(originalAudio, buffer, [channel]);
           // Do not create a signal in silence or change manually written buffers.
-          for (var i = Math.abs(fp.AudioSeed) % 97; i < data.length; i += 97) {
+          for (var i = abs(fp.AudioSeed) % 97; i < data.length; i += 97) {
             if (data[i] !== 0) {
-              data[i] += (((Math.abs(fp.AudioSeed) % 11) + 1) * 1e-8);
+              data[i] += (((abs(fp.AudioSeed) % 11) + 1) * 1e-8);
               break;
             }
           }
@@ -281,13 +289,13 @@
       var originalRendering = OriginalOffline.prototype.startRendering;
       var addListener = EventTarget.prototype.addEventListener;
       var then = Promise.prototype.then;
-      var WrappedOffline = new Proxy(OriginalOffline, { construct: function (target, args, newTarget) {
-        var context = Reflect.construct(target, args, newTarget);
+      var WrappedOffline = new NativeProxy(OriginalOffline, { construct: function (target, args, newTarget) {
+        var context = construct(target, args, newTarget);
         // Register before the page's oncomplete/addEventListener callbacks.
         apply(addListener, context, ['complete', function (event) { noiseAudio(event.renderedBuffer); }, { once: true, capture: true }]);
         return context;
       } });
-      sources.set(WrappedOffline, apply(nativeToString, OriginalOffline, []));
+      apply(mapSet, sources, [WrappedOffline, apply(nativeToString, OriginalOffline, [])]);
       Object.defineProperty(root, 'OfflineAudioContext', { ...Object.getOwnPropertyDescriptor(root, 'OfflineAudioContext'), value: WrappedOffline });
       if (root.webkitOfflineAudioContext === OriginalOffline) Object.defineProperty(root, 'webkitOfflineAudioContext', { ...Object.getOwnPropertyDescriptor(root, 'webkitOfflineAudioContext'), value: WrappedOffline });
       Object.defineProperty(OriginalOffline.prototype, 'constructor', { ...Object.getOwnPropertyDescriptor(OriginalOffline.prototype, 'constructor'), value: WrappedOffline });
@@ -304,23 +312,23 @@
   /* ---------------- 元素盒模型微扰 ----------------
    * 亚像素级偏移，破坏 getBoundingClientRect 的精确指纹，
    * 又不至于影响布局判定（各站点阈值通常远大于 1e-5）。 */
-  var rectNoise = ((Math.abs(fp.ClientRectsSeed) % 9) + 1) * 0.00001;
+  var rectNoise = ((abs(fp.ClientRectsSeed) % 9) + 1) * 0.00001;
   var cloneRect = function (r) {
     if (r.width === 0 && r.height === 0) return r;
-    try { return new DOMRect(r.x + rectNoise, r.y + rectNoise, r.width, r.height); }
+    try { return new NativeDOMRect(r.x + rectNoise, r.y + rectNoise, r.width, r.height); }
     catch (e) { return r; }
   };
   if (fp.Rects) try {
     var originalRect = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = markNative(function () {
-      return cloneRect(originalRect.apply(this, arguments));
+      return cloneRect(apply(originalRect, this, arguments));
     }, originalRect);
   } catch (e) {}
   if (fp.Rects) try {
     if (root.Range && Range.prototype.getBoundingClientRect) {
       var originalRangeRect = Range.prototype.getBoundingClientRect;
       Range.prototype.getBoundingClientRect = markNative(function () {
-        return cloneRect(originalRangeRect.apply(this, arguments));
+        return cloneRect(apply(originalRangeRect, this, arguments));
       }, originalRangeRect);
     }
   } catch (e) {}
