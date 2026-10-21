@@ -49,6 +49,8 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 ## 2026-10-21 上下文一致性与 API 行为修复
 
+私有调试管道不应使正常手动浏览变成 webdriver=true。本次在普通启动层禁用管道附带的 AutomationControlled 特征，保留原生 webdriver getter；显式 automation / headless 启动保持调用者意图。页面、跨站 iframe 首段、外部 CDP 连接和重启均有回归断言。真实检测页的非交互验证已恢复服务端 PASS，托管验证等待点击，详见 [验证记录](VERIFICATION.md)。
+
 - iframe / Dedicated Worker 继续由实例页面 CDP 附着。SharedWorker 首段使用应用启动时建立的 Browser 级私有 CDP 管道；只按 Chromium `browserContextId` 关联实例会话，暂停目标后设置原生 UA、语言、时区与注入脚本，再恢复首段执行。Windows x64 专用命名管道本身不监听 TCP；开启外部 CDP 时，由本机网关监听原配置端口并复用该管道，不另开 Chromium TCP 端口。外部附着事件、恢复执行及父会话分离会等待环境初始化，避免 Playwright 提前恢复 SharedWorker。只覆盖网站 Worker，不覆盖扩展 Worker。
 - 网站 Service Worker 使用本会话的主世界预加载。CDP 在其启动暂停阶段的 Runtime / Emulation 命令不响应，因此不再将它挂在这条等待链路中。切换环境（含仅时区变化）或开关指纹覆盖时停止旧网站 Worker，保留注册和持久化网站数据。扩展 Service Worker 不执行此覆盖。
 - 透明 Canvas 不加噪，色值不从 255 环绕为 0；保留原生 receiver、参数转换和异常。OffscreenCanvas 的 2D 读取和 `convertToBlob` 使用相同固定种子规则。导出先调用原生方法校验原画布，再同步保存加噪副本；原生错误不会变成成功。编码选项只读取和转换一次，源画布不被修改。

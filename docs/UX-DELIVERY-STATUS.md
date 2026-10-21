@@ -13,6 +13,8 @@
 
 ## 2026-10-21：指纹上下文一致性与内核候选
 
+- [x] 修复私有调试管道意外启用 AutomationControlled 的回归：正常手动浏览保留原生 webdriver=false，SharedWorker 与外部 CDP 协调保留；同节点真实检测页非交互验证恢复服务端 PASS，托管验证等待点击，未代点。补充页面 / 跨站 iframe 首段及重启回归；源码未发布，现有用户进程未重启。
+
 - [ ] Simprint 内核评估与选择性移植：参考 https://github.com/Simprint/simprint-browser-kernel ，优先审查每实例固定种子、Worker / 跨站 iframe、Canvas / Audio / WebGL 的原生行为与版本升级成本。官方仓库已归档，已查分支为 `simprint/m144`（Chromium 144.0.7559.118，AGPLv3）；不得将配置项或补丁存在等同于运行验证通过，不直接替换现有 Electron 内核。
 - [x] Dedicated Worker（含 Blob、module、嵌套和跨站 iframe 内 Worker）与网页的 UA、语言、时区、CPU、内存和 WebGL 报告一致；两个并发实例及全新进程重启验证通过。
 - [x] 网站 Service Worker 在首段脚本前应用覆盖；变更环境或仅变更时区时停止本会话旧网站 Worker，使其再次启动时读取新配置；关闭覆盖后撤销预加载，开启后恢复。保留注册与网站数据，不处理扩展 Worker。

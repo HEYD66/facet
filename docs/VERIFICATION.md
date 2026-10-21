@@ -2,6 +2,16 @@
 
 更新：2026-10-21。当前源码版本 v0.2.17。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
 
+## 2026-10-21 回归修复：私有调试管道改变手动浏览状态
+
+- 原因：新增 `--remote-debugging-pipe` 后，Chromium 同时启用 AutomationControlled，正常手动浏览的原生 `navigator.webdriver` 变为 `true`。前序本机字段测试漏测了该项。
+- 修复：建立私有管道时，在普通启动中合并 `disable-blink-features=AutomationControlled`，保留已有禁用项及原生 webdriver getter。显式指定 `--enable-automation` 或 `--headless` 时不覆盖启动意图；没有添加检测站域名特判，也没有移除 SharedWorker 初始化协调。
+- 真实网页旧新对照：同一实例环境参数、同一正在运行的本机代理，使用隔离会话访问 `https://ip.net.coffee/cloudflare/`。15:58 检查点 `6495038` 和 Canvas 修复版 `4404175` 的非交互验证取得服务端 PASS；私有管道版 `96f41ad` 出现 webdriver=true 与 600010；本次修复后 webdriver=false，非交互验证恢复服务端 PASS（该次响应 29 ms）。托管验证显示“需要点击确认”，未代点，不能记为托管验证通过。600* 本身是通用挑战失败码，定位依赖本次版本对照，而非错误码单独归因。
+- `test:cdp-workers`：17 项流程、34 次 SharedWorker 首段采样通过，补充原生 webdriver 描述符和跨源 iframe 第一条脚本断言；双客户端、重连、环境切换和全新进程重启持续检查 webdriver=false。
+- `test:fingerprint-contexts`：首次启动、重启和外部 CDP 三轮各 40 项通过；页面及真正独立进程的跨站 iframe 首段、导航后读数新增 webdriver=false 检查。另行原生启动对照验证普通模式 false、显式 automation 模式 true，原有禁用项保留。
+- `check` 297 scripts、`test:control-api` 1/1、`test:packaging` 3/3 和 `git diff --check` 通过。未生成安装包。真实网页对照没有复制原账号 Cookie 或扩展；结果不代表所有节点、所有验证码或原账号状态均通过。用户应用未重启，需加载新版主进程后生效。
+- 回滚基线 `96f41ad`；仅撤销本次提交即可保留此前 SharedWorker / 外部 CDP 修复。真实网页原始对照报告保存在 Git 忽略的 `.local-dev/cf-version-compare/`，不随项目发布。
+
 ## 2026-10-21 续做：外部 Playwright 与 SharedWorker 初始化协调
 
 - 正式入口复现：外部 Playwright Browser 连接会在内部环境初始化结束前恢复 SharedWorker，导致第一条脚本读到原生信息，后续读数才被覆盖。仅页面 WebSocket 的通过结果不足以排除此问题。

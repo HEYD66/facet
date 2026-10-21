@@ -37,6 +37,14 @@ function pipeChannel(app,channel){
   reader.on('data',chunk=>{buffer+=decoder.write(chunk);for(;;){const i=buffer.indexOf('\0');if(i<0)break;const message=buffer.slice(0,i);buffer=buffer.slice(i+1);channel.receive(message);}if(buffer.length>8*1024*1024)channel.fail(Error('环境控制通道消息超出上限'));});
   for(const socket of [reader,writer]){socket.on('error',()=>channel.fail(Error('SharedWorker 私有环境通道连接中断')));socket.on('close',()=>channel.fail(Error('SharedWorker 私有环境通道已关闭')));}
   channel.mode='private-pipe';channel.write=text=>writer.write(text+'\0');
+  // Chromium's debugging pipe also enables AutomationControlled. This private
+  // transport is used for manual browser environment setup, not a WebDriver
+  // session. Preserve normal native Navigator behavior without patching its
+  // getter. Respect launches that deliberately request automation/headless.
+  if(!app.commandLine.hasSwitch('enable-automation')&&!app.commandLine.hasSwitch('headless')){
+   const disabled=new Set(app.commandLine.getSwitchValue('disable-blink-features').split(',').map(x=>x.trim()).filter(Boolean));
+   disabled.add('AutomationControlled');app.commandLine.appendSwitch('disable-blink-features',[...disabled].join(','));
+  }
   app.commandLine.appendSwitch('remote-debugging-pipe');app.commandLine.appendSwitch('remote-debugging-io-pipes',handles);
   app.once('ready',()=>native.adopt());
   // Chromium owns the server handles; closing the client while the app runs

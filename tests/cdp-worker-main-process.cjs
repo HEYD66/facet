@@ -38,6 +38,7 @@ async function targetPage(browser,id){
  },'Playwright page selected by instance targetId');
 }
 async function sample(page,env,label,count=1){
+ assert.equal(await page.evaluate(()=>navigator.webdriver),false,label+': private environment pipe must not mark manual browsing as WebDriver');
  const main=await page.evaluate(`(async()=>({...${firstSource},hints:await (${hintsSource})}))()`);
  const expected={patched:true,ua:env.userAgent,platform:env.platform,cpu:env.cpu,memory:env.fingerprint.memory,language:env.language,languages:[env.language],tz:env.timezone};
  for(const [key,value]of Object.entries(expected))assert.deepEqual(main[key],value,label+': page '+key);
@@ -65,6 +66,7 @@ async function main(){
  fs.mkdirSync(dataDir);fs.writeFileSync(path.join(dataDir,'control-api.json'),JSON.stringify({version:1,enabled:true,apiPort,cdpPort,token}));
  server=http.createServer((req,res)=>{
   res.setHeader('Cache-Control','no-store');
+  if(req.url==='/webdriver-frame'){res.setHeader('Content-Type','text/html');res.end('<script>parent.postMessage({fixture:"webdriver-first-script",value:navigator.webdriver},"*")</script>');return;}
   if(req.url.startsWith('/shared-worker.js')){res.setHeader('Content-Type','text/javascript');res.end(`const first=${firstSource};const hints=${hintsSource};onconnect=e=>Promise.resolve(hints).then(hints=>e.ports[0].postMessage({...first,hints}));`);return;}
   res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Formal main CDP worker regression</title><p>Disposable local fixture</p>');
  });
@@ -76,6 +78,10 @@ async function main(){
  const ids=[];for(let i=0;i<2;i++){const created=await api('/v1/instances','POST',{name:'CDP隔离回归'+i,start:true,environment:envs[i]});ids.push(created.id);await api(`/v1/instances/${created.id}/navigate`,'POST',{url});}
  const pages=await Promise.all(ids.map(id=>targetPage(browser,id)));
  await Promise.all(pages.map((p,i)=>sample(p,envs[i],'two Playwright clients / instance '+i,8)));
+ const nativeWebdriver=await pages[0].evaluate(()=>{const d=Object.getOwnPropertyDescriptor(Navigator.prototype,'webdriver');return {own:Object.hasOwn(navigator,'webdriver'),name:d.get.name,enumerable:d.enumerable,configurable:d.configurable,source:Function.prototype.toString.call(d.get)};});
+ assert.deepEqual(nativeWebdriver,{own:false,name:'get webdriver',enumerable:true,configurable:true,source:'function get webdriver() { [native code] }'});
+ const frameWebdriver=await pages[0].evaluate(url=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('cross-origin frame fixture timeout')),10000);addEventListener('message',function listener(e){if(e.data?.fixture!=='webdriver-first-script')return;clearTimeout(timer);removeEventListener('message',listener);frame.remove();resolve(e.data.value);});const frame=document.createElement('iframe');frame.src=url;document.body.append(frame);}),url.replace('127.0.0.1','localhost')+'webdriver-frame');
+ assert.equal(frameWebdriver,false,'cross-origin iframe first script does not inherit incidental pipe automation flag');checks.push('native webdriver descriptor retained; cross-origin iframe first script stays false');
  const contextIds=[];
  for(const page of pages){const session=await page.context().newCDPSession(page);try{contextIds.push((await session.send('Target.getTargetInfo')).targetInfo.browserContextId);}finally{await session.detach();}}
  assert(contextIds.every(Boolean));assert.notEqual(contextIds[0],contextIds[1],'separate Chromium BrowserContexts');

@@ -22,7 +22,7 @@ async function sample(){
  const ext=gl&&gl.getExtension('WEBGL_debug_renderer_info');
  const drawing=new OffscreenCanvas(32,32),context=drawing.getContext('2d');context.fillStyle='#7296be';context.fillRect(0,0,32,32);
  const blob=await drawing.convertToBlob(),encoded=Array.from(new Uint8Array(await blob.arrayBuffer()),x=>x.toString(16).padStart(2,'0')).join('');
- return {patched:!!globalThis.__arenaFingerprintV3Applied,ua:nav.userAgent,platform:nav.platform,cpu:nav.hardwareConcurrency,memory:nav.deviceMemory,
+ return {patched:!!globalThis.__arenaFingerprintV3Applied,webdriver:typeof document==='undefined'?null:nav.webdriver,ua:nav.userAgent,platform:nav.platform,cpu:nav.hardwareConcurrency,memory:nav.deviceMemory,
   language:nav.language,languages:Array.from(nav.languages),tz:Intl.DateTimeFormat().resolvedOptions().timeZone,
   vendor:ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):null,renderer:ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):null,
   screen:typeof screen==='undefined'?null:[screen.width,screen.height,screen.availHeight,screen.colorDepth],
@@ -38,7 +38,7 @@ function verify(value,env,label){
  for(const [key,v]of Object.entries(expected))assert.deepEqual(value[key],v,label+': '+key);
  if(observed[label.split(':')[0]+': main first script']?.hints)assert.deepEqual(value.hints,observed[label.split(':')[0]+': main first script'].hints,label+': UA-CH');
  if(observed[label.split(':')[0]+': main first script']?.canvasPng)assert.equal(value.canvasPng,observed[label.split(':')[0]+': main first script'].canvasPng,label+': Offscreen export');
- if(value.screen)assert.deepEqual(value.screen,[env.fingerprint.screenWidth,env.fingerprint.screenHeight,env.fingerprint.availHeight,env.fingerprint.colorDepth],label+': screen');
+ if(value.screen){assert.equal(value.webdriver,false,label+': internal environment pipe does not enable WebDriver');assert.deepEqual(value.screen,[env.fingerprint.screenWidth,env.fingerprint.screenHeight,env.fingerprint.availHeight,env.fingerprint.colorDepth],label+': screen');}
  checks.push(label);
 }
 async function wait(fn,label){
