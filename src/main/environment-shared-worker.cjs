@@ -1,18 +1,31 @@
 'use strict';
 const {prepareBrowserChannel,browserChannel}=require('./environment-browser-channel.cjs');
+const {beginTarget,waitForTarget,forgetTarget}=require('./environment-target-readiness.cjs');
 const sessions=new WeakMap(),contexts=new Map(),targets=new Map();let ready;
 const website=info=>/^(https?:|blob:https?:)/i.test(info.url||'');
 const filters=[{type:'shared_worker',exclude:false},{exclude:true}];
 function report(state,error){const text='SharedWorker 环境应用失败：'+String(error?.message||error);state.errors.push(text);if(state.errors.length>100)state.errors.shift();for(const wc of state.owners)if(!wc.isDestroyed())wc.emit('facet-environment-error',Error(text));}
-function prepareSharedWorkerEnvironment(app){
- if(ready)return;
+function prepareSharedWorkerEnvironment(app,{externalPort}={}){
+ if(ready)return ready;
+ const commandPort=app.commandLine.getSwitchValue('remote-debugging-port'),commandRequested=app.commandLine.hasSwitch('remote-debugging-port');
+ if(commandRequested){
+  const parsed=Number(commandPort);if(!Number.isInteger(parsed)||parsed<0||parsed>65535)throw Error('CDP 端口无效');
+  if(externalPort==null)externalPort=parsed;
+  // Preserve CLI automation entrypoints, but route them through the same gate.
+  app.commandLine.removeSwitch('remote-debugging-port');app.commandLine.removeSwitch('remote-debugging-address');
+ }
  const channel=prepareBrowserChannel(app);
  channel.on('message',(method,params,parentId)=>{
+  if(method==='Target.targetDestroyed'){forgetTarget(params.targetId);return;}
   if(method==='Target.detachedFromTarget'){targets.delete(params.sessionId);return;}
   if(method!=='Target.attachedToTarget')return;
+  // Public gateway clients own independent Browser sessions. Never resume or
+  // detach their children from the private environment listener.
+  if(params.targetInfo.type==='browser'||parentId&&!targets.has(parentId))return;
   const info=params.targetInfo,parent=targets.get(parentId),state=info.type==='shared_worker'?contexts.get(info.browserContextId):contexts.get(info.browserContextId)||parent?.state;
   const managed=!!(state?.owners.size&&(['page','tab','worker'].includes(info.type)||info.type==='shared_worker'&&website(info)));
   const entry={state:managed?state:null,targetId:info.targetId,type:info.type};targets.set(params.sessionId,entry);
+  const finish=managed?beginTarget(info.targetId):()=>{};
   const task=(async()=>{
    const send=(method,data)=>channel.send(method,data,params.sessionId);
    try{if(managed){
@@ -26,13 +39,32 @@ function prepareSharedWorkerEnvironment(app){
     try{await send('Runtime.runIfWaitingForDebugger');}
     catch(error){if(managed&&targets.has(params.sessionId))report(state,error);try{await channel.send('Target.detachFromTarget',{sessionId:params.sessionId});}catch{}}
     if(!managed){try{await channel.send('Target.detachFromTarget',{sessionId:params.sessionId});}catch{}targets.delete(params.sessionId);}
+    finish();
    }
   })();
   if(managed){state.pending.add(task);task.finally(()=>state.pending.delete(task)).catch(error=>report(state,error));}else task.catch(()=>{});
  });
  channel.on('failure',error=>{for(const state of contexts.values())report(state,error);targets.clear();});
- ready=channel.ready.then(()=>channel.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:filters}));
+ ready=channel.ready.then(async()=>{
+  await channel.send('Target.setDiscoverTargets',{discover:true});
+  await channel.send('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:filters});
+  if(externalPort!=null){
+   const gateway=new (require('./cdp-gateway.cjs').CdpGateway)(channel,{port:externalPort,waitForEnvironment:info=>{
+    if(['shared_worker','worker','iframe'].includes(info.type)&&contexts.has(info.browserContextId)&&website(info))return waitForTarget(info.targetId);
+   }});
+   try{await gateway.start();}catch(error){await gateway.stop();channel.gatewayError='本机 CDP 启动失败：'+error.message;return channel;}
+   channel.mode='private-pipe-gateway';
+   if(commandRequested){
+    const file=require('node:path').join(app.getPath('userData'),'DevToolsActivePort');
+    require('node:fs').writeFileSync(file,String(gateway.port)+'\n/devtools/browser/'+gateway.browserId);
+    console.log('DevTools listening on '+gateway.url('browser',gateway.browserId));
+   }
+   app.once('will-quit',()=>gateway.stop().catch(()=>{}));
+  }
+  return channel;
+ });
  ready.catch(()=>{});
+ return ready;
 }
 async function closeWorkers(state){
  const channel=browserChannel();if(channel.closed)return;

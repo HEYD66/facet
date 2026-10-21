@@ -71,6 +71,7 @@
     "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs",
     "test:fingerprint-electron": "node tests/fingerprint-catalog-runner.cjs",
     "test:fingerprint-contexts": "node tests/fingerprint-contexts-runner.cjs",
+    "test:cdp-workers": "node tests/cdp-worker-main-process.cjs",
     "test:fingerprint-offscreen": "node scripts/launch-electron.cjs tests/fingerprint-offscreen-electron.cjs"
   },
   "engines": {
@@ -84,6 +85,7 @@
   "dependencies": {
     "electron-updater": "6.8.10",
     "js-yaml": "5.4.2",
-    "unzipper": "0.12.5"
+    "unzipper": "0.12.5",
+    "ws": "8.22.0"
   }
 }

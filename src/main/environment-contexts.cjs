@@ -3,6 +3,7 @@
 // Attach only to descendants of this webContents. Browser-wide discovery would
 // mix instance sessions and extension workers, so it must never be used here.
 const states=new WeakMap();
+const {beginTarget,forgetTarget}=require('./environment-target-readiness.cjs');
 const filters=[
  {type:'iframe',exclude:false},
  {type:'worker',exclude:false},
@@ -19,7 +20,7 @@ function targetCommand(wc,method,params,sessionId){
 
 async function installContextEnvironment(wc,{source,applyNative}){
  if(states.has(wc))throw Error('实例环境已安装，不能重复注册目标监听');
- const debug=wc.debugger,children=new Map(),pending=new Set(),errors=[];
+ const debug=wc.debugger,children=new Map(),targetIds=new Map(),pending=new Set(),errors=[];
  let disposed=false;
  const send=(method,params,sessionId)=>targetCommand(wc,method,params,sessionId);
  const autoAttach={autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:filters};
@@ -32,6 +33,8 @@ async function installContextEnvironment(wc,{source,applyNative}){
  async function configure(params){
   const {sessionId,targetInfo}=params;
   children.set(sessionId,targetInfo.type);
+  targetIds.set(sessionId,targetInfo.targetId);
+  const finish=beginTarget(targetInfo.targetId);
   try{
    // Every descendant recursively attaches its own children before it resumes.
    await send('Target.setAutoAttach',autoAttach,sessionId);
@@ -51,19 +54,20 @@ async function installContextEnvironment(wc,{source,applyNative}){
    try{await send('Runtime.runIfWaitingForDebugger',{},sessionId);}catch(error){
     if(children.has(sessionId))report(error);
    }
+   finish();
   }
  }
  function onMessage(_event,method,params){
   if(disposed)return;
   if(method==='Target.attachedToTarget'){
    const job=configure(params);pending.add(job);job.finally(()=>pending.delete(job)).catch(report);
-  }else if(method==='Target.detachedFromTarget')children.delete(params.sessionId);
+  }else if(method==='Target.detachedFromTarget'){children.delete(params.sessionId);forgetTarget(targetIds.get(params.sessionId));targetIds.delete(params.sessionId);}
  }
  function dispose(){
   if(disposed)return;
   disposed=true;debug.removeListener('message',onMessage);
   debug.removeListener('detach',dispose);wc.removeListener('destroyed',dispose);
-  children.clear();states.delete(wc);
+  for(const id of targetIds.values())forgetTarget(id);targetIds.clear();children.clear();states.delete(wc);
  }
  const state={children,pending,errors,dispose};
  states.set(wc,state);debug.on('message',onMessage);debug.once('detach',dispose);wc.once('destroyed',dispose);

@@ -49,7 +49,7 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 ## 2026-10-21 上下文一致性与 API 行为修复
 
-- iframe / Dedicated Worker 继续由实例页面 CDP 附着。SharedWorker 首段使用应用启动时建立的 Browser 级私有 CDP 管道；只按 Chromium `browserContextId` 关联实例会话，暂停目标后设置原生 UA、语言、时区与注入脚本，再恢复首段执行。管道是 Windows x64 专用命名管道，不监听 TCP；若用户已启用外部 CDP，则复用当前本机 Browser CDP 端口，不另开端口。只处理网站 SharedWorker，不处理扩展 Worker。
+- iframe / Dedicated Worker 继续由实例页面 CDP 附着。SharedWorker 首段使用应用启动时建立的 Browser 级私有 CDP 管道；只按 Chromium `browserContextId` 关联实例会话，暂停目标后设置原生 UA、语言、时区与注入脚本，再恢复首段执行。Windows x64 专用命名管道本身不监听 TCP；开启外部 CDP 时，由本机网关监听原配置端口并复用该管道，不另开 Chromium TCP 端口。外部附着事件、恢复执行及父会话分离会等待环境初始化，避免 Playwright 提前恢复 SharedWorker。只覆盖网站 Worker，不覆盖扩展 Worker。
 - 网站 Service Worker 使用本会话的主世界预加载。CDP 在其启动暂停阶段的 Runtime / Emulation 命令不响应，因此不再将它挂在这条等待链路中。切换环境（含仅时区变化）或开关指纹覆盖时停止旧网站 Worker，保留注册和持久化网站数据。扩展 Service Worker 不执行此覆盖。
 - 透明 Canvas 不加噪，色值不从 255 环绕为 0；保留原生 receiver、参数转换和异常。OffscreenCanvas 的 2D 读取和 `convertToBlob` 使用相同固定种子规则。导出先调用原生方法校验原画布，再同步保存加噪副本；原生错误不会变成成功。编码选项只读取和转换一次，源画布不被修改。
 - OffscreenCanvas 通过弱引用映射记录已获取的绘图上下文，保留 sRGB / Display P3 和 unorm8 / float16；浮点像素使用归一化噪声，不按字节直接加 1。无上下文、未记录上下文或 bitmaprenderer 等无法可靠克隆的情况保留原生结果，不为了导出而改变源画布的上下文类型。该兜底不保证导出噪声覆盖。
@@ -60,11 +60,13 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 `npm.cmd run test:fingerprint-offscreen` 单独对照原生与覆盖后的真实导出：PNG / JPEG / WebP、质量与无效 MIME、参数 getter 顺序和次数、调用时快照、透明像素、非法 receiver、零尺寸、转移/分离、DOM 所有权及跨域污染错误。另测页面/Worker 相同输出、DOM 画布转移到 Worker、色彩空间/浮点精度和网站替换辅助方法。为保留原生校验，正常加噪导出会额外编码副本；大画布高频导出有额外 CPU 和瞬时内存开销，未做长期负载验收。
 
-报告中的 `passed` 表示已实现范围的断言通过；`complete:false` 和 `boundaries` 明确记录未覆盖项，不得据退出码写成全上下文通过。测试不读取或修改真实用户实例；未用第三方注册/验证码成功率作为结果，也未宣称对任意自定义 UA 和所有检测站完整覆盖。当前只在 Windows x64 / Electron 44.4.5 的隔离场景实测。
+报告中的 `passed` 和 `complete` 只表示该夹具定义的断言通过，`boundaries` 记录夹具发现的差异；不是所有指纹能力完整覆盖的证明。测试不读取或修改真实用户实例；未用第三方注册/验证码成功率作为结果，也未宣称对任意自定义 UA 和所有检测站完整覆盖。当前只在 Windows x64 / Electron 44.4.5 的隔离场景实测。
 
-SharedWorker 使用 Chromium Browser target 的 `Target.setAutoAttach`，通过 Windows 命名管道传入私有调试句柄。隔离测试在 Worker 顶层第一条脚本立即采样，确认暂停状态、注入标记和 UA / CPU / 语言等字段一致，并覆盖两个实例、实例重启、全新 Electron 进程重启及现有 CDP 端口复用。该底层启动通道仅当前 Windows x64 构建提供；缺失或校验失败时应用会明确报错，不能静默当成覆盖成功。尚未在 macOS/Linux、扩展 Worker、所有 WebGL/GPU 能力或第三方风控结果上验证。
+SharedWorker 使用 Chromium Browser target 的 `Target.setAutoAttach`，通过 Windows 命名管道传入私有调试句柄。隔离测试在 Worker 顶层第一条脚本立即采样，检查注入标记和 UA / CPU / 语言等字段，并覆盖两个实例、环境切换、实例重启、全新进程重启、初始化失败恢复，以及外部 Playwright 持续连接。该底层启动通道仅当前 Windows x64 构建提供；缺失或校验失败时应用会明确报错。尚未在 macOS/Linux、扩展 Worker、所有 WebGL/GPU 能力或第三方风控结果上验证。
 
-回归另包含 `test:fingerprint-electron`、`fingerprint-tostring-electron.cjs`、`test:extension-debugger-electron` 和 `test:devtools-electron`，验证生产保存流程、停用、扩展调试事件、Worker 与开发者工具兼容。当前 SharedWorker 代码尚未提交；加载新主进程和实例后才会生效。
+`npm.cmd run test:cdp-workers` 使用正式 `main.cjs`、临时数据、本地 API 和两个真实 Playwright 客户端：比对 SharedWorker 第一条脚本的 UA / 平台 / CPU / 内存 / 语言 / 时区，以及后续 UA-CH；验证按 targetId 选择实例、Cookie / localStorage 隔离、长命令、断开重连、F12 共存、配置持久化、正常退出和全新进程重启。UA 使用运行中 Browser.getVersion 的真实 Chromium 版本，不使用 Node 宿主的 Chrome/0.0.0.0 占位值。
+
+前序回归另包含 `test:fingerprint-electron`、`fingerprint-tostring-electron.cjs`、`test:extension-debugger-electron` 和 `test:devtools-electron`，验证生产保存流程、停用、扩展调试事件、Worker 与开发者工具兼容。本次外部 CDP 修复重跑了后两项；加载新主进程和实例后才会生效，源码修复尚未发布。
 
 ## 2026-10-15 视口修复验证
 

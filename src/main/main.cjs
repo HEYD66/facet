@@ -15,15 +15,15 @@ require('./webrtc-policy.cjs').installWebRTCPolicy(app);
 require('./browser-network-policy.cjs').installBrowserNetworkPolicy(app);
 app.commandLine.appendSwitch('disable-quic');
 // 外部控制默认关闭。开启后由应用级 CDP 端口承载所有实例页面，端口只监听本机。
-const cdpStarted=controlSettings.enabled&&!!controlSettings.cdpPort;
-if(cdpStarted){app.commandLine.appendSwitch('remote-debugging-port',String(controlSettings.cdpPort));app.commandLine.appendSwitch('remote-debugging-address','127.0.0.1');}
-require('./environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app);
+const cdpRequested=controlSettings.enabled&&!!controlSettings.cdpPort;
+const environmentReady=require('./environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app,{externalPort:cdpRequested?controlSettings.cdpPort:null});
 const locked=app.requestSingleInstanceLock();if(!locked)app.quit();
 let window,controller,quitting=false,closing=false;
 // Windows：去掉系统黑色标题栏，改由界面自绘一行（颜色跟随主题），最小化/最大化/关闭仍用系统按钮（titleBarOverlay）。
 const customFrame=process.platform==='win32';
 if(locked){app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.show();window.focus();}});
 app.whenReady().then(async()=>{
+ const environmentChannel=await environmentReady,cdpStarted=environmentChannel.mode==='private-pipe-gateway';
  const transferStartup=await require('./instance-transfer.cjs').finalizePending(app.getPath('userData'));
 
  window=new BrowserWindow({width:1440,height:960,minWidth:960,minHeight:700,title:'千面 Facet',icon:appIcon,backgroundColor:'#f5f8f7',autoHideMenuBar:true,...(customFrame?{titleBarStyle:'hidden',titleBarOverlay:{color:'#e9eaee',symbolColor:'#171a21',height:32}}:{}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),sandbox:true,nodeIntegration:false,contextIsolation:true,webSecurity:true,webviewTag:false,backgroundThrottling:false,partition:'persist:arena-core-controls'}});
@@ -31,6 +31,7 @@ app.whenReady().then(async()=>{
  window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));window.webContents.session.setPermissionCheckHandler(()=>false);
  const binary=resourcePath(app,'mihomo',process.platform==='win32'?'mihomo.exe':'mihomo');
  controller=new Controller(window,app.getPath('userData'),binary);
+ if(environmentChannel.gatewayError)controller.workspace.log('application',environmentChannel.gatewayError,'WARN');
  controlSettings=controlApiModule.loadSettings(controlConfigFile);
  controller.controlApi=new controlApiModule.ControlApi({file:controlConfigFile,settings:controlSettings,controller,cdpStarted});
  if(controlSettings.enabled)controller.controlApi.start().catch(error=>controller.workspace.log('application','本地控制 API 启动失败：'+error.message,'WARN'));

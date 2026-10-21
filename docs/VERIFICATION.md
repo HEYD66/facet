@@ -2,6 +2,16 @@
 
 更新：2026-10-21。当前源码版本 v0.2.17。下方原始记录是各阶段历史证据；命令编号、数量和阻塞状态不能当作今天的全量结果。
 
+## 2026-10-21 续做：外部 Playwright 与 SharedWorker 初始化协调
+
+- 正式入口复现：外部 Playwright Browser 连接会在内部环境初始化结束前恢复 SharedWorker，导致第一条脚本读到原生信息，后续读数才被覆盖。仅页面 WebSocket 的通过结果不足以排除此问题。
+- 修复：Chromium 保持私有命名管道；外部原配置端口由本机 CDP 网关监听，各客户端拥有独立 Browser 会话。目标附着事件和恢复/分离操作等待该目标环境初始化；内部监听忽略外部会话，防止交叉恢复。没有增加另一个 Chromium TCP 调试端口。
+- `test:cdp-workers`：正式 `main.cjs` / API / 两个真实 Playwright 客户端，16 项流程检查、34 次 SharedWorker 首段采样通过；含双实例、真实 Chromium UA 与 UA-CH、Cookie / localStorage 隔离、5 秒以上命令、CDP 错误码、Host / Origin 校验、重连、配置变更、F12 共存、正常退出、整应用重启和旧命令行端口 0 入口。隔离 profile（包括临时令牌）在测试结束时删除，仅保留无凭据 JSON 报告。
+- `test:fingerprint-contexts`：首次启动、持久化后重启、开启外部 Playwright 三轮，各 40 项检查通过。含跨站 OOPIF、Dedicated / Blob / module / 嵌套 / Service / Shared Worker、首段字段、OffscreenCanvas、配置切换与 SharedWorker 初始化故意失败后的报错、恢复执行和后续重新注入。
+- `test:extension-debugger-electron` 与 `test:devtools-electron` 各 5 项通过；前者验证扩展调试桥，正式入口专项另验证外部 CDP 与 F12 共存。基础检查、控制 API 和打包资源检查通过，未生成新安装包。
+- 仅当前 Windows x64 / Electron 44.4.5 / Chromium 152 验证；受控本机网页不代表第三方验证码通过率、所有自定义 UA 或完整 GPU 覆盖。原生 `/json/protocol` 与前端页面托管未在网关实现。用户正在运行的应用和真实实例未重启或修改。
+- 回滚检查点 `ee30e1b`，前序 SharedWorker 修复 `e127cef` 保留；本次结果单独提交，回滚仅撤销该提交，不重置真实用户数据。
+
 ## 2026-10-21 指纹上下文与 API 行为修复（源码，未发布）
 
 - `test:fingerprint-contexts`：首次启动和全新 Electron 进程重启两轮通过已实现范围断言。两个并发实例的首段页面、Dedicated / Blob / module / 嵌套 Worker、网站 Service Worker、真正独立进程的跨站 iframe、iframe 内 Worker 和跨站导航读数对齐。实例重启、变更 CPU、仅变更时区、关闭再开启覆盖，以及其他实例不受影响均通过。

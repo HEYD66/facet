@@ -13,8 +13,7 @@ app.commandLine.appendSwitch('site-per-process');
 app.commandLine.appendSwitch('host-resolver-rules','MAP *.test 127.0.0.1');
 app.commandLine.appendSwitch('disable-gpu');
 const testCdp=process.argv.find(x=>x.startsWith('--test-cdp='));
-if(testCdp)app.commandLine.appendSwitch('remote-debugging-port',testCdp.slice('--test-cdp='.length));
-require('../src/main/environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app);
+const browserEnvironmentReady=require('../src/main/environment-shared-worker.cjs').prepareSharedWorkerEnvironment(app,{externalPort:testCdp?Number(testCdp.slice('--test-cdp='.length)):null});
 
 async function sample(){
  const nav=navigator;
@@ -31,7 +30,7 @@ async function sample(){
   hints:nav.userAgentData?await nav.userAgentData.getHighEntropyValues(['architecture','bitness','platformVersion','fullVersionList']):null};
 }
 const sampleSource='('+sample.toString()+')()';
-const checks=[],observed={},boundaries=[];let win,controller,server;
+const checks=[],observed={},boundaries=[];let win,controller,server,externalBrowser;
 function verify(value,env,label){
  const expected={ua:env.userAgent,platform:env.platform,cpu:env.cpu,memory:env.fingerprint.memory,language:env.language,
   languages:[env.language],tz:env.timezone,vendor:env.fingerprint.vendor,renderer:env.fingerprint.renderer};
@@ -55,8 +54,8 @@ async function worker(wc,kind){
  return wc.executeJavaScript('new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error("Worker timeout")),15000);'+code+
   'w.onmessage=e=>{clearTimeout(timer);w.terminate();'+(kind==='blob'?'URL.revokeObjectURL(u);':'')+'resolve(e.data)};w.onerror=e=>{clearTimeout(timer);w.terminate();reject(Error(e.message||"Worker error"))};})');
 }
-async function sharedWorker(wc){
- return wc.executeJavaScript('new Promise((resolve,reject)=>{const w=new SharedWorker("/shared-worker.js"),timer=setTimeout(()=>reject(Error("SharedWorker timeout")),15000);w.port.onmessage=e=>{clearTimeout(timer);w.port.close();resolve(e.data)};w.onerror=e=>{clearTimeout(timer);reject(Error(e.message||"SharedWorker error"))};w.port.start();})');
+async function sharedWorker(wc,suffix=''){
+ return wc.executeJavaScript('new Promise((resolve,reject)=>{const w=new SharedWorker('+JSON.stringify('/shared-worker.js'+suffix)+'),timer=setTimeout(()=>reject(Error("SharedWorker timeout")),15000);w.port.onmessage=e=>{clearTimeout(timer);w.port.close();resolve(e.data)};w.onerror=e=>{clearTimeout(timer);reject(Error(e.message||"SharedWorker error"))};w.port.start();})');
 }
 async function serviceWorker(wc){
  return wc.executeJavaScript('Promise.race([(async()=>{await navigator.serviceWorker.register("/service-worker.js");const r=await navigator.serviceWorker.ready;return new Promise((resolve,reject)=>{const c=new MessageChannel(),timer=setTimeout(()=>reject(Error("ServiceWorker message timeout")),10000);c.port1.onmessage=e=>{clearTimeout(timer);c.port1.close();resolve(e.data)};r.active.postMessage("sample",[c.port2]);});})(),new Promise((_,reject)=>setTimeout(()=>reject(Error("ServiceWorker ready timeout")),15000))])');
@@ -97,6 +96,8 @@ async function behavior(){
 }
 const deadline=setTimeout(()=>app.exit(2),150000);deadline.unref();
 app.whenReady().then(async()=>{let error;try{
+ await browserEnvironmentReady;
+ if(testCdp)externalBrowser=await require('playwright').chromium.connectOverCDP('http://127.0.0.1:'+testCdp.slice('--test-cdp='.length));
  const cert=fs.readFileSync(path.join(__dirname,'fixtures/dns/cert.pem'),'utf8');
  server=https.createServer({key:fs.readFileSync(path.join(__dirname,'fixtures/dns/key.pem')),cert},(req,res)=>{
   const url=new URL(req.url,'https://fixture.test');
@@ -174,23 +175,38 @@ app.whenReady().then(async()=>{let error;try{
  await controller.start(ids[0]);const restarted=controller.runtimes.get(ids[0]).view.webContents;await loaded(restarted,mainURL);
  verify(await restarted.executeJavaScript('firstSample'),expected[0],'instance restart: first script');
  verify(await worker(restarted,'dedicated'),expected[0],'instance restart: worker');
+ verify(await sharedWorker(restarted),expected[0],'instance restart: shared worker');
  verify(await serviceWorker(restarted),expected[0],'instance restart: service worker');
  verify(await worker(controller.runtimes.get(ids[1]).view.webContents,'dedicated'),expected[1],'other instance remains isolated');
  let changed=environment({...expected[0],cpu:9,fingerprint:{...expected[0].fingerprint,memory:4}});
  await controller.settings(ids[0],{environment:changed});await controller.start(ids[0]);
  const changedWC=controller.runtimes.get(ids[0]).view.webContents;await loaded(changedWC,mainURL);
+ verify(await sharedWorker(changedWC),changed,'changed environment: shared worker');
  verify(await serviceWorker(changedWC),changed,'changed environment: existing service worker');
  changed=environment({...changed,timezone:'Europe/Paris'});
  await controller.settings(ids[0],{environment:changed});await controller.start(ids[0]);
  const timezoneWC=controller.runtimes.get(ids[0]).view.webContents;await loaded(timezoneWC,mainURL);
+ verify(await sharedWorker(timezoneWC),changed,'timezone-only change: shared worker');
  verify(await serviceWorker(timezoneWC),changed,'timezone-only change: existing service worker');
  await controller.settings(ids[0],{environment:{...changed,fingerprint:{...changed.fingerprint,enabled:false}}});await controller.start(ids[0]);
  const disabledWC=controller.runtimes.get(ids[0]).view.webContents;await loaded(disabledWC,mainURL);
  assert.equal((await serviceWorker(disabledWC)).patched,false,'Disabling must not leave the previous service-worker injection running');
+ assert.equal((await sharedWorker(disabledWC)).patched,false,'Disabling must not leave the previous shared-worker injection running');
  checks.push('disabled environment: service-worker preload removed');
  await controller.settings(ids[0],{environment:expected[0]});await controller.start(ids[0]);
  const enabledWC=controller.runtimes.get(ids[0]).view.webContents;await loaded(enabledWC,mainURL);
  verify(await serviceWorker(enabledWC),expected[0],'re-enabled environment: existing service worker');
+ verify(await sharedWorker(enabledWC),expected[0],'re-enabled environment: shared worker');
+ const swState=require('../src/main/environment-shared-worker.cjs').sharedWorkerEnvironmentState(enabledWC),nativeApply=swState.applyNative;
+ const previousErrors=swState.errors.length;
+ try{
+  swState.applyNative=async()=>{throw Error('expected SharedWorker fixture failure');};
+  const failed=await sharedWorker(enabledWC,'?failure=1');assert.equal(typeof failed.cpu,'number');
+  await wait(()=>swState.pending.size===0,'failed SharedWorker setup resumes');
+  assert.equal(swState.errors.length,previousErrors+1);assert.match(swState.errors.at(-1),/expected SharedWorker fixture failure/);
+ }finally{swState.applyNative=nativeApply;}
+ verify(await sharedWorker(enabledWC,'?recovered=1'),expected[0],'SharedWorker setup recovers after explicit failure');
+ checks.push('failed SharedWorker setup reports error and resumes with external CDP attached when enabled');
  // Real worker lifecycle under a deliberate configuration failure: it must
  // report the error and resume, rather than remain paused in the debugger.
  await win.webContents.loadURL('data:text/html,Environment%20failure%20fixture');win.webContents.debugger.attach('1.3');
@@ -201,15 +217,16 @@ app.whenReady().then(async()=>{let error;try{
  failing.dispose();assert.equal(contextEnvironmentState(win.webContents),undefined);
  checks.push('failed child configuration resumes real worker and disposes listeners');
  const {sharedWorkerEnvironmentSnapshot}=require('../src/main/environment-shared-worker.cjs');
- const channel=sharedWorkerEnvironmentSnapshot(),expectedMode=testCdp?'existing-cdp':'private-pipe';
+ const channel=sharedWorkerEnvironmentSnapshot(),expectedMode=testCdp?'private-pipe-gateway':'private-pipe';
  if(channel.mode!==expectedMode)boundaries.push({type:'browser control channel',expected:expectedMode,actual:channel.mode});
  checks.push('browser control channel: '+channel.mode);
  }catch(e){error=e.stack||String(e);console.error(error);}
  finally{
+  await externalBrowser?.close().catch(()=>{});
   try{await controller?.closeAll();}catch(e){error=error||e.stack;}
   if(win&&!win.isDestroyed())win.destroy();server?.close();
-  const report=path.join(root,resume?'contexts-restart-report.json':'contexts-report.json');
-  const passed=!error&&!boundaries.length,phase=testCdp?'existing-cdp-reuse':resume?'fresh-process-restart':'initial';
+  const report=path.join(root,testCdp?'contexts-cdp-report.json':resume?'contexts-restart-report.json':'contexts-report.json');
+  const passed=!error&&!boundaries.length,phase=testCdp?'private-pipe-gateway':resume?'fresh-process-restart':'initial';
   fs.writeFileSync(report,JSON.stringify({passed,complete:passed,phase,checks,boundaries,observed,error},null,2));
   console.log(JSON.stringify({passed,complete:passed,phase,checks,boundaries,report},null,2));
   app.exit(passed?0:1);

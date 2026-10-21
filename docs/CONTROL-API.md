@@ -11,6 +11,10 @@
 - 实例自己的 Mihomo 代理端口仍按实例独立分配，和 API/CDP 端口无关。
 - API 令牌只保存在本机 `control-api.json`，界面可重新生成。
 
+2026-10-21 源码修复（尚未发布）：外部 CDP 在原配置端口经过本机协调网关，内部仍使用私有命名管道；网页 / Worker 环境初始化完成后才转发相应附着事件和恢复命令，防止 Playwright 抢先恢复首段。`chromium.connectOverCDP` 的连接方式不变，支持 Browser 与 page WebSocket，多个客户端使用独立 CDP 会话。此通道目前支持 Windows x64。HTTP 发现入口支持 `/json/version`、`/json/list` 和 `/json`；未实现原生 `/json/protocol` 或托管 DevTools 前端，不能据此宣称所有第三方 CDP 工具兼容。
+
+Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright 对 Electron 不认识的上下文可能都归入同一个默认 `BrowserContext` 包装对象，因此不要用 `page.context()` 是否相同判断实例存储是否隔离。继续按 API 的 instanceId 与 CDP targetId 选页；本次真实测试另核对 Cookie / localStorage 和重启持久化。
+
 ## 连接步骤
 
 1. 打开「应用设置」，打开「允许本机外部工具控制实例」开关。
