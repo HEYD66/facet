@@ -13,10 +13,10 @@ const wait=async(fn,label,timeout=20000)=>{const end=Date.now()+timeout;while(Da
 
 let win,controller,server;
 app.whenReady().then(async()=>{try{
- server=http.createServer((_req,res)=>{if(_req.url==='/geo'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ip:'203.0.113.40',country_code:'JP',timezone:{id:'Asia/Tokyo'}}));}res.setHeader('Content-Type','text/html');res.end('<!doctype html><script>document.title="reset-fixture";</script>');});
+ server=http.createServer((_req,res)=>{if(_req.url==='/geo'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ip:'203.0.113.40',country_code:'JP',timezone:{id:'Asia/Tokyo'}}));}res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>reset-fixture</title><style>html,body{margin:0;background:#19824b}button{position:fixed;right:0;bottom:0;width:100px;height:50px;background:rgb(200,51,68);border:0}</style><button onclick="window.cornerClicked=true">Corner</button>');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const url='http://127.0.0.1:'+server.address().port+'/';require('../src/main/diagnostics.cjs').TARGETS.ip=url+'geo';
- win=new BrowserWindow({show:false,width:1400,height:900,webPreferences:{preload:path.resolve(__dirname,'../src/main/preload.cjs'),sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
+ win=new BrowserWindow({show:true,width:1400,height:900,webPreferences:{preload:path.resolve(__dirname,'../src/main/preload.cjs'),sandbox:true,nodeIntegration:false,contextIsolation:true,backgroundThrottling:false}});
  controller=new Controller(win,root,path.join(__dirname,'../resources/mihomo',process.platform==='win32'?'mihomo.exe':'mihomo'));
  installIPC(win,controller);
  let instance=controller.store.list()[0];controller.store.update(instance.id,{url,notes:'保留管理备注'});
@@ -64,6 +64,22 @@ app.whenReady().then(async()=>{try{
  assert.equal(reported.touch,0);
  assert.equal(reported.memory,after.environment.fingerprint.memory);
  assert.equal(await restarted.view.webContents.executeJavaScript('localStorage.getItem("reset-marker")'),null);
+ // Genuine randomized reset environment, with a host larger than its new screen.
+ await ui(`route('browser',${JSON.stringify(instance.id)})`);
+ const fp=after.environment.fingerprint;win.setContentSize(fp.screenWidth+500,fp.screenHeight+350);
+ await wait(()=>restarted.view.getVisible()&&restarted.view.getBounds().width>fp.screenWidth&&restarted.view.getBounds().height>fp.screenHeight,'reset large view');
+ await restarted.viewportWork;await new Promise(resolve=>setTimeout(resolve,350));
+ const rwc=restarted.view.webContents,image=await rwc.capturePage(),size=image.getSize(),pixels=image.toBitmap();
+ const at=((size.height-8)*size.width+size.width-8)*4;
+ assert([pixels[at+2],pixels[at+1],pixels[at]].every((v,i)=>Math.abs(v-[200,51,68][i])<=8),'reset adaptive view must paint native bottom-right corner');
+ fs.writeFileSync(path.join(root,'reset-adaptive-filled.png'),image.toPNG());
+ const dimensions=await rwc.executeJavaScript('({width:innerWidth,height:innerHeight})'),metrics=JSON.parse(restarted.viewportKey);
+ assert(dimensions.width<=fp.screenWidth&&dimensions.height<=fp.screenHeight);assert(metrics.scale>1);assert.equal(rwc.getZoomFactor(),1);
+ const point={x:Math.round((dimensions.width-50)*metrics.scale),y:Math.round((dimensions.height-25)*metrics.scale)};
+ rwc.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...point});rwc.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...point});
+ await wait(()=>rwc.executeJavaScript('window.cornerClicked===true'),'reset corner native input');
+ assert.deepEqual(controller.store.get(instance.id).environment,after.environment,'display fitting must not rewrite reset environment');
+ win.setSize(1400,900);await ui(`route('environment',${JSON.stringify(instance.id)})`);
  // Both successful batch items discard old drafts, including one not on screen.
  const previousSeed=after.environment.fingerprint.seed;
  await ui(`$('#envCpu').value='64';captureEnvironmentDraft();environmentUndo.set(activeId,{language:'en-US'});`);
@@ -84,5 +100,5 @@ app.whenReady().then(async()=>{try{
  const reopened=new (require('../src/main/store.cjs').Store)(root);
  assert.deepEqual(reopened.get(instance.id).environment,batchAfter.environment);
  assert.deepEqual(reopened.get(instance.id).network,before.network);
- console.log(JSON.stringify({status:'passed',results:['真实界面重置后表单显示已保存的新 UA、平台、CPU、种子，无旧草稿冲突','重置停止实例、清除 Cookie 与网站存储、保留代理和其他实例草稿','重启后网站存储不会复活','真实界面批量重置后清除成功项草稿与撤销记录，重新读取磁盘配置一致']},null,2));
+ console.log(JSON.stringify({status:'passed',root,results:['真实界面重置后表单显示已保存的新 UA、平台、CPU、种子，无旧草稿冲突','重置停止实例、清除 Cookie 与网站存储、保留代理和其他实例草稿','重启后网站存储不会复活','重置生成的新环境在大于模拟屏幕的真实视图铺满、原生边角点击成功，显示适配不改写环境','真实界面批量重置后清除成功项草稿与撤销记录，重新读取磁盘配置一致']},null,2));
 }catch(error){console.error(error.stack||String(error));process.exitCode=1;}finally{try{await controller?.closeAll();}catch{}if(!win?.isDestroyed())win?.destroy();server?.close();app.exit(process.exitCode||0);}}).catch(error=>{console.error(error.stack||String(error));app.exit(1);});

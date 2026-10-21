@@ -196,10 +196,10 @@ function resolvePage(agent,args){
  const wc=w.webContents;if(!/^https?:\/\//i.test(wc.getURL()))throw Error('只支持 HTTP/HTTPS 网页');
  return {wc,tab,id};
 }
-// 固定视口/宫格会用 Emulation.setDeviceMetricsOverride 的 scale 把页面缩放进视图；CDP 输入坐标是缩放后的视图坐标，
+// 固定视口/宫格可缩小、自适应视口可放大；CDP 输入坐标是缩放后的视图坐标，
 // 所以 CSS 像素坐标要乘以该 scale。控制器把当前生效的指标记在 runtime.viewportKey（'tile:'前缀 + JSON）。
 const inputScale=new WeakMap();
-function emulationScale(rt){try{const m=JSON.parse(String(rt?.viewportKey||'').replace(/^tile:/,''));const v=Number(m.scale);return v>0&&v<=1?v:1;}catch{return 1;}}
+function emulationScale(rt){try{const m=JSON.parse(String(rt?.viewportKey||'').replace(/^tile:/,''));const v=Number(m.scale);return Number.isFinite(v)&&v>0?v:1;}catch{return 1;}}
 function popupsOf(agent,id){const rt=agent.c.runtimes.get(id);return [...(rt?.popups||[])].filter(w=>!w.isDestroyed()).map((w,i)=>({tab:i+1,title:String(w.webContents.getTitle()).slice(0,120),url:publicURL(w.webContents.getURL())}));}
 
 // 收集所有框架快照，分配稳定 ref；返回 {frames:[{key,url,depth,chain,data}], ...}

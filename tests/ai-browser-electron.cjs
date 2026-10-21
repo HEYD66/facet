@@ -155,6 +155,19 @@ app.whenReady().then(async()=>{try{
  const fr=await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Frame button'),action:'click'});await logged('frame:false');assert(/缩放视口/.test(fr.done.note));
  await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Frame input'),action:'type',text:'scaled'});await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Send frame'),action:'click'});await logged('finput:scaled');
  reports.push('fitted viewport (innerWidth 2400 in a smaller view): trusted clicks land in main frame; cross-site iframe falls back to labelled script click and typing still works');
+ // Adaptive viewport larger than its configured screen is presented at scale > 1.
+ const up=c.store.create('Adaptive enlarged'),upEnv=structuredClone(c.store.get(up.id).environment);
+ Object.assign(upEnv,{width:0,height:0,scale:1.25});Object.assign(upEnv.fingerprint,{enabled:true,hardware:true,screenWidth:800,screenHeight:600,availHeight:560});
+ c.store.update(up.id,{url:originA+'/page',environment:upEnv});await c.start(up.id);await ui(`route('browser',${JSON.stringify(up.id)})`);
+ const ur=c.runtimes.get(up.id),uwc=ur.view.webContents;
+ await wait(()=>uwc.getTitle()==='Fixture'&&!uwc.isLoading()&&ur.viewportKey&&JSON.parse(ur.viewportKey).scale>1);await ur.viewportWork;
+ agent.run.scope.push(up.id);const uobs=await agent.tool('observe',{instanceId:up.id}),u0=logs.filter(x=>x==='trusted:true').length;
+ await agent.tool('act',{instanceId:up.id,ref:refOf(uobs.elements,'Trusted'),action:'click'});await wait(()=>logs.filter(x=>x==='trusted:true').length===u0+1);
+ await agent.tool('act',{instanceId:up.id,ref:refOf(uobs.elements,'Search here'),action:'type',text:'enlarged 世界',submit:true});await logged('submitted:enlarged 世界');
+ await agent.tool('act',{instanceId:up.id,ref:refOf(uobs.elements,'Frame input'),action:'type',text:'enlarged-frame'});
+ await agent.tool('act',{instanceId:up.id,ref:refOf(uobs.elements,'Send frame'),action:'click'});await logged('finput:enlarged-frame');
+ assert(await uwc.executeJavaScript('innerWidth<=screen.width&&innerHeight<=screen.height'));assert.equal(uwc.getZoomFactor(),1);
+ reports.push('adaptive enlarged viewport: real AI click, typing and cross-site iframe input land correctly; logical viewport stays within configured screen');
  agent.run.scope=[a.id];await ui(`route('browser',${JSON.stringify(a.id)})`);
 
  // Full loop with deterministic model fixture.

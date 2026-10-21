@@ -28,17 +28,19 @@ async function launch(){
  assert(ui.url().includes('app.asar'),'must load packaged source');
 }
 async function call(action,payload={}){const response=await ui.evaluate(({action,payload})=>bridge.request(action,payload),{action,payload});assert.equal(response.ok,true,response.error);return response.value;}
-async function setIsolatedGeoEndpoint(url){
- // Change only the diagnostic destination in this isolated test process. Real
- // reset, IPC, proxy, locale conversion and persistence code remain in use.
+async function mainValue(expression){
  await wait(()=>!!inspectorUrl,'test main-process inspector');
- await new Promise((resolve,reject)=>{
+ return new Promise((resolve,reject)=>{
   const socket=new WebSocket(inspectorUrl),timer=setTimeout(()=>finish(Error('Main-process fixture setup timed out')),10000);
-  function finish(error){clearTimeout(timer);socket.close();error?reject(error):resolve();}
+  function finish(error,value){clearTimeout(timer);socket.close();error?reject(error):resolve(value);}
   socket.addEventListener('error',()=>finish(Error('Main-process fixture connection failed')),{once:true});
-  socket.addEventListener('open',()=>socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression:"process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('./src/main/diagnostics.cjs').TARGETS.ip="+JSON.stringify(url),returnByValue:true}})),{once:true});
-  socket.addEventListener('message',event=>{const value=JSON.parse(event.data);if(value.id===1){if(value.error||value.result?.exceptionDetails)return finish(Error(JSON.stringify(value.error||value.result.exceptionDetails)));assert.equal(value.result.result.value,url);finish();}});
+  socket.addEventListener('open',()=>socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression,returnByValue:true,awaitPromise:true}})),{once:true});
+  socket.addEventListener('message',event=>{const value=JSON.parse(event.data);if(value.id===1){if(value.error||value.result?.exceptionDetails)return finish(Error(JSON.stringify(value.error||value.result.exceptionDetails)));finish(null,value.result.result.value);}});
  });
+}
+async function setIsolatedGeoEndpoint(url){
+ // Only redirect the diagnostic destination in this isolated test process.
+ assert.equal(await mainValue("process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('./src/main/diagnostics.cjs').TARGETS.ip="+JSON.stringify(url)),url);
 }
 async function verifyTaskbar(){
  const native=JSON.parse((await promisify(execFile)('pwsh.exe',['-NoProfile','-File',path.join(__dirname,'../tests/window-identity-properties.ps1'),'-ProcessId',String(child.pid)],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
@@ -54,8 +56,8 @@ async function api(endpoint,{body,authenticated=true}={}){
  if(!authenticated){assert.equal(response.status,401);return;}
  const result=await response.json();assert.equal(result.ok,true,result.error);return result.value;
 }
-async function instancePage(id){
- const target=(await api('/v1/targets')).find(x=>x.instanceId===id);assert(target,'running instance target missing');
+async function instancePage(id,knownTarget){
+ const target=knownTarget||(await api('/v1/targets')).find(x=>x.instanceId===id);assert(target,'running instance target missing');
  for(const page of browser.contexts().flatMap(c=>c.pages())){
   const session=await page.context().newCDPSession(page);let info;try{info=await session.send('Target.getTargetInfo');}finally{await session.detach();}
   if(info.targetInfo.targetId===target.targetId)return page;
@@ -85,7 +87,9 @@ async function main(){
  proxy=http.createServer((req,res)=>{proxyHits++;const destination=new URL(req.url);const request=http.request(destination,{method:req.method,headers:req.headers},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});request.on('error',()=>res.end());req.pipe(request);});
  proxy.on('connect',(req,downstream,head)=>{proxyHits++;const target=new URL('http://'+req.url);const upstream=net.connect(Number(target.port)||443,target.hostname,()=>{downstream.write('HTTP/1.1 200 Connection established\r\n\r\n');if(head.length)upstream.write(head);upstream.pipe(downstream);downstream.pipe(upstream);});for(const socket of [upstream,downstream]){sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));}});
  await new Promise(r=>proxy.listen(0,'127.0.0.1',r));
- const store=new Store(root),a=store.create('安装验证·直连'),b=store.create('安装验证·代理');store.update(a.id,{url});store.update(b.id,{url,network:{mode:'mihomo',nodeName:'本机验证代理'}});store.saveNodes(b.id,[{name:'本机验证代理',type:'http',server:'127.0.0.1',port:proxy.address().port}],null);
+ const store=new Store(root),a=store.create('安装验证·直连'),b=store.create('安装验证·代理');
+ const adaptive=structuredClone(store.get(a.id).environment);Object.assign(adaptive,{width:0,height:0,scale:1});Object.assign(adaptive.fingerprint,{enabled:true,hardware:true,seed:'viewport-package-fixture',screenWidth:800,screenHeight:600,availHeight:560});
+ store.update(a.id,{url,environment:adaptive});store.update(b.id,{url,network:{mode:'mihomo',nodeName:'本机验证代理'}});store.saveNodes(b.id,[{name:'本机验证代理',type:'http',server:'127.0.0.1',port:proxy.address().port}],null);
  const extensionSource=path.join(root,'extension-source');fs.mkdirSync(extensionSource);
  fs.writeFileSync(path.join(extensionSource,'manifest.json'),JSON.stringify({manifest_version:3,name:'Packaged API verification',version:'1.0.0',permissions:['tabs','webNavigation','bookmarks','storage'],host_permissions:['http://127.0.0.1/*'],action:{default_popup:'popup.html'}}));
  fs.writeFileSync(path.join(extensionSource,'popup.html'),'<title>Packaged extension verification</title><p>Real packaged extension API</p>');
@@ -124,6 +128,22 @@ async function main(){
  await wait(async()=>{const snapshot=await call('snapshot');return snapshot.instances.every(x=>x.status==='running'&&x.title==='Installed live fixture'&&!x.error);},'both installed pages loaded',45000);
  assert(proxyHits>0);const proxyConfig=JSON.parse(fs.readFileSync(path.join(root,'core-runtime',b.id,'runtime.json'),'utf8'));assert.equal(proxyConfig.dns.enable,false);assert(!proxyConfig.hosts);assert(!proxyConfig['interface-name']);pass('Two independent real webpages load; packaged Mihomo and process host use original DNS and routing without hosts overrides');
  await ui.evaluate(id=>route('browser',id),a.id);await ui.waitForFunction(()=>view==='browser');
+ const adaptiveTarget=await mainValue(`(async()=>{const e=process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('electron'),wc=e.webContents.getAllWebContents().find(w=>w.session===e.session.fromPartition(${JSON.stringify('persist:arena-core-'+a.id)})&&w.getURL()===${JSON.stringify(url)});return {webContentsId:wc.id,targetId:(await wc.debugger.sendCommand('Target.getTargetInfo')).targetInfo.targetId};})()`);
+ const adaptivePage=await instancePage(a.id,adaptiveTarget);await adaptivePage.evaluate(()=>{const b=document.createElement('button');b.id='viewport-corner';b.textContent='CORNER';b.style='position:fixed;right:0;bottom:0;width:100px;height:50px;background:rgb(200,51,68);border:0';b.onclick=()=>window.cornerClicked=true;document.body.append(b);});await sleep(350);
+ const fill=await mainValue(`(async()=>{
+  const req=process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json'),e=req('electron'),wc=e.webContents.fromId(${adaptiveTarget.webContentsId});
+  const view=e.BrowserWindow.getAllWindows().flatMap(w=>w.contentView.children).find(v=>v.webContents?.id===wc.id),bounds=view.getBounds();
+  const m=req('./src/main/viewport.cjs').deviceMetrics(${JSON.stringify(adaptive)},bounds),image=await wc.capturePage(),size=image.getSize(),pixels=image.toBitmap(),at=((size.height-8)*size.width+size.width-8)*4;
+  const actual=await wc.executeJavaScript('({width:innerWidth,height:innerHeight,dpr:devicePixelRatio})');
+  const point={x:Math.round((actual.width-50)*m.scale),y:Math.round((actual.height-25)*m.scale)};
+  wc.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...point});wc.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...point});
+  return {bounds,metrics:m,actual,zoom:wc.getZoomFactor(),pixel:[pixels[at+2],pixels[at+1],pixels[at]]};
+ })()`);
+ assert(fill.metrics.scale>1);assert(fill.actual.width<=800&&fill.actual.height<=600);assert(Math.abs(fill.actual.dpr-1)<1e-5);assert.equal(fill.zoom,1);
+ assert(fill.pixel.every((v,i)=>Math.abs(v-[200,51,68][i])<=8),'packaged adaptive view paints its native bottom-right edge');await adaptivePage.waitForFunction(()=>window.cornerClicked===true);
+ fs.writeFileSync(path.join(root,'adaptive-fill.json'),JSON.stringify(fill,null,2));await ui.screenshot({path:path.join(root,'adaptive-fill.png')});
+ assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,adaptive);
+ pass('Packaged small-screen adaptive viewport fills its native view with unchanged DPR/configuration and a working native corner click');
  assert.deepEqual(await ui.locator('[data-quick="open"]').allTextContents(),['Arena']);
  assert.deepEqual(await ui.evaluate(()=>privacySites.map(x=>x.id)),['ipip','ipleak','browserleaks','dnsleaktest','ippure','netcoffee']);
  await ui.locator('[data-privacy-toggle]').click();let menu;

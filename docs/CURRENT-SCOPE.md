@@ -6,7 +6,7 @@
 
 - Agent 补充网页观察、操作和对话框处理、可见任务计划、模型请求有限重试和失败答复；计划与会话持久保存。受控协议回归不代表所有第三方模型的推理效果。
 - 网页、Dedicated / Service / Shared Worker 及跨站 iframe 首段环境初始化协调；外部 CDP 多客户端、重连和 F12 共存。正常手动浏览保留原生 webdriver getter。
-- 完善 Canvas / OffscreenCanvas、音频和原生 API 行为兼容；开启硬件覆盖时，自适应及宫格视口受模拟屏幕边界约束。检测菜单新增 Net.Coffee。
+- 完善 Canvas / OffscreenCanvas、音频和原生 API 行为兼容；开启硬件覆盖时，自适应及宫格逻辑视口受模拟屏幕边界约束，自适应页面等比铺满窗口，修复新建/重置后的黑边与 DPR 不同于系统缩放时的留边，AI 输入同步适配。检测菜单新增 Net.Coffee。
 - 当前仍不能宣称所有自定义 UA 元数据、GPU / WebGPU 能力或第三方验证码完全兼容；详见 [本版说明](releases/v0.2.18.md) 与 [验证记录](VERIFICATION.md)。
 
 ## v0.2.17 补充
