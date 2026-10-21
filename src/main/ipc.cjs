@@ -20,6 +20,7 @@ function installIPC(window,controller){
  const requestHandler=async(event,message)=>{
   try{if(window.isDestroyed()||controller.disposing)return {ok:false,error:'应用正在关闭'};const controls=window.webContents;if(!controls||controls.isDestroyed())return {ok:false,error:'控制窗口已关闭'};if(event.sender!==controls||event.senderFrame!==controls.mainFrame)throw Error('拒绝非控制界面调用');
   if(!message||typeof message.action!=='string')throw Error('请求无效');const {action,id}=message;
+  if(controller.proxyModeSwitching&&(['start','stop','settings','reset-environment','delete','remove','create','import','import-subscription','refresh-subscription','node-network-save','environment-timezone','proxy-mode-set','node-ports-set'].includes(action)||/^(batch-|instance-|extension-|library-|diagnostic-)/.test(action)))throw Error(require('./proxy-mode.cjs').busyMessage);
   const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
    switch(action){
     case 'ai-select':return {ok:true,value:ai.select(message.providerId,message.model)};
@@ -34,10 +35,11 @@ function installIPC(window,controller){
     case 'ai-session-rename':ai.sessions.rename(message.sessionId,message.title);return {ok:true};
     case 'ai-session-delete':ai.sessions.remove(message.sessionId,message.confirmed);return {ok:true};
     case 'ai-approve':ai.approve(message.approvalId,message.allow);return {ok:true};
-    case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled)};
+    case 'proxy-mode-set':return {ok:true,value:await controller.setProxyMode(message.mode,{confirmed:message.confirmed===true})};
+    case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled,{confirmed:message.confirmed===true})};
     case 'node-ports-sync':return {ok:true,value:await controller.syncNodePorts()};
     case 'node-ports-copy':{const rows=controller.nodePortNodes().map(node=>({name:node.name,...controller.proxyPool.lookup(node)})).filter(row=>row.running);if(!rows.length)throw Error('暂无已启动的节点端口');await clipboard.writeText(rows.map(row=>`${row.name.replace(/[\r\n\t]/g,' ')}\thttp://127.0.0.1:${row.port}\tsocks5://127.0.0.1:${row.port}`).join('\n'));return {ok:true,value:{copied:true,count:rows.length}};}
-    case 'node-port-copy':{const node=controller.library.node(message.sourceId,message.name),value=controller.proxyPool.lookup(node);if(!value.running)throw Error('节点端口尚未启动，请开启节点端口服务或启动使用该节点的实例');if(!['http','socks5'].includes(message.protocol||'http'))throw Error('代理协议无效');await clipboard.writeText(`${message.protocol||'http'}://127.0.0.1:${value.port}`);return {ok:true,value:{port:value.port,copied:true}};}
+    case 'node-port-copy':{const node=controller.library.node(message.sourceId,message.name),value=controller.proxyPool.lookup(node);if(!value.running)throw Error('节点端口尚未启动，请切换为节点端口共享模式并同步');if(!['http','socks5'].includes(message.protocol||'http'))throw Error('代理协议无效');await clipboard.writeText(`${message.protocol||'http'}://127.0.0.1:${value.port}`);return {ok:true,value:{port:value.port,copied:true}};}
     case 'node-network-interfaces':return {ok:true,value:await controller.nodeNetwork.interfaces(true)};
     case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.scheduleNodePorts();controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
     case 'library-proxy-save':case 'library-proxy-test':case 'library-proxy-clipboard':case 'library-proxy-parse':return {ok:true,value:await require('./proxy-entry.cjs').proxyEntry(controller,message,clipboard)};

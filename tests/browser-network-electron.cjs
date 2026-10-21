@@ -148,6 +148,7 @@ app.whenReady().then(async () => {
         const w = new BrowserWindow({show: false, webPreferences: {partition: 'persist:arena-core-controls'}}); windows.push(w);
         const {Controller} = require('../src/main/controller.cjs');
         controller = new Controller(w, profile, path.resolve(__dirname, '../resources/mihomo/mihomo.exe'));
+        await controller.setProxyMode('node');
         const make = async (name, up) => {
           const x = controller.store.create(name, {mode: 'mihomo', nodeName: up.node.name});
           controller.store.saveNodes(x.id, [up.node], null); controller.store.update(x.id, {url: 'http://page.' + suffix + '/main'});

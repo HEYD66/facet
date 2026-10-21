@@ -86,7 +86,7 @@ POST /v1/instances
 
 ## 6. CDP 与 Playwright
 
-CDP 是应用级端口。当前源码的代理端口按完整节点配置和网络策略分配，多个实例可能共用同一节点端口；通过实例 ID 与 target ID 区分页面，不能使用代理端口作为实例标识。端口服务动作与外部软件连接方式见 CONTROL-API.md。运行中的每个实例网页是独立 target：
+CDP 是应用级端口。当前源码有互斥的实例独立代理（默认）与节点端口共享模式；前者每个实例独立核心和临时端口，后者按完整节点配置和网络策略分配端口，多个实例可能共用同一节点端口。切换通过 proxy-mode-set，会重启原先运行的代理实例，需检查 restarted / restartFailed；通过实例 ID 与 target ID 区分页面，不能使用代理端口作为实例标识。端口服务动作与外部软件连接方式见 CONTROL-API.md。运行中的每个实例网页是独立 target：
 
 ```text
 GET http://127.0.0.1:<CDP端口>/json/list
