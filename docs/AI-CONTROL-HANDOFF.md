@@ -46,7 +46,7 @@ Authorization: Bearer <当前令牌>
 
 ## 网页标签与实例的区别（当前源码）
 
-- 顶部实例切换器负责切换隔离环境；地址栏上方的标签负责同实例内多个网页。
+- 顶部横向实例切换栏负责切换隔离环境，宫格等全局页面也保持显示；地址栏上方的标签负责同实例内多个网页。
 - 用 `tab-list` 查询持久化 UUID，用 `tab-new/tab-activate/tab-close` 操作网页。关闭网页不会停止实例，详情见 [控制 API](CONTROL-API.md)。
 - AI 内置工具先用 `get_context({topic:"tabs",instanceId})` 查询，再用 `facet_action` 的标签动作操作。网页 observe/act/CDP 使用实例当前活跃页。
 - `page_action` 原有数字 `tab` 参数仍用于独立弹窗，不代表网页标签 UUID。

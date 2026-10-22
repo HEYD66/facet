@@ -18,18 +18,27 @@ const wait = async (predicate, label, limit = 160) => { for (let i = 0; i < limi
 let window, controller, server;
 app.whenReady().then(async () => {
   try {
+    server = http.createServer((_req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end('<!doctype html><title>Environment verification</title><h1>Local environment verification</h1>'); });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${server.address().port}/`;
     window = new BrowserWindow({ show: false, width: 1440, height: 900, webPreferences: { preload: path.join(__dirname, '../src/main/preload.cjs'), sandbox: true, nodeIntegration: false, contextIsolation: true, backgroundThrottling: false } });
     controller = new Controller(window, root, path.join(root, 'mihomo-not-required'));
     for (let i = controller.store.list().length; i < 8; i++) controller.store.create(`实例 ${i + 1}`);
+    for (const instance of controller.store.list()) { controller.store.update(instance.id, { url }); await controller.start(instance.id); }
     installIPC(window, controller);
     await window.loadFile(path.join(__dirname, '../src/renderer/index.html'));
     const ui = code => window.webContents.executeJavaScript(code);
     await wait(() => ui('typeof route === "function" && !!document.querySelector("#tabs")'), 'renderer');
     await ui("route('overview')");
-    await ui("openBrowserMenu('instances')");await wait(()=>controller.overlay.open,'instance collection');assert.equal(await controller.overlay.view.webContents.executeJavaScript('document.querySelectorAll("[data-browser-menu-action=instance]").length'),8);await ui('closeBrowserMenu()');
+    await wait(() => ui('document.querySelectorAll("#tabs [data-tab]").length === 8'), 'eight running instance tabs');
+    const tabs = await ui(`(() => { const t=document.querySelector('#tabs'),s=document.querySelector('#tabsShell'),r=document.querySelector('[data-tabs-scroll="1"]'); return {count:t.querySelectorAll('[data-tab]').length, overflow:t.scrollWidth>t.clientWidth, shell:s.classList.contains('has-overflow'), rightVisible:getComputedStyle(r).display!=='none'}; })()`);
+    assert.deepEqual(tabs, { count: 8, overflow: true, shell: true, rightVisible: true });
+    await ui(`document.querySelector('[data-tabs-scroll="1"]').click()`);
+    await wait(() => ui('document.querySelector("#tabs").scrollLeft > 0'), 'tab scroll right');
+    await ui(`document.querySelector('[data-tabs-scroll="-1"]').click()`);
     const lastId=controller.store.list().at(-1).id;
-    const fullyVisible=id=>ui(`(()=>{const b=document.querySelector('[data-browser-menu="instances"]'),r=b.getBoundingClientRect();return activeId===${JSON.stringify(id)}&&r.left>=0&&r.right<=innerWidth;})()`);
-    for(const width of [960,1280,1440]){window.setSize(width,900);await ui(`route('browser',${JSON.stringify(lastId)})`);await wait(()=>fullyVisible(lastId),'selected instance visible at '+width);controller.emit();await new Promise(r=>setTimeout(r,100));assert(await fullyVisible(lastId));}
+    const fullyVisible=id=>ui(`(()=>{const b=document.querySelector('[data-tab="${id}"]')?.closest('.tab');if(!b)return false;const box=document.querySelector('#tabs').getBoundingClientRect(),r=b.getBoundingClientRect();return r.left>=box.left-1&&r.right<=box.right+1;})()`);
+    for(const width of [960,1280,1440]){window.setSize(width,900);await ui(`route('browser',${JSON.stringify(lastId)})`);await wait(()=>fullyVisible(lastId),'selected instance visible at '+width);const scrolled=await ui('document.querySelector("#tabs").scrollLeft');controller.emit();await new Promise(r=>setTimeout(r,100));assert(Math.abs(await ui('document.querySelector("#tabs").scrollLeft')-scrolled)<=1,'state repaint preserves instance scroll');}
     const screenshots = [];
     for (const theme of ['light', 'dark']) {
       await ui(`document.documentElement.dataset.theme='${theme}'`);
@@ -71,9 +80,6 @@ app.whenReady().then(async () => {
     const githubScreenshot = path.join(root, 'github-app-info.png');
     fs.writeFileSync(githubScreenshot, (await window.webContents.capturePage()).toPNG());
     assert(fs.statSync(githubScreenshot).size > 1000);
-    server = http.createServer((_req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end('<!doctype html><title>Environment verification</title><h1>Local environment verification</h1>'); });
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-    const url = `http://127.0.0.1:${server.address().port}/`;
     controller.store.update(created.id, { url });
     await controller.start(created.id);
     const wc = controller.runtimes.get(created.id).view.webContents;
@@ -90,8 +96,9 @@ app.whenReady().then(async () => {
     assert.equal(await restartedWC.executeJavaScript('navigator.hardwareConcurrency'), created.environment.cpu);
     await controller.stop(created.id);
     for (let i = controller.store.list().length; i < 15; i++) controller.store.create(`实例 ${i + 1}`);
+    for (const instance of controller.store.list()) if (controller.runtimes.get(instance.id)?.status !== 'running') { controller.store.update(instance.id, { url }); await controller.start(instance.id); }
     controller.emit();
-    await ui('state.instances.forEach(x=>localOpen.add(x.id)); render(true)');
+    await wait(() => ui('document.querySelectorAll("#tabs [data-tab]").length === 15'), 'fifteen running instance tabs');
     const fifteenthId = controller.store.list().at(-1).id;
     window.setSize(960, 900);
     await ui(`route('browser', '${fifteenthId}')`);
