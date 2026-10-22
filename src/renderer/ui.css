@@ -954,6 +954,7 @@ html[data-frame="custom"] .toast{top:80px}
 .browser-tab-new.icon-btn{width:28px;height:28px;min-width:28px;flex:none;margin-right:auto;margin-bottom:3px}
 .browser-shell .address-row{background:var(--panel);gap:6px;flex-wrap:nowrap}
 .browser-shell .address-input{min-width:100px}
+.browser-shell .devtools-button{flex:none;min-width:42px;padding:0 9px;white-space:nowrap}
 .browser-shell .privacy-sites-trigger{flex:none;height:30px;margin:0;white-space:nowrap}
 .browser-collection{padding:6px;color:var(--text);background:var(--panel);font-size:13px}
 .browser-collection header{display:flex;justify-content:space-between;gap:10px;padding:8px 8px 12px;border-bottom:1px solid var(--line)}
@@ -966,4 +967,4 @@ html[data-frame="custom"] .toast{top:80px}
 .browser-collection-item b{font-weight:600}.browser-collection-item small{margin-top:3px;color:var(--muted);font-size:11px}
 .browser-collection-item>svg,.browser-collection-footer svg{width:16px;height:16px;flex:none}
 .browser-collection-footer{border-top:1px solid var(--line);border-radius:0;padding-top:12px;font-weight:600}
-@media(max-width:1200px){.browser-shell .devtools-button{font-size:0;gap:0;padding:0 7px}.browser-shell .devtools-button kbd{font-size:11px}.browser-shell .privacy-sites-trigger{gap:4px;padding:0 7px}.browser-shell .privacy-sites-trigger>svg:last-child{display:none}}
+@media(max-width:1200px){.browser-shell .privacy-sites-trigger{gap:4px;padding:0 7px}.browser-shell .privacy-sites-trigger>svg:last-child{display:none}}
