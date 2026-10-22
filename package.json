@@ -58,6 +58,7 @@
     "test:ux3-ui": "node tests/ux3-renderer.cjs",
     "test:extension-center-ui": "node tests/extension-center.cjs",
     "test:window-bar": "node scripts/launch-electron.cjs tests/window-bar-electron.cjs",
+    "test:resource-metrics": "node --test tests/process-metrics.test.cjs && node scripts/launch-electron.cjs tests/resource-metrics-electron.cjs",
     "test:window-identity": "node scripts/launch-electron.cjs tests/window-identity-electron.cjs",
     "test:volume": "node scripts/launch-electron.cjs tests/volume-electron.cjs",
     "test:instance-node": "node scripts/launch-electron.cjs tests/instance-node-electron.cjs",
