@@ -1,5 +1,14 @@
 # UX交付状态（第一至四批）
 
+## 2026-10-23：v0.2.19 审查确认的待修问题
+
+状态：真实隔离 Electron 已复现，尚未修复；不改动正式实例、网络配置或已发布版本。
+
+- [ ] 修复宫格省资源模式与多标签切换后的节流残留：进入省资源宫格，在同一实例切换或新建活动标签后退出宫格，当前实现只恢复 `runtime.view`，旧标签仍为 `backgroundThrottling=true`。再次激活后该状态仍未恢复，随后隐藏页面时实测动画帧停止增长。应逐标签维护并恢复符合当前模式的节流策略；验收包含旧标签重新激活、隐藏运行和应用重启。相关位置：`src/main/controller.cjs` 的 `setGrid`、`src/main/browser-tabs.cjs` 的 `show`、`src/main/background-rendering.cjs` 的 `resume`。
+- [ ] 修复最小化期间新建非活动标签恢复后视口为零：`active:false` 标签尚无原生布局，恢复窗口时清除临时设备指标，实测视口由 `970×558` 变为 `0×0`。应先建立有效原生尺寸或保留必要覆盖，再清理临时指标；验收包含后台标签持续加载、恢复窗口、切换标签和页面布局。相关位置：`src/main/background-rendering.cjs` 的 `refresh`、`src/main/browser-tabs.cjs` 的 `loadPage`。
+- 复现脚本与报告：`.local-dev/review-v0219-20261023.cjs`、`.local-dev/review-v0219-20261023.json`（本地审查证据，不随安装包分发）。三个相关主进程文件已与本地 v0.2.19 成品的 `app.asar` 逐文件校验一致。
+- 本轮基础检查通过：`check` 333 个脚本、`test:control-api` 1 项、`test:minimized-rendering` 7 项、`test:navigation-background` 6 项、`git diff --check`。已有专项通过不覆盖上述组合场景，不将待修项标记为已完成。
+
 ## 当前阅读顺序与状态（2026-10-14）
 
 完整项目说明见 [项目手册](PROJECT.md) 和 [索引](README.md)。本文下方“第一至四批”及其日期是历史批次，不代表整个项目停留在该范围。
