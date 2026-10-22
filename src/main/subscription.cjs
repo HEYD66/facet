@@ -3,7 +3,17 @@ const http = require('node:http');
 const https = require('node:https');
 const net = require('node:net');
 const {networkURL,checkServerIdentity,decodeResponse,acceptEncoding}=require('./safe-http.cjs');
-const { safeError, normalizeHostname, resolvePublicHost, pinnedLookup } = require('./subscription-policy.cjs');
+const { safeError, normalizeHostname, resolvePublicHosts, pinnedLookup } = require('./subscription-policy.cjs');
+
+function downloadError(error) {
+  const failures = Array.isArray(error?.errors) ? error.errors : [error];
+  const codes = [...new Set(failures.map(item => item?.code).filter(code => typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)))].slice(0, 3);
+  const reasons = { ECONNREFUSED: '服务器拒绝连接', ECONNRESET: '连接被重置', ENETUNREACH: '网络路由不可达', EHOSTUNREACH: '目标地址不可达', ETIMEDOUT: '连接超时', EPIPE: '连接中断', ERR_TLS_CERT_ALTNAME_INVALID: '服务器证书与域名不匹配', CERT_HAS_EXPIRED: '服务器证书已过期', DEPTH_ZERO_SELF_SIGNED_CERT: '服务器证书不受信任', UNABLE_TO_VERIFY_LEAF_SIGNATURE: '服务器证书链校验失败' };
+  const detail = codes.map(code => `${reasons[code] || '网络或传输错误'}（${code}）`).join('；');
+  const result = safeError(detail ? `订阅下载失败：${detail}；原配置未改变` : '订阅下载失败，请检查链接、网络或服务器证书；原配置未改变');
+  if (codes.length === 1) result.code = codes[0];
+  return result;
+}
 
 function subscriptionURL(value) {
   let url;
@@ -34,7 +44,7 @@ async function downloadSubscription(value, {
   async function one(url) {
     // The same overall deadline covers DNS, every redirect, TLS and the body.
     report({stage:'request-start',host:normalizeHostname(url.hostname),port:Number(url.port)||(url.protocol==='https:'?443:80),protocol:url.protocol.slice(0,-1),route:'system'});
-    const resolved = await resolvePublicHost(url, { allowPrivateHosts, signal: abort.signal, onStage:report });
+    const resolved = await resolvePublicHosts(url, { allowPrivateHosts, signal: abort.signal, onStage:report });
     if (abort.signal.aborted) throw safeError('订阅下载超时，原配置未改变');
     return new Promise((resolve, reject) => {
       const transport = url.protocol === 'https:' ? https : http;
@@ -43,7 +53,10 @@ async function downloadSubscription(value, {
       const done = (error, result) => {
         if (settled) return;
         settled = true;
-        if(error)report({stage:phase+'-error',bytes:size,wireBytes:wire,...require('./network-trace.cjs').errorFields(error)});
+        if(error){
+          for(const failure of (Array.isArray(error.errors)?error.errors:[]).slice(0,16))report({stage:'tcp-address-error',address:failure.address,port:failure.port,...require('./network-trace.cjs').errorFields(failure)});
+          report({stage:phase+'-error',bytes:size,wireBytes:wire,...require('./network-trace.cjs').errorFields(error)});
+        }
         body?.destroy(); req?.destroy(); agent.destroy();
         error ? reject(error) : resolve(result);
       };
@@ -52,7 +65,9 @@ async function downloadSubscription(value, {
         req = transport.request(url, {
           method: 'GET', agent, signal: abort.signal, checkServerIdentity,
           lookup: resolved ? pinnedLookup(resolved) : undefined,
-          family: resolved ? net.isIP(resolved) : undefined,
+          family: resolved?.length === 1 ? net.isIP(resolved[0]) : undefined,
+          autoSelectFamily: true,
+          autoSelectFamilyAttemptTimeout: 250,
           servername: net.isIP(host) ? undefined : host,
           headers: {
             'User-Agent': 'clash.meta/'+require('./core-release.cjs').version.replace(/^v/,'')+' Facet/'+require('../../package.json').version,
@@ -102,7 +117,10 @@ async function downloadSubscription(value, {
           });
         });
         req.on('socket',socket=>{
-          report({stage:'tcp-start',address:resolved||undefined});
+          report({stage:'tcp-start',addresses:resolved?.map(address=>({address,family:net.isIP(address)}))});
+          socket.on('connectionAttempt',(address,port,family)=>report({stage:'tcp-attempt',address,port,family}));
+          socket.on('connectionAttemptFailed',(address,port,family,error)=>report({stage:'tcp-attempt-error',address,port,family,...require('./network-trace.cjs').errorFields(error)}));
+          socket.on('connectionAttemptTimeout',(address,port,family)=>report({stage:'tcp-attempt-timeout',address,port,family,code:'ETIMEDOUT'}));
           socket.once('lookup',(error,address,family)=>report({stage:error?'socket-dns-error':'socket-dns',address,family,...(error?require('./network-trace.cjs').errorFields(error):{})}));
           socket.once('connect',()=>{report({stage:'tcp-connected',remoteAddress:socket.remoteAddress,port:socket.remotePort,family:net.isIP(socket.remoteAddress||'')});if(url.protocol==='https:'){phase='tls';report({stage:'tls-start'});}else phase='http';});
           socket.once('secureConnect',()=>{phase='http';report({stage:'tls-connected',authorized:socket.authorized,protocol:socket.getProtocol()});});
@@ -132,7 +150,7 @@ async function downloadSubscription(value, {
     report({stage:'download-error',result:abort.signal.aborted?'timeout':'failed',...require('./network-trace.cjs').errorFields(error),...(abort.signal.aborted?{code:'ETIMEDOUT'}:{})});
     if (abort.signal.aborted) throw safeError('订阅下载超时，原配置未改变');
     if (error.subscriptionSafe) throw error;
-    throw safeError('订阅下载失败，请检查链接、网络或服务器证书；原配置未改变');
+    throw downloadError(error);
   } finally { clearTimeout(timer); }
 }
 module.exports = { downloadSubscription, subscriptionURL };

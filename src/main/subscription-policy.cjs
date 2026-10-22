@@ -90,7 +90,7 @@ function waitForLookup(promise, signal) {
   });
 }
 
-async function resolvePublicHost(url, { allowPrivateHosts = false, signal, lookup = dns.lookup, onStage } = {}) {
+async function resolvePublicHosts(url, { allowPrivateHosts = false, signal, lookup = dns.lookup, onStage } = {}) {
   const report=value=>{try{onStage?.(value);}catch{}};
   const host = normalizeHostname(url.hostname);
   report({stage:'dns-start',host});
@@ -100,7 +100,7 @@ async function resolvePublicHost(url, { allowPrivateHosts = false, signal, looku
   if (net.isIP(host)) {
     report({stage:'dns-literal',address:host,family:net.isIP(host),public:isPublicAddress(host)});
     if (!isPublicAddress(host)) throw safeError('订阅地址指向本机或内网（含保留地址），已阻止下载');
-    return host;
+    return [host];
   }
   let rows;
   try {
@@ -133,19 +133,32 @@ async function resolvePublicHost(url, { allowPrivateHosts = false, signal, looku
       throw safeError('Fake-IP 域名的公网复核没有安全公网地址或返回本机或内网，已阻止下载');
     }
   }
-  report({stage:'dns-selected',host,address:rows[0].address,family:net.isIP(rows[0].address),public:true});
-  return rows[0].address;
+  const addresses = [...new Set(rows.map(row => row.address))];
+  report({stage:'dns-validated',host,addresses:addresses.map(address=>({address,family:net.isIP(address)})),public:true});
+  return addresses;
 }
 
-function pinnedLookup(address) {
-  if (!isPublicAddress(address)) throw safeError('订阅解析地址未通过公网校验');
-  const family = net.isIP(address);
+// Keep the single-address API for existing callers; the downloader uses all
+// validated candidates so one unusable address does not discard the others.
+async function resolvePublicHost(url, options) {
+  const addresses = await resolvePublicHosts(url, options);
+  return addresses ? addresses[0] : null;
+}
+
+function pinnedLookup(value) {
+  const addresses = Array.isArray(value) ? [...value] : [value];
+  if (!addresses.length || addresses.some(address => !isPublicAddress(address))) throw safeError('订阅解析地址未通过公网校验');
+  const rows = [...new Set(addresses)].map(address => ({ address, family: net.isIP(address) }));
   return (_host, options, callback) => {
     if (typeof options === 'function') { callback = options; options = {}; }
-    // Node's autoSelectFamily requests all:true and requires an address array.
-    queueMicrotask(() => options?.all
-      ? callback(null, [{ address, family }])
-      : callback(null, address, family));
+    const family = typeof options === 'number' ? options : options?.family;
+    const matching = family === 4 || family === 6 ? rows.filter(row => row.family === family) : rows;
+    // No fresh DNS lookup: even retries stay within the approved answer set.
+    queueMicrotask(() => {
+      if (!matching.length) return callback(Object.assign(safeError('订阅没有所需地址族的公网地址'), { code: 'ENOTFOUND' }));
+      if (options?.all) callback(null, matching.map(row => ({ ...row })));
+      else callback(null, matching[0].address, matching[0].family);
+    });
   };
 }
-module.exports = { safeError, normalizeHostname, isPublicAddress, isFakeIPAddress, resolvePublicHost, pinnedLookup };
+module.exports = { safeError, normalizeHostname, isPublicAddress, isFakeIPAddress, resolvePublicHost, resolvePublicHosts, pinnedLookup };
