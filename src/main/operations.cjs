@@ -16,6 +16,11 @@ async function createInstance(controller,message){
  const phase=text=>{controller.creationProgress={phase:text,name:String(message.name||''),id:x?.id||null};controller.emit();};
  try{
   if(message.syncLocale===true){phase('按所选出口同步时区和语言');const locale=await require('./exit-locale.cjs').lookup(controller,node,{force:true});if(message.sourceId&&message.sourceVersion&&controller.library.get(message.sourceId).updatedAt!==message.sourceVersion)throw Error('节点源已更新，请重新生成草稿');plannedEnvironment=environment({...plannedEnvironment,language:locale.language,timezone:locale.timezone});value.exitLocale=locale;}
+  if(message.requireUnusedNode===true&&node){
+   const eligible=require('./node-evidence.cjs').selectionOptions(controller).some(row=>row.sourceId===message.sourceId&&row.name===node.name&&row.available&&!row.usage);
+   if(!eligible)throw Error('节点已被其他实例分配或检测不可用，未创建；请重新生成草稿');
+   if(message.sourceVersion&&controller.library.get(message.sourceId).updatedAt!==message.sourceVersion)throw Error('节点源已更新，未创建；请重新生成草稿');
+  }
   phase('创建实例');x=controller.store.create(message.name,node?{mode:'mihomo',nodeName:node.name}:undefined,plannedEnvironment||undefined);value.id=x.id;value.created=true;
   try{if(node)controller.store.saveNodes(x.id,[node],null,{sourceId:message.sourceId,name:node.name});}catch{value.configurationError='实例已创建，但节点副本保存失败。实例保持停止，请重新分配节点。';controller.log(x.id,value.configurationError,'ERROR');}
   if(value.exitLocale&&node&&!value.configurationError){const sourceId=require('./instance-node.cjs').nodeDiagnosticKey(x.id,node),result={...value.exitLocale,kind:'ip',ok:true,sourceId,instanceId:x.id,name:node.name,at:new Date().toISOString()};controller.diagnostics.results.set(JSON.stringify([sourceId,node.name,'ip']),result);controller.diagnostics.history.record(result);}

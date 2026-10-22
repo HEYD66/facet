@@ -47,6 +47,17 @@ Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright
 
 API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，也不要把令牌提交到日志、工单或版本库。
 
+## 批量创建节点分配（当前源码）
+
+通过 `/v1/actions` 调用 `instance-batch-options` 获取节点的 `available`（最近有效连通检测）、`usage`（已保存分配数，包含停止实例）和出口信息，不包含节点凭据。
+
+`instance-batch-plan` 的代理模式使用 `mode:"mihomo"`：
+
+- `allocation:"unique"`：界面默认值。仅从 `usage:0` 且最近连通检测成功的节点中随机分配，不要求延迟数值、不按延迟排序。同配置节点跨订阅或改名后仍去重；数量不足报错，不自动复用。`nodes:[]` 使用全部符合条件的节点；指定 `nodes:[{sourceId,name}]` 时仅在该范围内选择。
+- `allocation:"cycle"`：显式允许按所选顺序循环复用，必须提供非空 `nodes`。`random:true` 仍为每个实例生成独立随机环境。
+
+取得草稿 `token` 后，用 `instance-batch-create` 确认创建。独占模式在首次写入前和逐项创建时重新检查节点，防止预览后被其他实例分配；地区同步仍通过所选代理查询，失败项不创建。查询 snapshot 的 `batchCreation` 和最终逐项结果确认实际创建数量；`instance-batch-cancel` 停止后续创建，保留已创建实例。
+
 ## 实例内网页标签（当前源码）
 
 顶部横向实例切换栏选择环境，宫格等全局页面也保持显示；地址栏上方管理该实例的网页标签。标签共享所属实例的 Session、代理与环境，不额外启动代理核心。不同实例仍使用独立存储分区。每个实例最多 32 页。

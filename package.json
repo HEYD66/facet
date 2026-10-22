@@ -63,6 +63,7 @@
     "test:volume": "node scripts/launch-electron.cjs tests/volume-electron.cjs",
     "test:instance-node": "node scripts/launch-electron.cjs tests/instance-node-electron.cjs",
     "test:new-instance-node": "node --test tests/node-selection.test.cjs && node tests/new-instance-node-runner.cjs",
+    "test:batch-nodes": "node --test tests/node-selection.test.cjs tests/instance-batch-selection.test.cjs && node scripts/launch-electron.cjs tests/batch-node-selection-electron.cjs",
     "test:updates": "node --test tests/updates.test.cjs",
     "test:instance-archive": "node --test tests/instance-archive.test.cjs",
     "test:export-delete": "node --test tests/instance-export-cleanup.test.cjs && node tests/instance-export-delete-runner.cjs",
