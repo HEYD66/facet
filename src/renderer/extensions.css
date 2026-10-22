@@ -64,6 +64,13 @@
 .ext-pill{border-radius:999px;padding:0 14px}
 .ext-error-pill{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--line))}
 .ext-foot-gap{flex:1}
+.ext-default-toggle{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.ext-default-toggle i{position:relative;width:22px;height:13px;border-radius:9px;background:var(--muted);flex-shrink:0}
+.ext-default-toggle i::after{content:"";position:absolute;left:2px;top:2px;width:9px;height:9px;border-radius:50%;background:var(--panel);transition:transform .15s}
+.ext-default-toggle.on{border-color:var(--accent);color:var(--accent-text,var(--text));background:var(--accent-weak)}
+.ext-default-toggle.on i{background:var(--accent)}
+.ext-default-toggle.on i::after{transform:translateX(9px)}
+.ext-card-foot{flex-wrap:wrap}
 .ext-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid transparent;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .ext-icon-btn:hover:not(:disabled){background:var(--hover);color:var(--text)}
 .ext-icon-btn:disabled{opacity:.45;cursor:default}

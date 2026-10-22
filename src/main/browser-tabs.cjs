@@ -21,6 +21,11 @@ async function loadPage(c,id,r,tab){
  // Running browser tabs keep timers/rendering alive when another instance or window is selected.
  const x=c.store.get(id),view=new WebContentsView({webPreferences:{session:r.session,sandbox:true,nodeIntegration:false,nodeIntegrationInSubFrames:true,contextIsolation:true,webSecurity:true,backgroundThrottling:false}}),wc=view.webContents;
  tab.view=view;view.setVisible(false);c.window.contentView.addChildView(view);wc.setAudioMuted(c.mutedFor(id));
+ // Background tabs also need native bounds before their first document. Without
+ // these, clearing the minimized-window override restores a 0x0 native viewport.
+ const [windowWidth,windowHeight]=c.window.getContentSize(),initialBounds=c.bounds||c.lastPageSize||{width:windowWidth,height:windowHeight};
+ view.setBounds({x:0,y:0,width:Math.max(1,Math.round(initialBounds.width)),height:Math.max(1,Math.round(initialBounds.height))});
+ require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  const alive=()=>!wc.isDestroyed()&&c.runtimes.get(id)===r&&r.tabs?.get(tab.id)===tab;
  // Each committed document can replace its native rendering widget. Reapply
  // the current policy after commit; explicit grid saver throttling still wins.
@@ -77,8 +82,10 @@ async function loadPage(c,id,r,tab){
 function show(c,id,r,tab){
  const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);require('./background-rendering.cjs').resume(old.webContents);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
  r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);
+ require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  if(r.extensionHost?.compat?.tabs){const compat=r.extensionHost.compat;compat.tabs.focusedId=tab.view.webContents.id;if(changed)compat.broadcast('tabs.onActivated',[{tabId:tab.view.webContents.id,windowId:compat.tabs.primaryWindowId}]);}
  if(c.grid)c.applyGrid();else if(c.activeId===id&&c.bounds){c.setDevToolsLayout(r,c.bounds);tab.view.setVisible(r.status==='running');if(r.status==='running')tab.view.webContents.focus();}
+ require('./background-rendering.cjs').scheduleViewportRestore(c.window,r,tab);
  persist(c,id,r);c.emitSoon();
 }
 function navigatePage(c,id,r,tab){if(tab.started)return;tab.started=true;tab.view.webContents.loadURL(tab.url).catch(error=>{if(error.code!=='ERR_ABORTED'&&c.runtimes.get(id)===r)c.log(id,'网页未能完成加载，请检查网址或网络','WARN');});}
@@ -98,13 +105,13 @@ async function close(c,id,tabId){
  const r=runtime(c,id),tab=r.tabs.get(tabId);if(!tab)throw Error('网页标签不存在或不属于此实例');
  if(r.tabs.size===1){const created=await create(c,id);await close(c,id,tabId);return {...created,lastTabReplaced:true};}
  if(current(r,tab)){const list=[...r.tabs.keys()],index=list.indexOf(tabId);await activate(c,id,list[index+1]||list[index-1]);}
- r.tabs.delete(tabId);if(tab.view){const wc=tab.view.webContents,row=r.extensionHost?.compat?.tabs.rows.get(wc.id);if(row)row.lastTab=r.extensionHost.compat.tabs.tab(row);r.extensionHost?.unbindPage(wc);try{c.window.contentView.removeChildView(tab.view);}catch{}if(!wc.isDestroyed()){wc.stop();wc.close({waitForBeforeUnload:false});}}
+ r.tabs.delete(tabId);clearTimeout(tab.backgroundViewportTimer);if(tab.view){const wc=tab.view.webContents,row=r.extensionHost?.compat?.tabs.rows.get(wc.id);if(row)row.lastTab=r.extensionHost.compat.tabs.tab(row);r.extensionHost?.unbindPage(wc);try{c.window.contentView.removeChildView(tab.view);}catch{}if(!wc.isDestroyed()){wc.stop();wc.close({waitForBeforeUnload:false});}}
  persist(c,id,r);c.emit();return {closed:tabId};
 }
 function stopPages(c,r){
  r.tabsClosing=true;
  const pages=r.tabs?[...r.tabs.values()]:r.view?[{view:r.view}]:[];r.closingViews=[];
- for(const tab of pages){const view=tab.view;if(!view)continue;const wc=view.webContents;try{(view===r.view&&r.gridParent?r.gridParent:c.window.contentView).removeChildView(view);}catch{}if(!wc.isDestroyed()){r.closingViews.push(wc);wc.stop();wc.close({waitForBeforeUnload:false});}tab.view=null;}
+ for(const tab of pages){clearTimeout(tab.backgroundViewportTimer);const view=tab.view;if(!view)continue;const wc=view.webContents;try{(view===r.view&&r.gridParent?r.gridParent:c.window.contentView).removeChildView(view);}catch{}if(!wc.isDestroyed()){r.closingViews.push(wc);wc.stop();wc.close({waitForBeforeUnload:false});}tab.view=null;}
  r.closingView=r.closingViews[0]||null;r.view=null;r.gridParent=null;r.gridBounds=null;
 }
 module.exports={initialize,navigatePage,snapshot,create,activate,close,stopPages,persist};

@@ -56,6 +56,7 @@ function installIPC(window,controller){
     case 'extension-refresh':return {ok:true,value:await controller.queue('extensions',()=>refreshOne(controller,window,dialog,message.extensionId))};
     case 'extension-refresh-all':return {ok:true,value:await controller.queue('extensions',()=>refreshAll(controller,window,dialog))};
     case 'extension-reveal':await reveal(controller,shell,message.extensionId);break;
+    case 'extension-default-set':return {ok:true,value:await controller.queue('extensions',()=>{if(controller.disposing)throw Error('应用正在退出');const result=controller.extensions.catalog.setDefaultEnabled(message.extensionId,message.enabled);controller.emit();return result;})};
     case 'extension-configure':if(message.confirmed!==true)throw Error('请确认更改目标实例的扩展；运行中的实例会重启，未保存的网页输入可能丢失');return {ok:true,value:await controller.queue('extensions',()=>controller.extensions.configure(id,message.extensionId,message.enabled))};
     case 'extension-remove':if(message.confirmed!==true)throw Error('请确认移除扩展');return {ok:true,value:await controller.queue('extensions',()=>require('./extension-remove.cjs').removeExtension(controller,message.extensionId,message.instanceIds))};
     case 'extension-action':{const r=controller.runtimes.get(id),ext=r?.loadedExtensions?.get(message.extensionId),compat=r?.extensionHost?.compat;if(!ext||!compat)throw Error('请先启用扩展并启动实例');const ctx=compat.endpoints.get(ext.id);if(!ctx)throw Error('扩展后台尚未就绪');await compat.actionClick(ctx);break;}

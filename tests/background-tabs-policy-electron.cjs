@@ -1,0 +1,44 @@
+'use strict';
+const {app,BrowserWindow}=require('electron');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http');
+const assert=require('node:assert/strict');
+const repo=path.resolve(__dirname,'..');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-v0219-review-'));
+app.setPath('userData',root);
+const {Controller}=require('../src/main/controller.cjs');
+const {installIPC}=require('../src/main/ipc.cjs');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function until(fn,label){for(let i=0;i<120;i++){if(await fn())return;await sleep(50);}throw Error('Timeout '+label);}
+const report={source:require('../package.json').version,root,cases:[],scope:'Isolated real Electron Controller, renderer, IPC, sessions and loopback pages; production data untouched'};
+let win,c,server,dispose;
+setTimeout(()=>app.exit(2),60000).unref();
+app.whenReady().then(async()=>{try{
+ server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Review '+req.url+'</title><h1>Local review page</h1><input value="retained"><script>window.framesRun=0;function tick(){framesRun++;requestAnimationFrame(tick)}requestAnimationFrame(tick)</script>');});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
+ win=new BrowserWindow({show:true,width:1200,height:800,webPreferences:{preload:path.join(repo,'src/main/preload.cjs'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
+ c=new Controller(win,path.join(root,'data'),path.join(root,'no-core'));dispose=installIPC(win,c);await win.loadFile(path.join(repo,'src/renderer/index.html'));
+ const id=c.store.list()[0].id;c.store.update(id,{url:base+'/a'});await c.start(id);const r=c.runtimes.get(id),aId=r.activeTabId,aw=r.view.webContents,ui=s=>win.webContents.executeJavaScript(s);
+ await until(()=>aw.getTitle()==='Review /a'&&!aw.isLoading(),'initial');await ui('route("browser",'+JSON.stringify(id)+')');await sleep(300);
+ const read=async contents=>({throttle:contents.getBackgroundThrottling(),...await contents.executeJavaScript('({width:innerWidth,height:innerHeight,hidden:document.hidden,frames:framesRun,timeOrigin:performance.timeOrigin})')});
+ const normal=await read(aw);
+ await ui('gridPrefs.mode="saver";route("grid")');await until(()=>c.grid?.mode==='saver','saver');await sleep(200);const aInGrid=await read(aw);
+ const bId=(await c.newTab(id,{url:base+'/b'})).tabId,bw=r.view.webContents;await until(()=>bw.getTitle()==='Review /b'&&!bw.isLoading(),'tab b');await sleep(200);
+ const switched={a:await read(aw),b:await read(bw)};
+ assert.equal(switched.a.throttle,true);assert.equal(switched.b.throttle,true);
+ await ui('route("browser",'+JSON.stringify(id)+')');await until(()=>!c.grid,'leave grid');await r.viewportWork;await sleep(300);const afterLeave={a:await read(aw),b:await read(bw)};
+ await c.activateTab(id,aId);await r.viewportWork;await sleep(300);const restoredA=await read(aw);
+ await ui('route("instances")');await sleep(200);const hiddenStart=await read(aw);await sleep(650);const hiddenEnd=await read(aw);
+ assert.equal(afterLeave.a.throttle,false);assert.equal(afterLeave.b.throttle,false);assert.equal(restoredA.throttle,false);assert(hiddenEnd.frames>hiddenStart.frames+5);assert.equal(hiddenEnd.timeOrigin,normal.timeOrigin);
+ report.cases.push({name:'saver-tab-switch-exit',normal,aInGrid,switched,afterLeave,restoredA,hiddenStart,hiddenEnd,findings:{inactiveThrottleStuck:afterLeave.a.throttle,reactivatedThrottleStuck:restoredA.throttle,viewportWidthMismatch:restoredA.width!==normal.width,hiddenFrameDelta:hiddenEnd.frames-hiddenStart.frames}});
+ await c.closeTab(id,bId);await ui('route("browser",'+JSON.stringify(id)+')');await sleep(200);
+ win.minimize();await sleep(600);const bgId=(await c.newTab(id,{url:base+'/background',active:false})).tabId,bg=r.tabs.get(bgId);await until(()=>bg.view.webContents.getTitle()==='Review /background'&&!bg.view.webContents.isLoading(),'minimized background');await sleep(300);
+ const minimized=await read(bg.view.webContents),viewBounds=bg.view.getBounds();win.restore();await sleep(500);const afterRestore=await read(bg.view.webContents);
+ assert(minimized.width>0&&minimized.height>0);assert(afterRestore.width>0&&afterRestore.height>0);assert.equal(bg.backgroundViewport,true);assert(afterRestore.frames>minimized.frames+5);
+ report.cases.push({name:'minimized-inactive-tab-restoration',viewBounds,minimized,afterRestore,backgroundViewport:!!bg.backgroundViewport});
+ await ui('route("browser",'+JSON.stringify(id)+')');await c.activateTab(id,bgId);await until(()=>!bg.backgroundViewport&&!bg.backgroundViewportClearing,'clear override after activation');await sleep(150);const activated=await read(bg.view.webContents);assert(activated.width>0&&activated.height>0);assert.equal(activated.timeOrigin,minimized.timeOrigin);assert.equal(await bg.view.webContents.executeJavaScript('document.querySelector("input").value'),'retained');
+ win.setSize(1300,850);await sleep(350);const resized=await read(bg.view.webContents);assert(resized.width>activated.width);assert.equal(resized.timeOrigin,activated.timeOrigin);report.cases.push({name:'activated-tab-clears-temporary-metrics-and-resizes',activated,resized});
+ report.completed=true;
+ }catch(e){report.error=e.stack;}finally{
+ try{await c?.closeAll();}catch(e){report.cleanupError=e.message;}c?.disposeBackgroundRendering?.();dispose?.();if(win&&!win.isDestroyed())win.destroy();server?.close();
+ const out=path.join(repo,'.local-dev/background-tabs-policy-after.json');fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));app.exit(report.error||report.cleanupError?1:0);
+ }});

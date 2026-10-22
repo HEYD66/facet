@@ -2,12 +2,19 @@
 
 ## 2026-10-23：v0.2.19 审查确认的待修问题
 
-状态：真实隔离 Electron 已复现，尚未修复；不改动正式实例、网络配置或已发布版本。
+状态：两项均已修复，并通过真实隔离 Electron 组合回归；当前源码未发布，正式应用尚未重启。本轮没有修改正式实例或网络配置。
 
-- [ ] 修复宫格省资源模式与多标签切换后的节流残留：进入省资源宫格，在同一实例切换或新建活动标签后退出宫格，当前实现只恢复 `runtime.view`，旧标签仍为 `backgroundThrottling=true`。再次激活后该状态仍未恢复，随后隐藏页面时实测动画帧停止增长。应逐标签维护并恢复符合当前模式的节流策略；验收包含旧标签重新激活、隐藏运行和应用重启。相关位置：`src/main/controller.cjs` 的 `setGrid`、`src/main/browser-tabs.cjs` 的 `show`、`src/main/background-rendering.cjs` 的 `resume`。
-- [ ] 修复最小化期间新建非活动标签恢复后视口为零：`active:false` 标签尚无原生布局，恢复窗口时清除临时设备指标，实测视口由 `970×558` 变为 `0×0`。应先建立有效原生尺寸或保留必要覆盖，再清理临时指标；验收包含后台标签持续加载、恢复窗口、切换标签和页面布局。相关位置：`src/main/background-rendering.cjs` 的 `refresh`、`src/main/browser-tabs.cjs` 的 `loadPage`。
-- 复现脚本与报告：`.local-dev/review-v0219-20261023.cjs`、`.local-dev/review-v0219-20261023.json`（本地审查证据，不随安装包分发）。三个相关主进程文件已与本地 v0.2.19 成品的 `app.asar` 逐文件校验一致。
-- 本轮基础检查通过：`check` 333 个脚本、`test:control-api` 1 项、`test:minimized-rendering` 7 项、`test:navigation-background` 6 项、`git diff --check`。已有专项通过不覆盖上述组合场景，不将待修项标记为已完成。
+- [x] 修复宫格省资源模式与多标签切换后的节流残留：新建/切换标签、进入/退出宫格、扩展弹窗打开/关闭均对所有已加载标签应用当前策略。退出宫格后旧页与当前页均为 `backgroundThrottling=false`；重新激活并隐藏旧页650ms后，动画实测增长39帧，文档未重载。
+- [x] 修复最小化期间新建非活动标签恢复后视口为零：新页面先建立有效原生尺寸，隐藏后台页继续保留临时设备指标；实际显示并完成布局后才清除覆盖。恢复后保持 `970×558`，激活后覆盖已清除，调整窗口后变为 `1070×607`，输入与文档标识保留。
+- 正式组合回归：`npm.cmd run test:background-tabs-policy`，3组断言通过，报告 `.local-dev/background-tabs-policy-after.json`。旧审查脚本和报告保留供排查，但旧报告曾在修复期间复测覆盖，不作为完整的原始修复前快照。
+- 相关回归通过：`test:minimized-rendering` 7项、`test:navigation-background` 6项、`test:grid-transition-electron` 4项、`test:creation-lifecycle`（取消/退出/节点竞争与AI随机创建）、`test:extension-configure` 11项。未重新验收已有的完整收藏菜单与宫格缩略图旧失败，不能据此宣称全项目无问题。
+
+## 2026-10-23：扩展默认启用（当前源码未发布）
+
+- [x] 扩展卡片「移除」右侧增加「默认启用」开关；普通新建、批量、本机API和AI创建共用默认绑定入口。只影响之后新建实例，不改变已有绑定，重启保持设置；扩展更新保留标志，移除无悬空默认配置。
+- [x] `test:extension-defaults` 8项真实集成通过，覆盖原生鼠标点击、实际内容脚本、HTTP创建和两个独立Electron进程；日夜主题与两种窗口宽度截图已检查。`test:extensions` 19项通过，包含默认写入失败保护。说明见 [扩展文档](EXTENSIONS.md) 和 [控制API](CONTROL-API.md)。
+- 修改前检查点 `ea9594e`；本轮尚未打包或发布，正式应用需正常退出并重启后加载新主进程代码。
+- 最终基础检查：`npm.cmd run check` 336个脚本、`npm.cmd run test:control-api` 1项、`git diff --check` 均通过。AI随机创建专项11项通过，其中包括默认扩展持久化与真实内容脚本；模型响应和地区信息来自本机协议夹具，不作为公网业务验证。
 
 ## 当前阅读顺序与状态（2026-10-14）
 

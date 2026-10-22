@@ -58,11 +58,13 @@ class ExtensionCatalog{
  replace(id,row){const old=this.get(id),dir=path.join(this.base,id),staged=path.join(this.base,row.id),trash=path.join(this.base,id+'.old-'+Date.now());
   try{fs.renameSync(dir,trash);}catch{throw Error('扩展文件被占用，无法替换；请关闭扩展面板或相关实例后重试');}
   try{fs.renameSync(staged,dir);}catch{fs.renameSync(trash,dir);throw Error('新版本文件无法放入扩展目录，已保留旧版本');}
-  const next={...row,id,importedAt:old.importedAt,updatedAt:new Date().toISOString()};
+  const next={...row,id,defaultEnabled:old.defaultEnabled===true,importedAt:old.importedAt,updatedAt:new Date().toISOString()};
   try{this.commit({...this.data,items:this.data.items.map(x=>x.id===id?next:x)});}catch(e){fs.renameSync(dir,staged);fs.renameSync(trash,dir);throw e;}
   fs.rmSync(trash,{recursive:true,force:true});return next;}
  setSource(id,source){this.get(id);this.commit({...this.data,items:this.data.items.map(x=>x.id===id?{...x,source}:x)});}
  discard(row){fs.rmSync(path.join(this.base,row.id),{recursive:true,force:true});}
+ setDefaultEnabled(id,enabled){const row=this.get(id);if(typeof enabled!=='boolean')throw Error('默认启用状态无效');if((row.defaultEnabled===true)===enabled)return {extensionId:id,enabled,changed:false};this.commit({...this.data,items:this.data.items.map(x=>x.id===id?{...x,defaultEnabled:enabled}:x)});return {extensionId:id,enabled,changed:true};}
+ applyDefaults(instanceId){const ids=this.data.items.filter(x=>x.defaultEnabled===true).map(x=>x.id);if(!ids.length)return;const enabled=[...new Set([...this.enabled(instanceId),...ids])];this.commit({...this.data,enabled:{...this.data.enabled,[instanceId]:enabled}});}
  setEnabled(instanceId,id,enabled){this.get(id);if(typeof enabled!=='boolean')throw Error('启用状态无效');const set=new Set(this.data.enabled[instanceId]||[]);enabled?set.add(id):set.delete(id);this.commit({...this.data,enabled:{...this.data.enabled,[instanceId]:[...set]}});}
  enabled(id){return this.data.enabled[id]||[];}
  forget(id){const enabled={...this.data.enabled};delete enabled[id];this.commit({...this.data,enabled});}

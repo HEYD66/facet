@@ -8,6 +8,27 @@ test('page paths cannot escape extension origin or directory',()=>{for(const bad
 test('symlinks, oversize files, invalid permissions and ancestor imports rejected',()=>fixture((c,s,root)=>{assert.throws(()=>c.stage(root),/父文件夹/);let m=JSON.parse(fs.readFileSync(path.join(s,'manifest.json')));m.permissions='storage';fs.writeFileSync(path.join(s,'manifest.json'),JSON.stringify(m));assert.throws(()=>c.stage(s),/清单/);m.permissions=[];fs.writeFileSync(path.join(s,'manifest.json'),JSON.stringify(m));const big=path.join(s,'big');fs.writeFileSync(big,'');fs.truncateSync(big,512*1024*1024);assert.throws(()=>c.stage(s),/扩展文件夹共 512 MB .*超过上限 500MB.*占用最多：根目录文件（512 MB）$/);fs.truncateSync(big,500*1024*1024+1);assert.throws(()=>c.stage(s),/超过上限 500MB/);assert.equal(fs.readdirSync(c.base).filter(n=>n.startsWith('ext-')).length,0,'oversize folder is rejected before copying');fs.unlinkSync(big);if(process.platform==='win32'){const target=path.join(root,'junction-target');fs.mkdirSync(target);fs.symlinkSync(target,path.join(s,'linked'),'junction');}else fs.symlinkSync(path.join(s,'content.js'),path.join(s,'linked'));assert.throws(()=>c.stage(s),/链接/);assert.equal(c.data.items.length,0);}));
 test('forgetting one instance preserves all other bindings',()=>fixture((c,s)=>{const row=c.stage(s);c.accept(row);c.setEnabled('A',row.id,true);c.setEnabled('B',row.id,true);c.forget('A');assert.deepEqual(c.enabled('A'),[]);assert.deepEqual(c.enabled('B'),[row.id]);assert.throws(()=>c.setEnabled('B',row.id,'yes'));}));
 
+test('new-instance defaults persist, leave existing bindings alone and affect only later instances',()=>fixture((c,s,root)=>{
+ const row=c.stage(s);c.accept(row);c.setEnabled('existing',row.id,false);
+ assert.equal(c.setDefaultEnabled(row.id,true).changed,true);assert.deepEqual(c.enabled('existing'),[]);
+ c.applyDefaults('new');assert.deepEqual(c.enabled('new'),[row.id]);
+ const reopened=new ExtensionCatalog(path.join(root,'data'));assert.equal(reopened.get(row.id).defaultEnabled,true);reopened.applyDefaults('after-restart');assert.deepEqual(reopened.enabled('after-restart'),[row.id]);
+ assert.equal(reopened.setDefaultEnabled(row.id,true).changed,false);reopened.setDefaultEnabled(row.id,false);reopened.applyDefaults('later');assert.deepEqual(reopened.enabled('later'),[]);assert.deepEqual(reopened.enabled('new'),[row.id]);
+ assert.throws(()=>reopened.setDefaultEnabled(row.id,'true'),/状态无效/);assert.throws(()=>reopened.setDefaultEnabled('missing',true),/不存在/);
+}));
+
+test('refresh retains new-instance default and removal clears it without stale defaults',()=>fixture((c,s)=>{
+ const row=c.stage(s);c.accept(row);c.setDefaultEnabled(row.id,true);
+ const manifest=JSON.parse(fs.readFileSync(path.join(s,'manifest.json'),'utf8'));manifest.version='2.0';fs.writeFileSync(path.join(s,'manifest.json'),JSON.stringify(manifest));c.replace(row.id,c.stage(s,row.id));
+ assert.equal(c.get(row.id).defaultEnabled,true);c.applyDefaults('new');assert.deepEqual(c.enabled('new'),[row.id]);c.remove(row.id,{disableAll:true});c.applyDefaults('later');assert.deepEqual(c.enabled('later'),[]);
+}));
+
+test('failed default writes leave stored flags and instance bindings unchanged',()=>fixture((c,s)=>{
+ const row=c.stage(s);c.accept(row);const before=fs.readFileSync(c.file,'utf8'),commit=c.commit.bind(c);c.commit=()=>{throw Error('disk failure');};
+ assert.throws(()=>c.setDefaultEnabled(row.id,true),/disk failure/);assert.equal(c.get(row.id).defaultEnabled,undefined);assert.equal(fs.readFileSync(c.file,'utf8'),before);
+ c.commit=commit;c.setDefaultEnabled(row.id,true);c.commit=()=>{throw Error('disk failure');};assert.throws(()=>c.applyDefaults('new'),/disk failure/);assert.deepEqual(c.enabled('new'),[]);
+}));
+
 test('confirmed bulk removal rolls back the package on metadata failure and preserves unrelated bindings',()=>fixture((c,s,root)=>{
  const row=c.stage(s);c.accept(row);c.setEnabled('A',row.id,true);c.setEnabled('B',row.id,true);
  const m=JSON.parse(fs.readFileSync(path.join(s,'manifest.json'),'utf8'));m.name='Other';fs.writeFileSync(path.join(s,'manifest.json'),JSON.stringify(m));const other=c.stage(s);c.accept(other);c.setEnabled('A',other.id,true);
