@@ -1,6 +1,6 @@
 'use strict';
 // Only public diagnostic fields leave this module; never expose proxy configuration.
-const {fromProbe}=require('./exit-locale.cjs'),net=require('node:net');
+const {fromProbe}=require('./exit-locale.cjs'),net=require('node:net'),crypto=require('node:crypto');
 const COUNTRIES=[
  ['HK','香港',/香港|🇭🇰|hong\s?kong/i,'Asia/Hong_Kong'],['TW','台湾',/台湾|台灣|台北|🇹🇼|taiwan/i,'Asia/Taipei'],
  ['JP','日本',/日本|东京|東京|大阪|🇯🇵|japan|tokyo|osaka/i,'Asia/Tokyo'],['SG','新加坡',/新加坡|狮城|🇸🇬|singapore/i,'Asia/Singapore'],
@@ -43,7 +43,7 @@ function describe(controller,sourceId,name){const source=controller.library.get(
 function activeNodePorts(controller){const ports=new Map(),{nodeKey}=require('./node-port-registry.cjs');for(const instance of controller.store.list()){const runtime=controller.runtimes?.get(instance.id),port=runtime?.core?.proxyPort;if(instance.network.mode!=='mihomo'||!['running','starting'].includes(runtime?.status)||!runtime?.core?.child||!Number.isInteger(port))continue;const node=controller.store.nodes(instance.id).find(n=>n.name===instance.network.nodeName);if(!node)continue;const key=nodeKey(node),rows=ports.get(key)||[];rows.push({instanceId:instance.id,instanceName:instance.name,port});ports.set(key,rows);}return ports;}
 function summaries(controller){const index=indexes(controller),ports=activeNodePorts(controller),{nodeKey}=require('./node-port-registry.cjs');return controller.library.summaries().map(source=>{const raw=controller.library.get(source.id),rawNodes=new Map(raw.nodes.map(node=>[node.name,node]));return {...source,nodes:source.nodes.map(node=>node.hint?node:{...node,evidence:evidence(raw,node.name,index),localProxy:controller.proxyPool?.lookup(rawNodes.get(node.name))||null,activeProxies:ports.get(nodeKey(rawNodes.get(node.name)))||[]})};});}
 function selectForNewInstance(controller){
- const {nodeKey}=require('./node-port-registry.cjs'),usage=new Map(),index=indexes(controller),candidates=[];
+ const {nodeKey}=require('./node-port-registry.cjs'),usage=new Map(),index=indexes(controller),candidates=[],seen=new Set();
  // A stopped instance still owns its saved proxy assignment. Match full configuration, not just its display name.
  for(const instance of controller.store.list()){
   if(instance.network.mode!=='mihomo')continue;
@@ -54,15 +54,16 @@ function selectForNewInstance(controller){
   const source=controller.library.get(summary.id),rawNodes=new Map(source.nodes.map(node=>[node.name,node]));
   for(const row of summary.nodes){
    if(row.hint)continue;
-   const node=rawNodes.get(row.name);
+   const node=rawNodes.get(row.name),key=nodeKey(node);
+   if(usage.has(key)||seen.has(key))continue;
    const valid=result=>result&&Number.isFinite(Date.parse(result.at))&&(!source.updatedAt||String(result.at)>=source.updatedAt)&&result.error!=='已取消';
    const latest=[index.live.get(JSON.stringify([source.id,node.name,'latency'])),index.history.get(index.key(source.id,node.name))?.latency?.last].filter(valid).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at))[0];
-   if(!latest?.ok||!Number.isFinite(latest.latencyMs)||latest.latencyMs<0)continue;
-   candidates.push({sourceId:source.id,sourceName:source.name,name:node.name,usage:usage.get(nodeKey(node))||0,latencyMs:latest.latencyMs,checkedAt:latest.at});
+   if(!latest?.ok)continue;
+   seen.add(key);
+   candidates.push({sourceId:source.id,sourceName:source.name,name:node.name,usage:0,checkedAt:latest.at});
   }
  }
- candidates.sort((a,b)=>a.usage-b.usage||a.latencyMs-b.latencyMs||Date.parse(b.checkedAt)-Date.parse(a.checkedAt)||a.sourceId.localeCompare(b.sourceId)||a.name.localeCompare(b.name));
- return candidates[0]||null;
+ return candidates.length?candidates[crypto.randomInt(candidates.length)]:null;
 }
 function environmentFor(evidence,base){const locale=evidence?.locale;return {...base,...(locale?.language?{language:locale.language}:{}),...(locale?.timezone?{timezone:locale.timezone}:{})};}
 module.exports={infer,describe,summaries,environmentFor,selectForNewInstance};

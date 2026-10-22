@@ -12,30 +12,29 @@ async function fixture(){
  const assign=(name,options={})=>{const node={...library.node(sourceId,name),...(options.node||{})};const instance=store.create('Assigned '+name+' '+store.list().length,{mode:'mihomo',nodeName:node.name});store.saveNodes(instance.id,[node]);return instance;};
  return {dir,store,library,history,controller,nodes,sourceId,at,record,result,assign,close(){history.flush();assert.equal(path.dirname(dir),os.tmpdir());fs.rmSync(dir,{recursive:true,force:true});}};
 }
-test('chooses the lowest latency unused node, counting stopped assignments and renamed copies',async()=>{
+test('chooses only unused available nodes without requiring latency, counting stopped assignments and renamed copies',async()=>{
  const f=await fixture();try{
-  f.record('A',1);f.record('B',80);f.record('C',30);f.record('D',15);
+  f.record('A',1);f.record('B',undefined);f.record('C',3000);f.record('D',15);
   f.assign('A');f.assign('D',{node:{name:'Renamed D'}});
-  const selected=selectForNewInstance(f.controller);assert.equal(selected.name,'C');assert.equal(selected.usage,0);assert.equal(selected.latencyMs,30);
+  for(let i=0;i<20;i++){const selected=selectForNewInstance(f.controller);assert(['B','C'].includes(selected.name));assert.equal(selected.usage,0);}
   assert.equal(f.store.list().filter(x=>x.network.mode==='mihomo').length,2);
+  f.assign('C');assert.equal(selectForNewInstance(f.controller).name,'B');
  }finally{f.close();}
 });
-test('when every eligible node is assigned, minimizes assignment count before latency',async()=>{
+test('when every available node is assigned, returns no candidate instead of reusing an assigned node',async()=>{
  const f=await fixture();try{
   f.record('A',1);f.record('B',70);f.record('C',30);f.assign('A');f.assign('A');f.assign('B');f.assign('C');
-  let selected=selectForNewInstance(f.controller);assert.equal(selected.name,'C');assert.equal(selected.usage,1);
-  f.assign('C');selected=selectForNewInstance(f.controller);assert.equal(selected.name,'B');assert.equal(selected.usage,1);
+  assert.equal(selectForNewInstance(f.controller),null);
+  f.assign('C');assert.equal(selectForNewInstance(f.controller),null);
  }finally{f.close();}
 });
-test('excludes failed latest checks, stale source versions, hidden hints, excluded nodes and invalid latency',async()=>{
+test('excludes failed latest checks, stale source versions, hidden hints, excluded nodes and invalid timestamps',async()=>{
  const f=await fixture();try{
   f.record('A',1);f.record('A',undefined,false,{error:'检测失败'});
   f.record('B',2,true,{at:'2020-01-01T00:00:00.000Z'});
   f.record('C',3);f.library.removeNodes(f.sourceId,['C']);
-  f.record('D',-1);f.record('套餐到期',0);
+  f.record('套餐到期',0);
   assert.equal(selectForNewInstance(f.controller),null);
-  f.record('D',NaN);assert.equal(selectForNewInstance(f.controller),null);
-  f.record('D',Infinity);assert.equal(selectForNewInstance(f.controller),null);
   f.record('D',10,true,{at:'not-a-date'});assert.equal(selectForNewInstance(f.controller),null);
  }finally{f.close();}
 });
@@ -45,6 +44,7 @@ test('compares live and persisted timestamps and ignores cancelled checks',async
   f.record('A',undefined,false,{error:'检测失败'});f.record('B',50);
   assert.equal(selectForNewInstance(f.controller).name,'B');
   const newest=f.result('A',2);f.controller.diagnostics.results.set('old',newest);
+  f.record('B',undefined,false,{error:'检测失败'});
   assert.equal(selectForNewInstance(f.controller).name,'A');
   f.record('A',2);f.controller.diagnostics.results.set('old',f.result('A',undefined,false,{error:'已取消'}));
   assert.equal(selectForNewInstance(f.controller).name,'A');

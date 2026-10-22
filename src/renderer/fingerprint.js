@@ -11,11 +11,11 @@ function refreshNewNodeOptions(){const source=state.library?.find(s=>s.id===$('#
 function renderNewNodeEvidence(){const host=$('#newNodeEvidence');if(!host)return;const source=state.library?.find(s=>s.id===$('#newSource')?.value),node=source?.nodes.find(n=>n.name===$('#newNode')?.value);host.hidden=!node;if(!node)return;const e=node.evidence||{},l=e.locale,checked=$('#timezoneNew')?.checked!==false,time=at=>at?new Date(at).toLocaleString():'尚未检测';host.innerHTML=`<div class="new-node-region"><b>${esc(l?.country||'地区未知')}</b><span class="tag">${l?.origin==='measured'?'实测记录':l?.origin==='name'?'名称推断':'无地区记录'}</span></div><dl><div><dt>连通性</dt><dd>${esc(e.latencyMs!=null?'已测可连接 · '+e.latencyMs+' ms':e.latencyStatus==='failed'?'最近检测失败':'尚未检测')}<small>${esc(time(e.latencyAt))}</small></dd></div><div><dt>出口 IP</dt><dd>${esc(e.ip||'尚无成功记录')}${e.ipStatus==='failed'?'<small class="error">最近查询失败；上次成功记录仅供参考</small>':''}<small>${esc(time(e.ipAt))}</small></dd></div><div><dt>创建时环境</dt><dd>${checked?esc([l?.language||'保留原语言',l?.timezone||'保留原时区'].join(' · ')):'保持原语言和时区'}</dd></div></dl><p class="actions-note">${l?.origin==='measured'?'复用已测地区，不重新联网查询；记录可能因节点出口变化而过期。':l?.origin==='name'?'从节点名称推断，未验证实际出口；'+(l.timezone?'可在环境配置中修改。':'该地区有多个时区，请在环境配置中确认。'):'未取得地区信息，将保留原环境。'}</p>`;}
 function applyNewInstanceNode(node){
  const notice=$('#newNodeChoice');
- if(!node){notice.textContent='没有最近检测连通且具有有效延迟的节点，保留当前网络选择；请先检测节点或手动选择。';notice.hidden=false;return;}
+ if(!node){notice.textContent='没有未分配且最近检测连通的节点，未自动更换网络；请先检测节点、释放分配或手动选择。';notice.hidden=false;return;}
  const source=state.library?.find(row=>row.id===node.sourceId);
  if(!source?.nodes.some(row=>row.name===node.name&&!row.hint))throw Error('节点列表已变化，请重新点击一键随机');
  $('#newSource').value=node.sourceId;refreshNewNodeOptions();$('#newNode').value=node.name;renderNewNodeEvidence();
- notice.textContent=`已选 ${node.sourceName} / ${node.name} · 最近延迟 ${node.latencyMs} ms · ${node.usage?'已被 '+node.usage+' 个实例分配（优先占用少，再选低延迟）':'尚未分配（未占用节点中延迟最低）'}。占用包含已停止实例；检测记录不保证实时可用。`;
+ notice.textContent=`已随机选择 ${node.sourceName} / ${node.name} · 未分配的可用节点。占用包含已停止实例；可用状态来自最近连通性检测。`;
  notice.hidden=false;
 }
 document.addEventListener('change',event=>{if(['newSource','newNode'].includes(event.target.id)){const notice=$('#newNodeChoice');if(notice)notice.hidden=true;}if(event.target.id==='newSource')refreshNewNodeOptions();else if(['newNode','timezoneNew'].includes(event.target.id))renderNewNodeEvidence();});
