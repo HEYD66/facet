@@ -39,10 +39,19 @@ Authorization: Bearer <当前令牌>
 
 1. `GET /v1/status`，确认 API 正在监听。
 2. `GET /v1/instances`，用实例 `id` 定位目标，不要只用显示名称。
-3. 需要网页控制时，先 `GET /v1/targets`，按 `instanceId` 找 `targetId`。
+3. 需要网页控制时，先 `GET /v1/targets`，按 `instanceId`、`tabId` 和 `active` 找 `targetId`。
 4. 使用专用实例接口或 `/v1/actions` 执行一个动作。
 5. 再次查询实例状态和 targets，确认后端状态已经改变。
 6. 需要让用户界面跟随时调用 `focus`，或使用会自动跟随的启动、刷新、跳转接口。
+
+## 网页标签与实例的区别（当前源码）
+
+- 顶部实例切换器负责切换隔离环境；地址栏上方的标签负责同实例内多个网页。
+- 用 `tab-list` 查询持久化 UUID，用 `tab-new/tab-activate/tab-close` 操作网页。关闭网页不会停止实例，详情见 [控制 API](CONTROL-API.md)。
+- AI 内置工具先用 `get_context({topic:"tabs",instanceId})` 查询，再用 `facet_action` 的标签动作操作。网页 observe/act/CDP 使用实例当前活跃页。
+- `page_action` 原有数字 `tab` 参数仍用于独立弹窗，不代表网页标签 UUID。
+- 停止、重置、扩展启停及应用退出必须关闭实例的全部网页；不要仅检查 `runtime.view`。多标签映射存放在 `runtime.tabs`，`runtime.view` 兼容指向活跃页。
+- 真实集成回归：`npm.cmd run test:browser-tabs`，包含独立 Electron 重启、存储隔离、扩展 API、菜单与布局。正式数据不参与测试。
 
 ## 4. 实例生命周期
 

@@ -22,7 +22,7 @@ function syncPrivacySitesMenu(){
 }
 async function openPrivacySitesMenu(){
  const x=current(),button=$('[data-privacy-toggle]');if(!x||!button)return;
- closeExtensionMenu();privacyMenuFor=x.id;button.setAttribute('aria-expanded','true');
+ closeBrowserMenu();closeExtensionMenu();privacyMenuFor=x.id;button.setAttribute('aria-expanded','true');
  if(privacyMenuNative()){const r=button.getBoundingClientRect(),html=privacySitesMenuHTML(x),attrs=extensionMenuAttrs();privacyMenuKey=JSON.stringify([html,attrs,r.right,r.bottom]);try{await request('overlay-show',{html,anchor:{right:r.right,bottom:r.bottom},width:310,attrs,label:'隐私检测网站'});}catch(e){closePrivacySitesMenu();toast(e.message);}return;}
  let d=document.getElementById('privacySitesMenu');if(!d){d=document.createElement('dialog');d.id='privacySitesMenu';d.className='ext-menu';d.setAttribute('data-browser-overlay','');d.setAttribute('aria-label','隐私检测网站');document.body.append(d);}
  d.show();syncPrivacySitesMenu();layout();d.querySelector('button:not(:disabled)')?.focus();

@@ -26,23 +26,10 @@ app.whenReady().then(async () => {
     const ui = code => window.webContents.executeJavaScript(code);
     await wait(() => ui('typeof route === "function" && !!document.querySelector("#tabs")'), 'renderer');
     await ui("route('overview')");
-    await wait(() => ui('document.querySelectorAll("#tabs [data-tab]").length === 8'), 'eight instance tabs');
-    const tabs = await ui(`(() => { const t=document.querySelector('#tabs'),s=document.querySelector('#tabsShell'),r=document.querySelector('[data-tabs-scroll="1"]'); return {count:t.querySelectorAll('[data-tab]').length, overflow:t.scrollWidth>t.clientWidth, shell:s.classList.contains('has-overflow'), rightVisible:getComputedStyle(r).display!=='none'}; })()`);
-    assert.deepEqual(tabs, { count: 8, overflow: true, shell: true, rightVisible: true });
-    await ui(`document.querySelector('[data-tabs-scroll="1"]').click()`);
-    await wait(() => ui('document.querySelector("#tabs").scrollLeft > 0'), 'tab scroll right');
-    await ui(`document.querySelector('[data-tabs-scroll="-1"]').click()`);
-    const lastId = controller.store.list().at(-1).id;
-    const fullyVisible = id => ui(`(() => { const tab=document.querySelector('[data-tab="${id}"]')?.closest('.tab'); if(!tab)return false; const box=document.querySelector('#tabs').getBoundingClientRect(),r=tab.getBoundingClientRect(); return r.left>=box.left-1 && r.right<=box.right+1; })()`);
-    for (const width of [960, 1280, 1440]) {
-      window.setSize(width, 900);
-      await ui(`route('browser', '${lastId}')`);
-      await wait(() => fullyVisible(lastId), `complete eighth tab at ${width}`);
-      const scrolled = await ui('document.querySelector("#tabs").scrollLeft');
-      controller.emit();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      assert(Math.abs(await ui('document.querySelector("#tabs").scrollLeft') - scrolled) <= 1, 'state repaint preserves manual scroll');
-    }
+    await ui("openBrowserMenu('instances')");await wait(()=>controller.overlay.open,'instance collection');assert.equal(await controller.overlay.view.webContents.executeJavaScript('document.querySelectorAll("[data-browser-menu-action=instance]").length'),8);await ui('closeBrowserMenu()');
+    const lastId=controller.store.list().at(-1).id;
+    const fullyVisible=id=>ui(`(()=>{const b=document.querySelector('[data-browser-menu="instances"]'),r=b.getBoundingClientRect();return activeId===${JSON.stringify(id)}&&r.left>=0&&r.right<=innerWidth;})()`);
+    for(const width of [960,1280,1440]){window.setSize(width,900);await ui(`route('browser',${JSON.stringify(lastId)})`);await wait(()=>fullyVisible(lastId),'selected instance visible at '+width);controller.emit();await new Promise(r=>setTimeout(r,100));assert(await fullyVisible(lastId));}
     const screenshots = [];
     for (const theme of ['light', 'dark']) {
       await ui(`document.documentElement.dataset.theme='${theme}'`);

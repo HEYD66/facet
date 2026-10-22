@@ -939,3 +939,37 @@ html[data-frame="custom"] .toast{top:80px}
 .proxy-mode-confirm{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--panel2);border:1px solid var(--accent);border-radius:6px;font-size:12px;line-height:1.6}
 .proxy-mode-confirm>span{flex:1 1 320px}
 .proxy-workbench[data-proxy-mode="instance"] [data-lib="copy-node-http"],.proxy-workbench[data-proxy-mode="instance"] [data-lib="copy-node-socks"]{display:none}
+
+/* Instance selection and per-instance web tabs. */
+.instance-switcher-shell{flex:0 1 260px;min-width:150px;max-width:280px}
+.instance-switcher-shell .tabs{padding:0;overflow:hidden;min-width:0;width:100%}
+.instance-switcher{display:flex;align-items:center;gap:9px;min-width:0;width:100%;height:34px;padding:0 12px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font:inherit}
+.instance-switcher>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;text-align:left}
+.instance-switcher small{flex:none;color:var(--muted);font-size:11px}
+.instance-switcher>svg{width:13px;height:13px;transform:rotate(90deg)}
+.browser-tabs-bar{display:flex;align-items:center;gap:6px;flex:none;min-width:0;height:42px;padding:5px 8px 0;background:var(--panel2);border-bottom:1px solid var(--line)}
+.browser-tabs{display:flex;flex:0 1 auto;min-width:0;overflow:auto;scrollbar-width:none;gap:3px;height:100%}
+.browser-tabs::-webkit-scrollbar{display:none}
+.browser-tab{display:flex;align-items:center;flex:0 1 220px;min-width:105px;max-width:240px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--muted)}
+.browser-tab.active{background:var(--panel);color:var(--text);border-color:var(--line2)}
+.browser-tab:hover{background:var(--panel)}
+.browser-tab-select{display:flex;align-items:center;gap:8px;border:0;background:transparent;color:inherit;cursor:pointer;flex:1;min-width:0;height:100%;padding:0 6px 0 10px;font:inherit;font-size:12px;text-align:left}
+.browser-tab-select>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.browser-tab-icon{display:flex;flex:none}.browser-tab-icon svg{width:14px;height:14px}.browser-tab-icon.loading{animation:spin 1s linear infinite}
+.browser-tab-close.icon-btn{width:24px;height:24px;min-width:24px;margin-right:4px;font-size:18px;color:inherit;flex:none}
+.browser-tab-new.icon-btn{width:28px;height:28px;min-width:28px;flex:none;margin-right:auto;margin-bottom:3px}
+.browser-shell .address-row{background:var(--panel);gap:6px;flex-wrap:nowrap}
+.browser-shell .address-input{min-width:100px}
+.browser-shell .privacy-sites-trigger{flex:none;height:30px;margin:0;white-space:nowrap}
+.browser-collection{padding:6px;color:var(--text);background:var(--panel);font-size:13px}
+.browser-collection header{display:flex;justify-content:space-between;gap:10px;padding:8px 8px 12px;border-bottom:1px solid var(--line)}
+.browser-collection header small{font-size:11px;color:var(--muted)}
+.browser-collection-list{max-height:420px;overflow:auto;padding:5px 0}
+.browser-collection-item,.browser-collection-footer{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:6px;padding:9px 8px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.browser-collection-item:hover,.browser-collection-footer:hover,.browser-collection-item.selected{background:var(--panel2)}
+.browser-collection-item:disabled{opacity:.5;cursor:default}
+.browser-collection-item>span{flex:1;min-width:0}.browser-collection-item b,.browser-collection-item small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.browser-collection-item b{font-weight:600}.browser-collection-item small{margin-top:3px;color:var(--muted);font-size:11px}
+.browser-collection-item>svg,.browser-collection-footer svg{width:16px;height:16px;flex:none}
+.browser-collection-footer{border-top:1px solid var(--line);border-radius:0;padding-top:12px;font-weight:600}
+@media(max-width:1200px){.browser-shell .devtools-button{font-size:0;gap:0;padding:0 7px}.browser-shell .devtools-button kbd{font-size:11px}.browser-shell .privacy-sites-trigger{gap:4px;padding:0 7px}.browser-shell .privacy-sites-trigger>svg:last-child{display:none}.instance-switcher-shell{max-width:230px}}

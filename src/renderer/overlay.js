@@ -1,7 +1,7 @@
 "use strict";
 // 扩展菜单浮层：显示控制界面生成的菜单，并把按钮点击回传给控制界面处理。
 const menu = document.getElementById("menu");
-const KEYS = ["extension", "extensionId", "instanceId", "kind", "view", "privacySite"];
+const KEYS = ["extension", "extensionId", "instanceId", "kind", "view", "privacySite", "browserMenuAction", "quickId"];
 function report() {
   facetOverlay.send({ type: "size", height: Math.ceil(menu.getBoundingClientRect().height) });
 }
@@ -11,6 +11,8 @@ facetOverlay.onRender(({ html, attrs, label }) => {
   for (const [k, v] of Object.entries(attrs || {})) root.setAttribute(k, v);
   menu.innerHTML = html;
   menu.setAttribute("aria-label", label || "扩展");
+  // Native views may delay animation frames while occluded; size the menu before showing it.
+  report();
   requestAnimationFrame(report);
   menu.scrollTop = 0;
   document.scrollingElement.scrollTop = 0;
@@ -22,6 +24,6 @@ document.addEventListener("click", (e) => {
   if (!b || b.disabled) return;
   const data = {};
   for (const k of KEYS) if (b.dataset[k] !== undefined) data[k] = String(b.dataset[k]);
-  if (data.extension || data.view || data.privacySite) facetOverlay.send({ type: "action", data });
+  if (data.extension || data.view || data.privacySite || data.browserMenuAction) facetOverlay.send({ type: "action", data });
 });
 new ResizeObserver(report).observe(menu);

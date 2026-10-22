@@ -69,6 +69,7 @@
     "release:publish": "node scripts/publish-release.cjs",
     "test:node-network": "node --test tests/node-network.test.cjs",
     "test:node-network-electron": "node tests/node-network-runner.cjs",
+    "test:browser-tabs": "node --test tests/browser-tabs-state.test.cjs && node tests/browser-tabs-runner.cjs",
     "test:control-api": "node --test tests/control-api.test.cjs",
     "test:page-clipboard": "node scripts/launch-electron.cjs tests/page-clipboard-electron.cjs",
     "test:ai-browser": "node --test tests/ai-browser.test.cjs && node scripts/launch-electron.cjs tests/ai-browser-electron.cjs",

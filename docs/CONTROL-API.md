@@ -20,7 +20,7 @@ Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright
 1. 打开「应用设置」，打开「允许本机外部工具控制实例」开关。
 2. 复制界面显示的 API 地址、CDP 端口和令牌。
 3. 重启千面，让 CDP 端口生效。
-4. 请求 `GET /v1/targets`，按 `instanceId` 找到对应页面的 `targetId`。
+4. 请求 `GET /v1/targets`，按 `instanceId`、`tabId` 和 `active` 找到对应页面的 `targetId`。
 5. Playwright 使用 `chromium.connectOverCDP('http://127.0.0.1:<CDP端口>')`，再根据 URL/title 或 `targetId` 选择页面。
 
 ## API
@@ -46,6 +46,23 @@ Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright
 启动、刷新和跳转接口也会自动发送跟随通知；如果千面当前停留在设置或全局页面，会切换到目标实例的浏览页面。
 
 API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，也不要把令牌提交到日志、工单或版本库。
+
+## 实例内网页标签（当前源码）
+
+顶部实例切换器选择环境；地址栏上方管理该实例的网页标签。标签共享所属实例的 Session、代理与环境，不额外启动代理核心。不同实例仍使用独立存储分区。每个实例最多 32 页。
+
+通过 `POST /v1/actions` 调用：
+
+| action | 参数 | 结果 |
+| --- | --- | --- |
+| `tab-list` | `id` | `activeTabId` 与全部 `tabs`（含未加载的恢复页） |
+| `tab-new` | `id,url?`、`active?`（默认 true） | `tabId,webContentsId`，默认打开 `about:blank` |
+| `tab-activate` | `id,tabId` | 切换或按需加载指定页，不重新加载已有页 |
+| `tab-close` | `id,tabId` | 关闭指定页；最后一页关闭时创建空白页，实例保持运行 |
+
+`tabId` 是持久化 UUID，不能跨实例使用；它与 Chromium 的数字 `webContentsId`、CDP `targetId` 及扩展 `chrome.tabs` 数字 ID 不同。`GET /v1/targets` 只枚举实际加载的网页，含 `instanceId,tabId,active,webContentsId,targetId`。先激活未加载的恢复页，再重新查询 target。现有 navigate/reload/F12 等操作作用于当前活跃网页。
+
+URL 列表、顺序和活跃页写入实例配置；完整退出后只恢复活跃网页，其他网页选中后加载。未提交输入和网页内存仅在运行中切换时保留，不能跨进程恢复。普通 target=_blank 链接打开为网页标签，带独立窗口要求的登录弹窗维持原流程。
 
 ## 请求和结果
 

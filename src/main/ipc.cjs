@@ -21,7 +21,7 @@ function installIPC(window,controller){
   try{if(window.isDestroyed()||controller.disposing)return {ok:false,error:'应用正在关闭'};const controls=window.webContents;if(!controls||controls.isDestroyed())return {ok:false,error:'控制窗口已关闭'};if(event.sender!==controls||event.senderFrame!==controls.mainFrame)throw Error('拒绝非控制界面调用');
   if(!message||typeof message.action!=='string')throw Error('请求无效');const {action,id}=message;
   if(controller.proxyModeSwitching&&(['start','stop','settings','reset-environment','delete','remove','create','import','import-subscription','refresh-subscription','node-network-save','environment-timezone','proxy-mode-set','node-ports-set'].includes(action)||/^(batch-|instance-|extension-|library-|diagnostic-)/.test(action)))throw Error(require('./proxy-mode.cjs').busyMessage);
-  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
+  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','tab-new','tab-activate','tab-close','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
    switch(action){
     case 'ai-select':return {ok:true,value:ai.select(message.providerId,message.model)};
     case 'ai-provider-remove':return {ok:true,value:ai.removeProvider(message.providerId)};
@@ -155,6 +155,10 @@ function installIPC(window,controller){
     case 'reset-environment':return {ok:true,value:await controller.resetEnvironment(id)};
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
     case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
+    case 'tab-list':{const x=controller.store.get(id);return {ok:true,value:require('./browser-tabs.cjs').snapshot(x,controller.runtimes.get(id))};}
+    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||'about:blank',active:message.active!==false})};
+    case 'tab-activate':return {ok:true,value:await controller.activateTab(id,message.tabId)};
+    case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
     case 'navigate':await controller.navigate(id,message.url);break;
     case 'toggle-devtools':return {ok:true,value:await controller.toggleDevTools(id)};
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
