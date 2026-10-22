@@ -64,7 +64,7 @@ function focusByInfo(info){const el=findByFocusInfo(info);if(el&&!el.disabled&&e
 function focusLost(){const el=document.activeElement;return !el||el===document.body||!el.isConnected;}
 function captureShellFocus(){const el=document.activeElement;if(!el?.closest?.('#tabs,#sidebar,#workspaceHead'))return ()=>{};const info=focusInfo(el);return ()=>{if(!focusLost())return;if(!focusByInfo(info)&&info?.scope==='#sidebar')$('#sidebar .nav.active')?.focus({preventScroll:true});};}
 function rememberModalFocus(){lastFocusInfo=focusInfo(document.activeElement);}
-function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){lastFocus.focus();return;}if(!focusByInfo(lastFocusInfo))$('#tabs [aria-selected="true"]')?.focus();}
+function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){lastFocus.focus({preventScroll:true});return;}if(!focusByInfo(lastFocusInfo))$('#tabs [aria-selected="true"]')?.focus({preventScroll:true});}
 
 // After a successful save the page is rebuilt; move focus to the save status instead of losing it.
 if(typeof saveEnvironment==='function'){const baseSaveEnvironment=saveEnvironment;saveEnvironment=async function(...args){const ok=await baseSaveEnvironment(...args);if(ok&&focusLost()){const info=$('#environmentSaveInfo');if(info){info.tabIndex=-1;info.focus({preventScroll:true});}}return ok;};}
