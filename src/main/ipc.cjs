@@ -29,6 +29,10 @@ function installIPC(window,controller){
     case 'ai-state':return {ok:true,value:ai.snapshot()};
     case 'ai-settings':return {ok:true,value:ai.save(message.settings||{})};
     case 'ai-run':return {ok:true,value:ai.begin(message)};
+    case 'ai-submit':return {ok:true,value:ai.run?.busy?require('./ai-inbox.cjs').submit(ai,message):ai.begin(message)};
+    case 'ai-message':return {ok:true,value:require('./ai-inbox.cjs').submit(ai,message)};
+    case 'ai-queue-remove':require('./ai-inbox.cjs').remove(ai,message.messageId);return {ok:true};
+    case 'ai-queue-next':return {ok:true,value:require('./ai-inbox.cjs').next(ai,{ids:message.ids,permission:message.permission,sharePage:true,allowGlobal:true})};
     case 'ai-stop':ai.stop();return {ok:true};
     case 'ai-clear':return {ok:true,value:{sessionId:ai.sessions.create()}};
     case 'ai-session-select':ai.sessions.select(message.sessionId);return {ok:true};

@@ -2,6 +2,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
  const {userDataPath,resourcePath}=require('../src/main/app-paths.cjs');
 const {RuntimeOutput,readRuntimeOutput}=require('../src/main/runtime-output.cjs');
+test('DSH required peers are reachable through production dependency edges for electron-builder',()=>{
+ const dependencies=require('../package.json').dependencies;
+ const reachable=new Set(),visit=name=>{if(reachable.has(name))return;reachable.add(name);if(!name.startsWith('@deepseek-ai/'))return;const pkg=JSON.parse(fs.readFileSync(path.join(__dirname,'../node_modules',name,'package.json'),'utf8'));for(const child of Object.keys(pkg.dependencies||{}))visit(child);};Object.keys(dependencies).forEach(visit);
+ for(const name of [...reachable].filter(name=>name.startsWith('@deepseek-ai/'))){
+  const pkg=JSON.parse(fs.readFileSync(path.join(__dirname,'../node_modules',name,'package.json'),'utf8'));
+  for(const peer of Object.keys(pkg.peerDependencies||{}))if(!pkg.peerDependenciesMeta?.[peer]?.optional)assert(reachable.has(peer),name+' requires packaged production peer '+peer);
+ }
+});
 test('Fresh data uses Facet, existing installations retain data, and explicit paths isolate launches',()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'facet-paths-'));
  const app={getPath:()=>dir,commandLine:{hasSwitch:()=>false}};

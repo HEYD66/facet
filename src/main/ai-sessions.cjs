@@ -10,12 +10,12 @@ function hydrate(row){
  if(r){
   if(!Array.isArray(r.entries)||!r.entries.every(e=>e&&['user','assistant','system','tool'].includes(e.kind)&&typeof e.text==='string')||!Array.isArray(r.scope)||!r.scope.every(id=>typeof id==='string')||typeof r.id!=='string'||typeof r.status!=='string'||typeof r.busy!=='boolean'||!Array.isArray(r.history))throw Error('Invalid task');
   if(r.busy)memory.add(r.scope,interruptedHistory(r.history,'应用关闭或中断',r.partial));
-  run={...r,plan:restorePlan(r.plan),busy:false,status:r.busy?'已恢复（上次任务已中断）':r.status,permission:'confirm',allowGlobal:false,sharePage:false,images:[],history:[],partial:'',abort:new AbortController()};
+  run={...r,queue:require('./ai-inbox.cjs').restore(r.queue),plan:restorePlan(r.plan),busy:false,status:r.busy?'已恢复（上次任务已中断）':r.status,permission:'confirm',allowGlobal:false,sharePage:false,images:[],history:[],partial:'',abort:new AbortController()};
   if(r.busy)run.entries.push({kind:'system',text:'已恢复历史记忆；上次任务已中断，不会自动继续操作。',at:new Date().toISOString()});
  }
  return {memory,run};
 }
-function task(run){return run?{id:run.id,busy:run.busy,status:run.status,scope:run.scope,entries:run.entries,plan:run.plan||null,history:run.history||[],partial:run.partial||''}:null;}
+function task(run){return run?{id:run.id,busy:run.busy,status:run.status,scope:run.scope,queue:run.queue||[],entries:run.entries,plan:run.plan||null,history:run.history||[],partial:run.partial||''}:null;}
 function blank(){const now=new Date().toISOString();return {id:crypto.randomUUID(),title:'新会话',createdAt:now,updatedAt:now,memory:new Memory().export(),task:null};}
 class Sessions{
  constructor(agent){this.agent=agent;const row=blank();this.rows=[row];this.activeId=row.id;this.selectedId=row.id;}

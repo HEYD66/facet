@@ -6,6 +6,10 @@
 
 2026-10-14：详细诊断采集和导出已在 v0.2.13 发布，见 [日志说明](DIAGNOSTICS.md)。[订阅指定代理](SUBSCRIPTION-NETWORK-DIAGNOSTICS.md)仍未接线；不要把设计字段当作已可调用 API。
 
+## 内置 Agent 接手要点（v0.2.20）
+
+内置助手已使用官方 DeepSeek Harness 执行引擎，见 [AI 手册](AI-AGENT.md)。核心适配位于 `src/main/ai-dsh.cjs`，消息待办位于 `ai-inbox.cjs`；千面原有加密会话和权限检查继续有效。不要把 DSH 内存 Session 改为明文落盘，也不要在失败或重启时自动重放待办。追加消息需对应当前任务 ID；立即补充仅在下一步生效。修改主进程后需新进程验证。
+
 ## 1. 先确认项目和运行状态
 
 确认当前 Electron 进程的 `--app-path` 与项目根目录一致，不要根据旧安装包或旧目录名猜测运行副本。开发启动入口：

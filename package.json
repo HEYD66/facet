@@ -1,6 +1,6 @@
 {
   "name": "facet",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "private": true,
   "description": "Privacy-focused multi-instance browser with a built-in AI assistant, isolated sessions and per-instance proxies",
   "author": "HEYD66",
@@ -80,14 +80,20 @@
     "test:control-api": "node --test tests/control-api.test.cjs",
     "test:page-clipboard": "node scripts/launch-electron.cjs tests/page-clipboard-electron.cjs",
     "test:ai-browser": "node --test tests/ai-browser.test.cjs && node scripts/launch-electron.cjs tests/ai-browser-electron.cjs",
-    "test:ai-recovery": "node --test tests/ai-request.test.cjs tests/ai-task-plan.test.cjs && node scripts/launch-electron.cjs tests/ai-recovery-electron.cjs",
+    "test:ai-recovery": "node --test tests/ai-request.test.cjs tests/ai-task-plan.test.cjs && node tests/ai-process-runner.cjs recovery",
     "test:devtools-electron": "node scripts/launch-electron.cjs tests/devtools-electron.cjs",
     "test:instance-reset-electron": "node scripts/launch-electron.cjs tests/instance-reset-electron.cjs",
     "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs",
     "test:fingerprint-electron": "node tests/fingerprint-catalog-runner.cjs",
     "test:fingerprint-contexts": "node tests/fingerprint-contexts-runner.cjs",
     "test:cdp-workers": "node tests/cdp-worker-main-process.cjs",
-    "test:fingerprint-offscreen": "node scripts/launch-electron.cjs tests/fingerprint-offscreen-electron.cjs"
+    "test:fingerprint-offscreen": "node scripts/launch-electron.cjs tests/fingerprint-offscreen-electron.cjs",
+    "test:ai-dsh": "node tests/ai-dsh-runner.cjs",
+    "test:ai-agent": "node scripts/launch-electron.cjs tests/ai-agent-electron.cjs",
+    "test:ai-memory": "node tests/ai-memory-runner.cjs",
+    "test:ai-sessions": "node tests/ai-process-runner.cjs sessions",
+    "test:ai-stop": "node tests/ai-process-runner.cjs stop",
+    "test:ai-live": "node tests/ai-live-runner.cjs"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -98,6 +104,22 @@
     "playwright": "1.63.0"
   },
   "dependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-fs": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-ptc-runtime": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-scope": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-working-directory": "0.2.1-rc.2",
     "electron-updater": "6.8.10",
     "js-yaml": "5.4.2",
     "unzipper": "0.12.5",

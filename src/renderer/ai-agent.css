@@ -59,3 +59,15 @@
 .ai-plan-mark{flex:none;width:14px;text-align:center;color:var(--muted)}.ai-plan-title{flex:1;min-width:0;overflow-wrap:anywhere}.ai-plan li small{flex:none;font-size:10px;color:var(--muted);padding-top:1px}
 .ai-plan .in_progress .ai-plan-mark,.ai-plan .in_progress small{color:var(--accent)}.ai-plan .in_progress .ai-plan-title{font-weight:600}.ai-plan .completed .ai-plan-mark{color:var(--accent)}.ai-plan .completed .ai-plan-title{color:var(--muted)}.ai-plan .blocked .ai-plan-mark,.ai-plan .blocked small{color:var(--red)}
 .ai-plan p{margin:8px 0 0;font-size:11px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+
+.ai-engine{flex:none;padding:7px 14px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--line)}
+.ai-activity{flex:none;padding:9px 14px;color:var(--accent);background:var(--accent-weak);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.ai-activity[hidden],.ai-send-options[hidden],.ai-queue[hidden],.ai-latest[hidden],#aiContinue[hidden],#aiRunning[hidden]{display:none}
+.ai-edit-settings .ai-activity,.ai-edit-settings .ai-queue,.ai-edit-settings .ai-latest,.ai-show-sessions .ai-activity,.ai-show-sessions .ai-queue,.ai-show-sessions .ai-latest{display:none}
+.ai-send-options{margin:4px 0 8px;border-top:1px solid var(--line);padding-top:8px}.ai-send-options select{font-size:11px;padding:5px 6px}
+.ai-queue{flex:none;max-height:150px;overflow:auto;margin:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.ai-queue-title{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:11px}.ai-queue-title span{flex:1;color:var(--muted)}
+.ai-queue-item{display:flex;align-items:flex-start;gap:6px;padding:6px 10px;border-top:1px solid var(--line);font-size:12px;line-height:1.5}.ai-queue-item span{flex:1;min-width:0;max-height:54px;overflow:auto;overflow-wrap:anywhere}.ai-queue-item b{color:var(--muted)}
+.ai-copy{display:block;margin:7px 0 0 auto;padding:2px 6px;background:transparent;border:0;color:var(--muted);font:10px system-ui;cursor:pointer;border-radius:4px}.ai-copy:hover{color:var(--text);background:var(--accent-weak)}
+.ai-latest{align-self:center;flex:none;margin:0 0 6px;background:var(--panel);box-shadow:0 2px 8px #0002}
+.ai-compose .ai-actions{flex-wrap:wrap}.ai-compose #aiStatus{min-width:40px}.ai-compose #aiMemory{max-width:90px;overflow:hidden;text-overflow:ellipsis}

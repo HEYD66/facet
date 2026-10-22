@@ -77,6 +77,28 @@ async function close(){
  await new Promise((resolve,reject)=>{closer.once('error',reject);closer.once('exit',code=>code===0?resolve():reject(Error('Test window close failed: '+code)));});
  await wait(()=>child.exitCode!==null,'installed application normal exit',15000);browser=null;ui=null;
 }
+async function verifyPackagedDsh(target){
+ let step=0,fixtureError;
+ const model=http.createServer(async(req,res)=>{try{
+  let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);
+  assert(body.tools.every(t=>t.type==='function'&&t.function.parameters?.type==='object'));
+  const tool=body.messages.findLast(m=>m.role==='tool');let message;
+  if(step===0)message={content:null,tool_calls:[{id:'packaged-manual',type:'function',function:{name:'read_manual',arguments:JSON.stringify({document:'AI-AGENT.md'})}}]};
+  else if(step===1){assert(tool.content.includes('DeepSeek Harness'));message={content:null,tool_calls:[{id:'packaged-page',type:'function',function:{name:'observe',arguments:JSON.stringify({instanceId:target,full_text:true})}}]};}
+  else {assert(tool.content.includes('REAL_INSTALLED_PAGE'),'Expected whole-page fixture text: '+tool.content.slice(0,500));message={content:'PACKAGED_DSH_VERIFIED：已核对内置说明书与真实网页。'};}
+  step++;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',...message}}]}));
+ }catch(e){fixtureError=e;res.statusCode=500;res.end('packaged fixture error');}});
+ await new Promise(r=>model.listen(0,'127.0.0.1',r));
+ try{
+  await call('ai-settings',{settings:{baseURL:'http://127.0.0.1:'+model.address().port+'/v1',model:'packaged-dsh-protocol',maxRounds:6}});
+  await call('ai-run',{prompt:'读取说明书并核对当前真实网页',ids:[target],permission:'read'});
+  await wait(async()=>!(await call('ai-state')).busy,'packaged official DSH completion',45000);if(fixtureError)throw fixtureError;
+  const state=await call('ai-state');assert.equal(state.engine.name,'DeepSeek Harness');assert.equal(state.engine.version,'0.2.1-rc.2');assert.equal(state.task.status,'已完成',state.task.entries.filter(e=>e.kind==='system').map(e=>e.text).join('\n'));assert.equal(step,3);
+  assert(state.task.entries.some(e=>e.kind==='assistant'&&e.text.includes('PACKAGED_DSH_VERIFIED')));
+  assert(state.task.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));
+  pass('Packaged ASAR dynamically imports official DSH and completes real bundled-manual → browser observation → final answer');
+ }finally{model.closeAllConnections();model.close();}
+}
 async function main(){
  assert(fs.existsSync(executable),'installed executable missing');
  const resources=path.join(path.dirname(executable),'resources');
@@ -95,7 +117,7 @@ async function main(){
  fs.writeFileSync(path.join(extensionSource,'popup.html'),'<title>Packaged extension verification</title><p>Real packaged extension API</p>');
  const catalog=new ExtensionCatalog(root),extension=catalog.stage(extensionSource);catalog.accept(extension);catalog.setEnabled(b.id,extension.id,true);
  fs.writeFileSync(path.join(root,'workspace-tools.json'),JSON.stringify({nodes:[],ips:[],quickLinksRevision:1,quickLinks:[{id:'quick-ipip',name:'ipip.la',url:'https://ipip.la/disguise.html'},{id:'quick-arena',name:'Arena',url:'https://arena.ai/agent'},{id:'duplicate',name:'ipip.la',url:'https://ipip.la/'}]}));
- await launch();assert((await call('snapshot')).instances.every(x=>x.status==='stopped'));pass('Installed app loads real production preload/IPC and does not auto-start instances');
+ await launch();if(process.argv.includes('--ai-only')){await call('start',{id:a.id});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===a.id).title==='Installed live fixture','AI test page');await ui.evaluate(id=>route('browser',id),a.id);await ui.locator('#aiToggle').click();await verifyPackagedDsh(a.id);await close();await launch();assert((await call('ai-state')).task.entries.some(e=>e.text.includes('PACKAGED_DSH_VERIFIED')));pass('Packaged DSH history persists across restart');await close();return;}assert((await call('snapshot')).instances.every(x=>x.status==='stopped'));pass('Installed app loads real production preload/IPC and does not auto-start instances');
  const firstIcon=await verifyTaskbar();pass('Actual packaged window exposes native Facet icons and correct taskbar icon/relaunch paths');
  assert.equal((await call('snapshot')).versions.app,require('../package.json').version);
  const beforeCatalogEnvironment=(await call('snapshot')).instances.find(x=>x.id===a.id).environment;
@@ -225,7 +247,7 @@ async function main(){
  const resetPageAfter=await instancePage(b.id);assert.notEqual(resetPageAfter,resetPage);
  const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,0);
  const diskCatalog=new ExtensionCatalog(root);assert.deepEqual(diskCatalog.enabled(b.id),[extension.id]);assert.equal(savedReset.resetPending??null,null);const freshPanel=await extensionPage(b.id,extension.id);assert.equal(await freshPanel.evaluate(async()=> (await chrome.storage.local.get('resetPackageProbe')).resetPackageProbe),undefined);pass('Packaged reset queries controlled exit through the real proxy, aligns locale, creates clean storage and preserves proxy and extension bindings while clearing extension data');
- await ui.locator('#aiToggle').click();await ui.waitForFunction(()=>!document.querySelector('#aiPanel').hidden);const originalSession=(await call('ai-state')).sessions.selectedId;await ui.locator('#aiClear').click();await wait(async()=>(await call('ai-state')).sessions.selectedId!==originalSession,'packaged new session');const sessionId=(await call('ai-state')).sessions.selectedId;await call('ai-session-rename',{sessionId,title:'Packaged session persistence'});await call('ai-session-select',{sessionId:originalSession});await call('ai-session-select',{sessionId});pass('Packaged AI panel creates, selects and renames independently persisted sessions');await close();await launch();const restoredAI=await call('ai-state');assert.equal(restoredAI.sessions.selectedId,sessionId);assert(restoredAI.sessions.items.some(x=>x.title==='Packaged session persistence'));pass('Packaged AI sessions restore after complete process restart');
+ await ui.locator('#aiToggle').click();await ui.waitForFunction(()=>!document.querySelector('#aiPanel').hidden);const originalSession=(await call('ai-state')).sessions.selectedId;await ui.locator('#aiClear').click();await wait(async()=>(await call('ai-state')).sessions.selectedId!==originalSession,'packaged new session');const sessionId=(await call('ai-state')).sessions.selectedId;await call('ai-session-rename',{sessionId,title:'Packaged session persistence'});await call('ai-session-select',{sessionId:originalSession});await call('ai-session-select',{sessionId});pass('Packaged AI panel creates, selects and renames independently persisted sessions');await verifyPackagedDsh(b.id);await close();await launch();const restoredAI=await call('ai-state');assert.equal(restoredAI.sessions.selectedId,sessionId);assert(restoredAI.sessions.items.some(x=>x.title==='Packaged session persistence'));assert(restoredAI.task.entries.some(e=>e.kind==='assistant'&&e.text.includes('PACKAGED_DSH_VERIFIED')));pass('Packaged AI sessions and completed DSH tool history restore after complete process restart');
  const control=await call('control-status');await call('control-save',{enabled:false});await assert.rejects(()=>fetch('http://127.0.0.1:'+control.apiPort+'/v1/status'));pass('Disabling external control closes the packaged API listener');await close();
 }
 main().catch(e=>{errors.push(e.stack||String(e));console.error(e.message);}).finally(async()=>{
