@@ -58,6 +58,36 @@ tags: [Facet, 导航, 后台, 回归]
 
 启动输出仍含部分扩展权限兼容警告（如 cookies、downloads、sidePanel），本轮未修改扩展兼容层，也未据此断言白屏根因。完整宫格缩略图回归仍保留前文所述旧失败。
 
+# 2026-10-23 最小化白屏补修
+
+前次后台计时器测试漏掉了原生最小化后的动画帧。真实 Arena 内联 React 代码在 requestAnimationFrame 中揭示隐藏的流式 HTML 片段；最小化时计时器仍运行，rAF 却为0，main 留在隐藏片段中，网络 load 完成后仍白屏。恢复宿主后同一 timeOrigin 的文档才显示。这与前述代理网络等待是两个问题。
+
+隔离测试采用生产默认硬件加速：禁用 CalculateNativeWinOcclusion 等启动参数、帧订阅、隐藏宿主、只切换 view 可见性均未解决。对已提交文档重新调用 setBackgroundThrottling(false) 后，约1.6秒执行97帧并揭示片段。最终方案只在宿主可见性、实例/标签切换及网页 dom-ready/did-finish-load 事件时重应用现有原生策略；不修改网页 rAF、React 私有函数或 hidden 属性，不添加 HTTP 轮询。显式宫格节能模式仍保留节流。
+
+另一个回归发现：最小化时首次创建的新标签可有0×0原生视口。对没有自定义视口的标签临时采用已有浏览区域尺寸，窗口恢复后清除临时覆盖；用户固定视口、DPR及硬件屏幕模拟沿用原流程。临时覆盖只在内存中，不写入环境配置。
+
+新增模块 src/main/background-rendering.cjs；网页接线位于 browser-tabs.cjs；Controller 安装宿主监听，窗口关闭时释放。运行 npm.cmd run test:minimized-rendering：7项通过，覆盖隐藏实例继续渲染、已有页最小化后继续运行、最小化后首次导航、新标签、恢复不重载和草稿、宫格显式节流及实例重启存储保留。
+
+## 真实进程验收
+
+正常退出 PID 57212 后，从同一目录启动新主进程49796、启动器60288；终端返回后进程及本机 API 继续运行。三个原运行实例恢复，标签顺序、活动标签、保存URL、代理和环境摘要与重启前一致，停留实例2原有 ippure.com 页面；抽卡保持 idle，没有向模型发送测试题。
+
+在真实比特01对照最小化宿主后新建临时标签并访问 Arena /agent：load=1803ms，ready=complete，main=1026×626，可见body文本391，无隐藏祖先或待揭示片段。最小化状态由原生窗口工具确认；两次采样约29秒，rAF计数15→1758，200ms计时器1→146。恢复窗口后timeOrigin保持1792690897149.5，证明没有刷新。关闭临时页、恢复原活动实例后，全部标签、网络与环境摘要核验通过。
+
+证据位于 .local-dev/minimized-live-20261023.json、minimized-rendering-after.json、minimized-policy-*.json、minimized-restart-state.json 与 minimized-restart-20261023.stdout.log/.stderr.log，不含控制令牌或Cookie。
+
+## 回归边界
+
+本轮 check=333脚本、control-api=1项、navigation-background=6项、grid-transition=4项通过，git diff --check通过。完整 browser-tabs 的前7个集成检查通过，但 favorites menu native height 超时，重试同样失败；用检查点原始 Controller/browser-tabs 对照也得到相同失败。没有修改断言掩盖问题，没有宣称这套全量回归通过。对照日志位于 .local-dev/minimized-tabs-baseline/test.log 和 minimized-tabs-retry/test.log。之前记录的完整宫格缩略图失败仍保留。
+
+本修复没有改变节点、DNS、缓存、扩展或指纹探测逻辑，不能保证解决代理 AnyTLS 连接失败导致的长时间资源等待；也未验收长期无人值守抽卡、系统睡眠或应用崩溃后的任务恢复。正常后台渲染可能增加资源消耗，显式节能模式仍是例外。
+
+最终实例切换复核发现，隐藏 view 后还可能降为约1fps。补充在实例选择、离开浏览页及网页标签切换后重应用当前原生策略，并增加隐藏实例动画帧断言；没有周期性轮询。再正常退出49796，最终主进程47004、启动器61940加载最终源码。两个真实Arena页面的短时切换计数分别为110→215→323、73→188→297，各自timeOrigin不变，原活动实例已恢复。
+
+在最终进程再次最小化并新建真实Arena临时页：load=2232ms，main=1026×626，隐藏片段全部揭示；约17秒内rAF=1036。恢复后timeOrigin仍为1792691286704.5，没有刷新；临时页关闭、原配置摘要再核对通过。最终证据：.local-dev/minimized-live-final-20261023.json、minimized-switch-after-20261023.json、minimized-final-restart-20261023.stdout.log/.stderr.log。没有验收长期模型任务。
+
+本轮修复前检查点72ce0a1；源码备份在 .local-dev/minimized-repair-backup。优先撤销本轮最终修复提交并正常重启千面，无需删除浏览存储。
+
 # 回滚
 
 修改前 Git 检查点为 `72364a0`。优先撤销本修复提交并正常重启应用，避免覆盖后续工作。回滚不需要删除浏览资料、登录数据或修改代理。

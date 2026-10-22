@@ -22,6 +22,10 @@ async function loadPage(c,id,r,tab){
  const x=c.store.get(id),view=new WebContentsView({webPreferences:{session:r.session,sandbox:true,nodeIntegration:false,nodeIntegrationInSubFrames:true,contextIsolation:true,webSecurity:true,backgroundThrottling:false}}),wc=view.webContents;
  tab.view=view;view.setVisible(false);c.window.contentView.addChildView(view);wc.setAudioMuted(c.mutedFor(id));
  const alive=()=>!wc.isDestroyed()&&c.runtimes.get(id)===r&&r.tabs?.get(tab.id)===tab;
+ // Each committed document can replace its native rendering widget. Reapply
+ // the current policy after commit; explicit grid saver throttling still wins.
+ const resumeRendering=()=>{if(alive())require('./background-rendering.cjs').resume(wc);};
+ wc.on('dom-ready',resumeRendering);wc.on('did-finish-load',resumeRendering);
  const changed=()=>{if(!alive())return;const url=wc.getURL();if(url==='about:blank'||/^https?:/i.test(url))tab.url=url;tab.title=wc.getTitle();sync(r,tab);c.emitSoon();};
  const navigated=()=>{changed();if(alive())try{persist(c,id,r);}catch{c.log(id,'网页标签地址保存失败，当前页面仍保留','WARN');}};
  wc.on('before-input-event',(event,input)=>{
@@ -57,12 +61,21 @@ async function loadPage(c,id,r,tab){
   await wc.loadFile(path.join(__dirname,'../renderer/seed.html'));
   const native=await wc.executeJavaScript(`(async()=>({platform:navigator.platform,metadata:navigator.userAgentData?await navigator.userAgentData.getHighEntropyValues(['architecture','bitness','model','platformVersion','fullVersionList','wow64']):null}))()`);tab.native=native;
   wc.debugger.attach('1.3');await require('./environment.cjs').applyEnvironment(wc,r.environment,native,c.bounds||{width:c.window.getContentSize()[0],height:c.window.getContentSize()[1]});
+  // Windows can report a zero native viewport for a widget first created while
+  // minimized. Temporarily size adaptive tabs using the last browser layout.
+  // Fixed/hardware viewports already have their own environment metrics.
+  const env=r.environment;
+  if(c.window.isMinimized()&&!env.width&&!env.scale&&!(env.fingerprint?.enabled&&env.fingerprint.hardware)){
+   const [width,height]=c.window.getContentSize(),size=c.bounds||c.lastPageSize||{width,height};
+   await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:Math.max(1,size.width),height:Math.max(1,size.height),deviceScaleFactor:0,mobile:false,dontSetVisibleSize:true});
+   tab.backgroundViewport=true;
+  }
   if(!alive()||c.disposing||!['starting','running'].includes(r.status)||r.core&&!r.core.child)throw Error('实例已停止或代理内核退出');
   r.extensionHost?.bindPage(wc);return tab;
  }catch(error){r.extensionHost?.unbindPage(wc);try{c.window.contentView.removeChildView(view);}catch{}if(!wc.isDestroyed())wc.close({waitForBeforeUnload:false});tab.view=null;throw error;}
 }
 function show(c,id,r,tab){
- const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
+ const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);require('./background-rendering.cjs').resume(old.webContents);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
  r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);
  if(r.extensionHost?.compat?.tabs){const compat=r.extensionHost.compat;compat.tabs.focusedId=tab.view.webContents.id;if(changed)compat.broadcast('tabs.onActivated',[{tabId:tab.view.webContents.id,windowId:compat.tabs.primaryWindowId}]);}
  if(c.grid)c.applyGrid();else if(c.activeId===id&&c.bounds){c.setDevToolsLayout(r,c.bounds);tab.view.setVisible(r.status==='running');if(r.status==='running')tab.view.webContents.focus();}
