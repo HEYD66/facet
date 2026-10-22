@@ -144,7 +144,17 @@ async function main(){
  fs.writeFileSync(path.join(root,'adaptive-fill.json'),JSON.stringify(fill,null,2));await ui.screenshot({path:path.join(root,'adaptive-fill.png')});
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,adaptive);
  pass('Packaged small-screen adaptive viewport fills its native view with unchanged DPR/configuration and a working native corner click');
- assert.deepEqual(await ui.locator('[data-quick="open"]').allTextContents(),['Arena']);
+ assert.deepEqual(await ui.evaluate(()=>state.quickLinks.map(x=>x.name)),['Arena']);
+ assert.equal(await ui.locator('[data-browser-menu="favorites"]').count(),1);
+ await ui.locator('[data-browser-menu="favorites"]').click();let favorites;
+ await wait(()=>{favorites=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().endsWith('/src/renderer/overlay.html'));return !!favorites;},'packaged favorites menu');
+ await favorites.locator('[data-browser-menu-action="quick"] b').waitFor();
+ assert.deepEqual(await favorites.locator('[data-browser-menu-action="quick"] b').allTextContents(),['Arena']);
+ assert.equal(await favorites.locator('[data-browser-menu-action="manage-quick"]').count(),1);
+ // Electron's before-input-event needs native input; CDP dispatch does not close this view.
+ await mainValue("(()=>{const e=process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('electron'),w=e.webContents.getAllWebContents().find(w=>w.getURL().endsWith('/src/renderer/overlay.html'));w.sendInputEvent({type:'keyDown',keyCode:'Escape'});w.sendInputEvent({type:'keyUp',keyCode:'Escape'});return true;})()");
+ await ui.waitForFunction(()=>browserMenu===null);
+ pass('Packaged favorites menu displays migrated links and its management entry');
  assert.deepEqual(await ui.evaluate(()=>privacySites.map(x=>x.id)),['ipip','ipleak','browserleaks','dnsleaktest','ippure','netcoffee']);
  await ui.locator('[data-privacy-toggle]').click();let menu;
  await wait(()=>{menu=browser.contexts().flatMap(c=>c.pages()).find(p=>p.url().endsWith('/src/renderer/overlay.html'));return !!menu;},'packaged privacy menu');

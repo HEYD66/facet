@@ -40,7 +40,7 @@ async function exportSelected(transfer,ids,destination,{deleteAfterExport=false,
     // No page can make new requests while this selected session is being copied.
     ses.webRequest.onBeforeRequest((_details,callback)=>callback({cancel:true}));guards.push(ses);
     await quiesce(ses,withCookies);const x=c.store.get(id),cookies=await withCookies(ses,async d=>(await d.sendCommand('Network.getAllCookies')).cookies);cookies.forEach(cookieDetails);
-    instances.push({id,name:x.name,url:x.url,environment:x.environment,notes:x.notes||'',muted:x.muted===true,volume:x.volume??100,previousExit:previousExit(c,id),cookies});
+    instances.push({id,name:x.name,url:x.url,...(x.browserTabs?{browserTabs:structuredClone(x.browserTabs)}:{}),environment:x.environment,notes:x.notes||'',muted:x.muted===true,volume:x.volume??100,previousExit:previousExit(c,id),cookies});
    }
    const metadata={format:'facet-instance-backup',version:1,platform:process.platform,electron:process.versions.electron,app:require('./application-version.cjs').applicationVersion(app),createdAt:new Date().toISOString(),instances};validateMetadata(metadata);
    for(let i=0;i<ids.length;i++){

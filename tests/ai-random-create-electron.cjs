@@ -4,7 +4,7 @@ const {app,BrowserWindow}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-ai-random-'));app.setPath('userData',root);app.disableHardwareAcceleration();
 const {Controller}=require('../src/main/controller.cjs'),{TARGETS}=require('../src/main/diagnostics.cjs'),{Store}=require('../src/main/store.cjs');
-const reports=[],servers=[],sockets=new Set();let c,win,modelSource,hold=false,held=false,proxyHits=0,failNextIP=false;
+const reports=[],servers=[],sockets=new Set();let c,win,modelSource,hold=false,held=false,proxyHits=0,failNextIP=false,onIP=null;
 const wait=async(fn,label)=>{for(let i=0;i<1500;i++){if(await fn())return;await new Promise(r=>setTimeout(r,20));}throw Error('Timed out: '+label);};
 async function serve(handler){
  const server=http.createServer(handler);server.on('connection',s=>{sockets.add(s);s.on('close',()=>sockets.delete(s));});
@@ -18,11 +18,12 @@ async function serve(handler){
 setTimeout(()=>app.exit(2),120000).unref();
 app.whenReady().then(async()=>{try{
  const nodes=[];
- for(let i=0;i<2;i++){
+ for(let i=0;i<4;i++){
   const proxy=await serve((req,res)=>{proxyHits++;if(hold){held=true;return;}
+   if(req.url.includes('/ip')&&onIP){const callback=onIP;onIP=null;callback(i);}
    if(failNextIP&&req.url.includes('/ip')){failNextIP=false;res.end('{}');return;}
    res.end(req.url.includes('/ip')?JSON.stringify({success:true,ip:'203.0.113.'+(50+i),country:i?'United States':'Japan',country_code:i?'US':'JP',timezone:{id:i?'America/New_York':'Asia/Tokyo'}}):req.url.includes('/latency')?'ip=203.0.113.'+(50+i)+'\n':'<!doctype html><title>Random instance verified</title><body>Local verification</body>');});
-  nodes.push({name:i?'日本标签实际美国':'美国标签实际日本',type:'http',server:'127.0.0.1',port:proxy.address().port});
+  nodes.push({name:(i?'日本标签实际美国':'美国标签实际日本')+' '+i,type:'http',server:'127.0.0.1',port:proxy.address().port});
  }
  TARGETS.latency='http://diagnostic.invalid/latency';TARGETS.ip='http://diagnostic.invalid/ip';TARGETS.fallback='http://diagnostic.invalid/fallback';
  const model=await serve(async(req,res)=>{let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);
@@ -43,15 +44,38 @@ app.whenReady().then(async()=>{try{
  c.store.update(created.id,{url:'http://random-page.invalid/'});await c.start(created.id);await wait(()=>c.runtimes.get(created.id).view.webContents.getTitle()==='Random instance verified','proxy page');
  const observed=await c.runtimes.get(created.id).view.webContents.executeJavaScript('({language:navigator.language,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone})');assert.equal(observed.language,created.environment.language);assert.equal(observed.timezone,created.environment.timezone);await c.stop(created.id);reports.push('Real Chromium page loads through assigned Mihomo and exposes the matched language/timezone');
  const second=await agent.tool('facet_action',{action:'create',params:{name:'AI random two',random:true,sourceId:modelSource}});assert(second.result.verified);assert.notEqual(second.result.environment.seed,created.environment.fingerprint.seed);
+ assert.notEqual(second.result.assignment.nodeName,created.network.nodeName);
+ const assigned=[created.network.nodeName,second.result.assignment.nodeName].map(name=>nodes.find(node=>node.name===name));
+ const aliases=await c.library.save({name:'Assigned aliases',text:JSON.stringify({proxies:assigned.map((node,i)=>({...node,name:'Alias '+i}))})});
+ const beforeAliases=c.store.list().length;
+ await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'No unused aliases',random:true,sourceId:aliases}}),/没有未分配/);assert.equal(c.store.list().length,beforeAliases);
+ reports.push('Random AI creation excludes stopped assignments and renamed configurations across subscriptions; exhaustion does not reuse nodes');
  const evidence=c.diagnostics.results.get(JSON.stringify([modelSource,second.result.assignment.nodeName,'ip']));assert(evidence.ok);assert.equal(evidence.ip,second.result.exitLocale.ip);
  failNextIP=true;const fallback=await agent.tool('facet_action',{action:'create',params:{name:'AI random replacement',random:true,sourceId:modelSource}});assert(fallback.result.verified);assert.equal(fallback.result.connectivity.attempted,2);reports.push('A failed fresh exit lookup retries a different node; successful measurements are available to subsequent context queries');
- const before=c.store.list().length;
+ let before=c.store.list().length;
  await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'Forbidden override',random:true,sourceId:modelSource,syncLocale:false}}),/请勿/);
  agent.run.permission='read';await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'Denied',random:true}}),/仅可查看/);agent.run.permission='full';assert.equal(c.store.list().length,before);
  reports.push('Repeated random creation generates independent seeds; disabling IP matching and read-only mutation are rejected');
+ let offline=false;
+ const staleProxy=await serve((req,res)=>res.end(offline?'invalid probe response':req.url.includes('/ip')?JSON.stringify({success:true,ip:'203.0.113.81',country_code:'JP',timezone:{id:'Asia/Tokyo'}}):'ip=203.0.113.81\n'));
+ const staleSource=await c.library.save({name:'Fresh failure replaces stale success',text:JSON.stringify({proxies:[{name:'Previously good',type:'http',server:'127.0.0.1',port:staleProxy.address().port}]})});
+ c.diagnostics.run([{sourceId:staleSource,name:'Previously good'}],'latency',1);await c.diagnostics.work;
+ const available=()=>require('../src/main/node-evidence.cjs').selectionOptions(c).find(row=>row.sourceId===staleSource).available;
+ assert(available());offline=true;
+ await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'Do not use stale success',random:true,sourceId:staleSource}}),/未创建实例/);
+ assert.equal(available(),false,'Fresh AI connectivity failure must replace a stale available status');c.diagnostics.history.flush();
+ const reloadStore=new Store(root),reloaded={store:reloadStore,library:new (require('../src/main/library.cjs').Library)(root,reloadStore),diagnostics:{results:new Map(),history:new (require('../src/main/diagnostic-history.cjs').DiagnosticHistory)(root)}};
+ assert.equal(require('../src/main/node-evidence.cjs').selectionOptions(reloaded).find(row=>row.sourceId===staleSource).available,false);assert.equal(c.store.list().length,before);
+ reports.push('A fresh failed AI connectivity check invalidates stale success in automatic selection and survives storage reload');
  const broken=await serve((req,res)=>res.end(req.url.includes('/latency')?'ip=203.0.113.80\n':JSON.stringify({success:true,ip:'203.0.113.80',country_code:'JP'})));
  const brokenSource=await c.library.save({name:'Incomplete exit data',text:JSON.stringify({proxies:[{name:'Broken region',type:'http',server:'127.0.0.1',port:broken.address().port}]})});
  await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'Must not create',random:true,sourceId:brokenSource}}),/未创建实例/);assert.equal(c.store.list().length,before);reports.push('Incomplete measured IP locale blocks creation without direct fallback');
+ assert.equal(c.diagnostics.results.get(JSON.stringify([brokenSource,'Broken region','latency'])).ok,true);assert.equal(c.diagnostics.results.get(JSON.stringify([brokenSource,'Broken region','ip'])).ok,false);
+ reports.push('An IP information failure is recorded separately and does not falsely mark successful connectivity as failed');
+ let concurrent;
+ onIP=i=>{const node=nodes[i];concurrent=c.store.create('Concurrent assignment',{mode:'mihomo',nodeName:node.name});c.store.saveNodes(concurrent.id,[node],null,{sourceId:modelSource,name:node.name});};
+ await assert.rejects(agent.tool('facet_action',{action:'create',params:{name:'Race must not create',random:true,sourceId:modelSource}}),/未创建实例/);assert(concurrent);assert.equal(c.store.list().length,before+1);assert(!c.store.list().some(x=>x.name==='Race must not create'));
+ c.store.update(concurrent.id,{network:{mode:'direct',nodeName:''}});before=c.store.list().length;reports.push('Assignment during a live exit lookup is detected before creation and never reused');
  hold=true;agent.begin({prompt:'取消检测测试',ids:[original.id],permission:'full'});await wait(()=>held,'held proxy request');agent.stop();await wait(()=>!agent.run.busy,'cancelled agent');assert.equal(c.store.list().length,before);assert.equal(c.diagnostics.cores.size,0);assert.equal(c.diagnostics.standalone.size,0);reports.push('Stop cancels live proxy probes and cleans child cores without creating an instance');
  fs.writeFileSync(path.join(root,'report.json'),JSON.stringify({passed:true,reports,model:'Local deterministic protocol fixture'},null,2));console.log(JSON.stringify({passed:true,root,reports}));
  }catch(e){console.error(e);process.exitCode=1;}finally{await c?.closeAll();win?.destroy();for(const socket of sockets)socket.destroy();for(const server of servers)server.close();app.exit(process.exitCode||0);}});

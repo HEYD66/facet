@@ -187,11 +187,13 @@ class ControlApi {
     const rows = [];
     for (const instance of this.controller.store.list()) {
       const runtime = this.controller.runtimes.get(instance.id);
-      const wc = runtime?.view?.webContents;
+      for (const tab of runtime?.tabs?.values() || [{id:null,view:runtime?.view}]) {
+      const wc = tab.view?.webContents;
       if (!wc || wc.isDestroyed()) continue;
       let targetId = null;
       try { targetId = (await wc.debugger.sendCommand('Target.getTargetInfo')).targetInfo?.targetId || null; } catch {}
-      rows.push({instanceId: instance.id, instanceName: instance.name, webContentsId: wc.id, targetId, type: 'page', url: wc.getURL(), title: wc.getTitle()});
+      rows.push({instanceId: instance.id, instanceName: instance.name, tabId:tab.id, active:!tab.id||tab.id===runtime.activeTabId, webContentsId: wc.id, targetId, type: 'page', url: wc.getURL(), title: wc.getTitle()});
+      }
     }
     return rows;
   }
@@ -228,7 +230,7 @@ class ControlApi {
     const message = {...input, action};
     const result = await this.controller.externalRequest(message);
     if (!result?.ok) throw Error(result?.error || '操作失败');
-    if (['start', 'reload', 'navigate', 'activate'].includes(action) && input.id) this.focus(input.id);
+    if (['start', 'reload', 'navigate', 'activate', 'tab-new', 'tab-activate'].includes(action) && input.id) this.focus(input.id);
     if (action === 'create' && input.start === true && typeof result.value === 'string') this.focus(result.value);
     return result.value;
   }

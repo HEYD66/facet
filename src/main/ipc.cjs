@@ -20,7 +20,8 @@ function installIPC(window,controller){
  const requestHandler=async(event,message)=>{
   try{if(window.isDestroyed()||controller.disposing)return {ok:false,error:'应用正在关闭'};const controls=window.webContents;if(!controls||controls.isDestroyed())return {ok:false,error:'控制窗口已关闭'};if(event.sender!==controls||event.senderFrame!==controls.mainFrame)throw Error('拒绝非控制界面调用');
   if(!message||typeof message.action!=='string')throw Error('请求无效');const {action,id}=message;
-  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
+  if(controller.proxyModeSwitching&&(['start','stop','settings','reset-environment','delete','remove','create','import','import-subscription','refresh-subscription','node-network-save','environment-timezone','proxy-mode-set','node-ports-set'].includes(action)||/^(batch-|instance-|extension-|library-|diagnostic-)/.test(action)))throw Error(require('./proxy-mode.cjs').busyMessage);
+  const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','tab-new','tab-activate','tab-close','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
    switch(action){
     case 'ai-select':return {ok:true,value:ai.select(message.providerId,message.model)};
     case 'ai-provider-remove':return {ok:true,value:ai.removeProvider(message.providerId)};
@@ -34,17 +35,23 @@ function installIPC(window,controller){
     case 'ai-session-rename':ai.sessions.rename(message.sessionId,message.title);return {ok:true};
     case 'ai-session-delete':ai.sessions.remove(message.sessionId,message.confirmed);return {ok:true};
     case 'ai-approve':ai.approve(message.approvalId,message.allow);return {ok:true};
+    case 'proxy-mode-set':return {ok:true,value:await controller.setProxyMode(message.mode,{confirmed:message.confirmed===true})};
+    case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled,{confirmed:message.confirmed===true})};
+    case 'node-ports-sync':return {ok:true,value:await controller.syncNodePorts()};
+    case 'node-ports-copy':{const rows=controller.nodePortNodes().map(node=>({name:node.name,...controller.proxyPool.lookup(node)})).filter(row=>row.running);if(!rows.length)throw Error('暂无已启动的节点端口');await clipboard.writeText(rows.map(row=>`${row.name.replace(/[\r\n\t]/g,' ')}\thttp://127.0.0.1:${row.port}\tsocks5://127.0.0.1:${row.port}`).join('\n'));return {ok:true,value:{copied:true,count:rows.length}};}
+    case 'node-port-copy':{const node=controller.library.node(message.sourceId,message.name),value=controller.proxyPool.lookup(node);if(!value.running)throw Error('节点端口尚未启动，请切换为节点端口共享模式并同步');if(!['http','socks5'].includes(message.protocol||'http'))throw Error('代理协议无效');await clipboard.writeText(`${message.protocol||'http'}://127.0.0.1:${value.port}`);return {ok:true,value:{port:value.port,copied:true}};}
     case 'node-network-interfaces':return {ok:true,value:await controller.nodeNetwork.interfaces(true)};
-    case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
+    case 'node-network-save':return {ok:true,value:await controller.queue('node-network',async()=>{const value=await controller.nodeNetwork.save(message.settings);controller.scheduleNodePorts();controller.workspace.log('application','已保存节点 DNS 和出站设置；下次实例启动或节点检测生效');controller.emit();return value;})};
     case 'library-proxy-save':case 'library-proxy-test':case 'library-proxy-clipboard':case 'library-proxy-parse':return {ok:true,value:await require('./proxy-entry.cjs').proxyEntry(controller,message,clipboard)};
     case 'fingerprint-preset':return {ok:true,value:require('./environment.cjs').environment(require('./fingerprint.cjs').preset(message.preset,require('./environment.cjs').environment(message.environment)))};
+    case 'instance-new-plan':return {ok:true,value:{environment:require('./environment.cjs').environment(require('./fingerprint.cjs').preset('library-v1',require('./environment.cjs').environment(message.environment))),node:require('./node-evidence.cjs').selectForNewInstance(controller)}};
     case 'environment-timezone':return {ok:true,value:await controller.diagnostics.timezone(id,message.network)};
     case 'quick-link-save':controller.workspace.saveQuickLink(message.link||{});controller.emit();break;
     case 'open-github':await shell.openExternal('https://github.com/HEYD66/facet');break;
     case 'open-feedback':await shell.openExternal('https://github.com/HEYD66/facet/issues');break;
     case 'quick-link-remove':controller.workspace.removeQuickLink(message.linkId);controller.emit();break;
     case 'quick-link-move':controller.workspace.moveQuickLink(message.linkId,message.direction);controller.emit();break;
-    case 'quick-link-open':await controller.navigate(id,controller.workspace.quickLink(message.linkId).url);break;
+    case 'quick-link-open':return {ok:true,value:await controller.navigate(id,controller.workspace.quickLink(message.linkId).url)};
     case 'extension-import':return {ok:true,value:await controller.queue('extensions',async()=>{const zip=message.format==='zip';const pick=await dialog.showOpenDialog(window,zip?{title:'选择 ZIP 扩展文件',properties:['openFile'],filters:[{name:'ZIP 扩展',extensions:['zip']}]}:{title:'选择包含manifest.json的解压扩展文件夹',properties:['openDirectory']});if(pick.canceled)return {cancelled:true};if(controller.disposing)throw Error('应用正在退出');const catalog=controller.extensions.catalog,row=await require('./extension-zip.cjs').stageSource(catalog,pick.filePaths[0]);try{const answer=await dialog.showMessageBox(window,{type:'warning',title:row.requiresElevatedReview?'确认导入高风险浏览器扩展':'确认导入浏览器扩展',message:row.name+' · '+row.version,detail:'扩展可能读取或修改网页内容。只导入可信来源；导入后默认不启用。'+(row.requiresElevatedReview?'\n此扩展声明了高风险权限或全站网页范围，请确认来源、发布者和权限用途后再导入。':'')+'\n声明权限：'+row.permissions.join(', ')+'\n可选权限：'+row.optionalPermissions.join(', ')+'\n内容脚本范围：'+row.matches.join(', ')+'\n大小：'+sizeText(row.bytes)+' · '+row.files+' 个文件和目录'+(row.skipped?.length?'\n已跳过开发用文件夹/文件（扩展运行用不到）：'+row.skipped.map(x=>x.name+'（'+sizeText(x.size)+'）').join('、'):'')+'\n'+row.warnings.join('\n'),buttons:['取消',row.requiresElevatedReview?'确认高风险导入':'信任并导入'],defaultId:0,cancelId:0,noLink:true});if(answer.response!==1||controller.disposing){catalog.discard(row);return {cancelled:true};}catalog.accept(row);controller.emit();return {id:row.id};}catch(e){catalog.discard(row);throw e;}})};
     case 'extension-refresh':return {ok:true,value:await controller.queue('extensions',()=>refreshOne(controller,window,dialog,message.extensionId))};
     case 'extension-refresh-all':return {ok:true,value:await controller.queue('extensions',()=>refreshAll(controller,window,dialog))};
@@ -148,7 +155,11 @@ function installIPC(window,controller){
     case 'reset-environment':return {ok:true,value:await controller.resetEnvironment(id)};
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
     case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
-    case 'navigate':await controller.navigate(id,message.url);break;
+    case 'tab-list':{const x=controller.store.get(id);return {ok:true,value:require('./browser-tabs.cjs').snapshot(x,controller.runtimes.get(id))};}
+    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||'about:blank',active:message.active!==false})};
+    case 'tab-activate':return {ok:true,value:await controller.activateTab(id,message.tabId)};
+    case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
+    case 'navigate':return {ok:true,value:await controller.navigate(id,message.url)};
     case 'toggle-devtools':return {ok:true,value:await controller.toggleDevTools(id)};
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
     case 'settings':return {ok:true,value:await controller.settings(id,message.patch||{})};

@@ -1,6 +1,6 @@
 # 千面 Facet：项目总览与维护手册
 
-更新：2026-10-20。适用版本 v0.2.17。项目以用户隐私保护与内置 AI 助手为核心；本版补充扩展 ZIP 导入，修复 DNR 执行、网页复制、备注拖选和环境重置。待开发能力见 [交付状态](UX-DELIVERY-STATUS.md)，文档导航见 [索引](README.md)。
+更新：2026-10-22。以 v0.2.18 为基线的当前源码；共享节点端口改造尚未发布。项目以用户隐私保护与内置 AI 助手为核心；本版补充扩展 ZIP 导入，修复 DNR 执行、网页复制、备注拖选和环境重置。待开发能力见 [交付状态](UX-DELIVERY-STATUS.md)，文档导航见 [索引](README.md)。
 
 当前支持范围以 [CURRENT-SCOPE.md](CURRENT-SCOPE.md) 为准；旧 `SCOPE.md` 是历史。
 
@@ -45,14 +45,14 @@ flowchart TD
     IPC --> C[Controller 生命周期与队列]
     C --> S[Store 与本机持久数据]
     C --> W[每实例 WebContentsView / Session]
-    C --> M[每实例 Mihomo / 进程保护]
-    C --> D[独立节点检测任务]
+    C --> M[独立核心 或 共享 Mihomo / 节点端口 / 进程保护]
+    C --> D[独立检测会话 / 按模式选择核心]
     CDP[应用级 CDP 端口] --> W
     W --> M
     M --> N[用户提供的代理节点]
 ```
 
-直连实例不启动 Mihomo，浏览 Session 使用 direct。代理实例使用固定回环 HTTP 代理；启动或运行失败不能自动切回网页直连。代理端口按实例分配，外部 CDP 是应用级单端口，两者用途不同。
+直连实例不启动 Mihomo，浏览 Session 使用 direct。代理实例使用固定回环 HTTP 代理；启动或运行失败不能自动切回网页直连。当前源码有互斥的「实例独立代理」（默认）与「节点端口共享」模式，前者每个实例/检测独立启动核心，后者按完整节点配置及网络策略分配端口，同配置节点在多个实例和检测任务间复用；网络策略或解析结果不兼容时分组使用不同核心。外部 CDP 是应用级单端口，两者用途不同。端口服务开关与映射持久化到 node-ports.json，重启恢复；仅监听本机。使用与故障边界见 README 的「互斥代理模式」。
 
 | 文件/目录 | 职责 |
 | --- | --- |
@@ -62,7 +62,8 @@ flowchart TD
 | `control-api.cjs` | HTTP 鉴权、端口、实例和通用动作路由、target 映射 |
 | `store.cjs`、`json-storage.cjs` | 实例与节点副本、校验和单文件原子写入 |
 | `library.cjs`、`subscription*.cjs` | 全局源与下载、公共地址验证、Fake-IP 公网复核 |
-| `mihomo.cjs`、`process-host.cjs` | 内核运行配置、独立端口、Windows 进程保护与租约 |
+| `mihomo.cjs`、`process-host.cjs` | 内核运行配置、Windows 进程保护与租约 |
+| `proxy-mode.cjs`、`shared-proxy-pool.cjs`、`node-port-registry.cjs` | 共享核心、按节点端口、实例/检测/外部租约、稳定端口映射 |
 | `node-network.cjs` | 节点域名准备、DNS 选择、网卡/路由设置 |
 | `diagnostics.cjs`、`ip-services.cjs`、`diagnostic-history.cjs` | 临时内核检测、IP 备用服务、统计历史 |
 | `environment.cjs`、`fingerprint*.cjs/js`、`viewport.cjs` | CDP 环境覆盖、种子注入、视口适配 |

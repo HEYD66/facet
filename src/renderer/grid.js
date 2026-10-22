@@ -8,8 +8,8 @@ let gridGeometryDirty=true,gridContextKey='',gridRevision=0,gridSentScroll=null,
 const gridThumbCache=new Map();
 let gridThumbBusy=false;
 // 每个格子标题栏里的实例占用（来自 window-bar.js 每 2 秒广播的 facet-metrics）。GPU 由所有实例共用一个进程，无法拆分，只在顶部显示总数。
-function gridResText(id){const m=gridMetrics[id];return m?`CPU ${window.facetPct?window.facetPct(m.cpu):Math.round(m.cpu)+'%'} · ${window.facetSize?window.facetSize(m.memoryMB):Math.round(m.memoryMB)+' MB'}`:'';}
-function gridResTitle(id){const m=gridMetrics[id];return m?`该实例占用：网页、弹窗、扩展页面共 ${m.processes} 个进程${m.coreMB?`，含 Mihomo 内核约 ${window.facetSize?.(m.coreMB)||Math.round(m.coreMB)+' MB'}`:''}${m.hostMB?`，进程保护约 ${window.facetSize?.(m.hostMB)||Math.round(m.hostMB)+' MB'}`:''}。\n共用的 GPU 进程和扩展后台脚本无法区分实例，只计入顶部总数。`:'';}
+function gridResText(id){const m=gridMetrics[id];return m?`CPU ${m.cpuComplete===false?'≥':''}${window.facetPct?window.facetPct(m.cpu):Math.round(m.cpu)+'%'} · ${m.memoryKind==='private-commit'?'提交 ':'内存 '}${m.memoryComplete===false?'≥':''}${window.facetSize?window.facetSize(m.memoryMB):Math.round(m.memoryMB)+' MB'}`:'';}
+function gridResTitle(id){const m=gridMetrics[id];return m?`该实例占用：全部标签页、弹窗、扩展页面共 ${m.processes} 个进程${m.coreMB?`，含 Mihomo 内核约 ${window.facetSize?.(m.coreMB)||Math.round(m.coreMB)+' MB'}`:''}${m.hostMB?`，进程保护约 ${window.facetSize?.(m.hostMB)||Math.round(m.hostMB)+' MB'}`:''}。\n${m.memoryKind==='private-commit'?'内存为私有提交量，不是实际驻留物理内存。':''}CPU 和内存包含代理与进程保护；共享代理按 ${m.sharedCoreUsers||1} 个运行实例分摊，顶部只计一次。${m.cpuComplete===false||m.memoryComplete===false?'≥ 表示正在建立 CPU 基线或采样不完整，仅显示已采集部分。':''}\n共用的 GPU 进程和无法归属实例的后台进程只计入顶部总数。`:'';}
 function gridRes(x){return x.status==='running'?`<span class="grid-res" data-res-id="${esc(x.id)}" title="${esc(gridResTitle(x.id))}">${esc(gridResText(x.id))}</span>`:'';}
 // 格子和放大框上的喇叭：左键静音，右键调节音量（volume.js）。
 function gridMuteBtn(x){return volButton(x,'grid-vol');}

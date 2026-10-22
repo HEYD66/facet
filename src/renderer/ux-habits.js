@@ -64,27 +64,28 @@ function focusByInfo(info){const el=findByFocusInfo(info);if(el&&!el.disabled&&e
 function focusLost(){const el=document.activeElement;return !el||el===document.body||!el.isConnected;}
 function captureShellFocus(){const el=document.activeElement;if(!el?.closest?.('#tabs,#sidebar,#workspaceHead'))return ()=>{};const info=focusInfo(el);return ()=>{if(!focusLost())return;if(!focusByInfo(info)&&info?.scope==='#sidebar')$('#sidebar .nav.active')?.focus({preventScroll:true});};}
 function rememberModalFocus(){lastFocusInfo=focusInfo(document.activeElement);}
-function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){lastFocus.focus();return;}if(!focusByInfo(lastFocusInfo))$('#tabs [aria-selected="true"]')?.focus();}
+function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){lastFocus.focus({preventScroll:true});return;}if(!focusByInfo(lastFocusInfo))$('#tabs [aria-selected="true"]')?.focus({preventScroll:true});}
 
 // After a successful save the page is rebuilt; move focus to the save status instead of losing it.
 if(typeof saveEnvironment==='function'){const baseSaveEnvironment=saveEnvironment;saveEnvironment=async function(...args){const ok=await baseSaveEnvironment(...args);if(ok&&focusLost()){const info=$('#environmentSaveInfo');if(info){info.tabIndex=-1;info.focus({preventScroll:true});}}return ok;};}
 
-const uiShortcuts=[['Ctrl + L','定位到当前实例的地址栏'],['Ctrl + Enter','在「环境配置」页保存配置'],['Ctrl + Tab / Ctrl + Shift + Tab','切换到下一个 / 上一个实例标签'],['Ctrl + 1 … 9','切换到第 N 个标签（9 为最后一个）'],['Ctrl + T','新建实例'],['← / →、Home / End','在实例标签栏内移动焦点'],['Esc','关闭当前对话框']];
-function shortcutListHTML(){return `<section class="settings-card full"><h3>键盘快捷键</h3><div class="inner"><dl class="shortcut-list">${uiShortcuts.map(([k,d])=>`<div><dt><kbd>${esc(k)}</kbd></dt><dd>${esc(d)}</dd></div>`).join('')}</dl><p class="actions-note">快捷键只在软件界面内生效；焦点在网页内容里时由网页自己处理。不提供 Ctrl + W，关闭标签会停止实例，请用标签上的 ×。</p></div></section>`;}
-function uiOpenTabs(){return [...document.querySelectorAll('#tabs .tab-select')];}
-async function uiGoToTab(index){const tabs=runningTabs();if(!tabs.length)return;const target=tabs[(index+tabs.length)%tabs.length];await route('browser',target.id);$('#tabs').querySelector(`[data-tab="${CSS.escape(target.id)}"]`)?.focus({preventScroll:true});}
+const uiShortcuts=[['Ctrl + L','定位到当前实例的地址栏'],['Ctrl + Enter','在「环境配置」页保存配置'],['Ctrl + Tab / Ctrl + Shift + Tab','切换当前实例的下一个 / 上一个网页标签'],['Ctrl + 1 … 9','切换到第 N 个标签（9 为最后一个）'],['Ctrl + T','新建网页标签'],['Ctrl + W','关闭当前网页标签'],['Ctrl + Shift + N','新建实例'],['← / →、Home / End','在网页标签栏内移动焦点'],['Esc','关闭当前对话框']];
+function shortcutListHTML(){return `<section class="settings-card full"><h3>键盘快捷键</h3><div class="inner"><dl class="shortcut-list">${uiShortcuts.map(([k,d])=>`<div><dt><kbd>${esc(k)}</kbd></dt><dd>${esc(d)}</dd></div>`).join('')}</dl><p class="actions-note">关闭网页标签不会停止实例。停止实例请使用左侧的停止按钮。</p></div></section>`;}
+function uiOpenTabs(){return [...document.querySelectorAll('.browser-tab-select')];}
+async function uiGoToTab(index){const tabs=current()?.tabs||[];if(!tabs.length)return;const target=tabs[(index+tabs.length)%tabs.length];await browserTabAction('tab-activate',target.id);}
+
 async function uiFocusAddress(){if(!current()){toast('请先打开或新建一个实例');return;}if(view!=='browser')await route('browser');const field=$('#addressField');if(!field)return;if(field.disabled){toast('当前实例未运行，启动后才能输入网址');$('#sidebar [data-action="toggle"]')?.focus();return;}field.focus();field.select();}
 function uiBlocked(){return !!modal||!!document.querySelector('dialog[open]');}
 document.addEventListener('keydown',async e=>{
  if(e.defaultPrevented||e.altKey||e.metaKey||uiBlocked())return;
- const tab=e.target.closest?.('#tabs .tab-select');
+ const tab=e.target.closest?.('.browser-tab-select');
  if(tab&&!e.ctrlKey&&!e.shiftKey&&['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){const list=uiOpenTabs(),i=list.indexOf(tab);const next=e.key==='Home'?0:e.key==='End'?list.length-1:(i+(e.key==='ArrowRight'?1:-1)+list.length)%list.length;e.preventDefault();list[next]?.focus();list[next]?.scrollIntoView({block:'nearest',inline:'nearest'});return;}
  if(!e.ctrlKey)return;const key=e.key.length===1?e.key.toLowerCase():e.key;
- if(key==='Tab'){e.preventDefault();const tabs=runningTabs();const at=tabs.findIndex(i=>i.id===activeId&&!globalViews.includes(view));await uiGoToTab(at<0?(e.shiftKey?-1:0):at+(e.shiftKey?-1:1));return;}
- if(e.shiftKey)return;
- if(/^[1-9]$/.test(key)){e.preventDefault();const count=runningTabs().length;await uiGoToTab(key==='9'?count-1:Math.min(Number(key)-1,count-1));return;}
+ if(key==='Tab'){e.preventDefault();const tabs=current()?.tabs||[];const at=tabs.findIndex(i=>i.active);await uiGoToTab(at<0?(e.shiftKey?-1:0):at+(e.shiftKey?-1:1));return;}
+ if(e.shiftKey&&key==='n'){e.preventDefault();openModal('new');return;}if(e.shiftKey)return;
+ if(/^[1-9]$/.test(key)){e.preventDefault();const count=current()?.tabs?.length||0;await uiGoToTab(key==='9'?count-1:Math.min(Number(key)-1,count-1));return;}
  if(key==='l'){e.preventDefault();await uiFocusAddress();return;}
- if(key==='t'){e.preventDefault();openModal('new');return;}
+ if(key==='t'){e.preventDefault();await browserTabAction('tab-new');return;}if(key==='w'){e.preventDefault();await browserTabAction('tab-close',current()?.activeTabId);return;}
  if(key==='Enter'&&view==='environment'){const save=$('[data-ux="save-environment"]');if(!save)return;e.preventDefault();if(save.disabled)toast(savingEnvironments.has(activeId)?'正在保存，请稍候':'没有需要保存的修改');else save.click();}
 });
 document.addEventListener('wheel',e=>{const tabs=e.target.closest?.('#tabs');if(!tabs||e.ctrlKey||Math.abs(e.deltaY)<=Math.abs(e.deltaX)||tabs.scrollWidth<=tabs.clientWidth)return;tabs.scrollLeft+=e.deltaY;e.preventDefault();},{passive:false});

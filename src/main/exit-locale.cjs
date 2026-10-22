@@ -10,9 +10,10 @@ function fromProbe(result){
  const language=preferred[code]||Intl.getCanonicalLocales(locale.language+'-'+code)[0];
  return {ip:result.ip,countryCode:code,country:result.country||'',timezone:result.timezone,language,provider:result.provider||'',queriedAt:result.queriedAt||'',cached:result.cached===true};
 }
-async function lookup(controller,node,{force=false}={}){
+async function lookup(controller,node,{force=false,signal}={}){
+ signal?.throwIfAborted();
  const abort=new AbortController(),task={abort,promise:null};
- task.promise=controller.diagnostics.probe(node,'ip',abort.signal,'locale-'+crypto.randomUUID(),false,{force,requireLocale:true}).then(fromProbe).catch(error=>{throw Error('出口地区同步失败，未创建实例；请重试或取消地区同步后自行设置。'+(error.safeDiagnostic?' '+error.safeDiagnostic:''));}).finally(()=>controller.diagnostics.standalone.delete(task));
+ task.promise=controller.diagnostics.probe(node,'ip',signal?AbortSignal.any([signal,abort.signal]):abort.signal,'locale-'+crypto.randomUUID(),false,{force,requireLocale:true}).then(fromProbe).catch(error=>{signal?.throwIfAborted();throw Error('出口地区同步失败，未创建实例；请重试或取消地区同步后自行设置。'+(error.safeDiagnostic?' '+error.safeDiagnostic:''));}).finally(()=>controller.diagnostics.standalone.delete(task));
  controller.diagnostics.standalone.add(task);return task.promise;
 }
 module.exports={fromProbe,lookup};

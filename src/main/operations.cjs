@@ -6,16 +6,28 @@ function prepareSettings(store,id,patch={}){
  if(patch.network){const mode=patch.network.mode,nodeName=String(patch.network.nodeName||'');if(!['direct','mihomo'].includes(mode))throw Error('不支持的网络模式');if(mode==='mihomo'&&!store.nodes(id).some(n=>n.name===nodeName))throw Error('请选择已导入的代理节点');next.network={mode,nodeName};}
  return {next,changed:Object.keys(next).some(key=>JSON.stringify(next[key])!==JSON.stringify(original[key]))};
 }
-async function createInstance(controller,message){
+async function createInstance(controller,message,{signal}={}){
+ signal?.throwIfAborted();
+ if(controller.disposing)throw Error('应用正在退出，未创建实例');
  if(controller.creationProgress)throw Error('已有实例正在创建，请稍候');
  let plannedEnvironment=message.environment===undefined?null:environment(message.environment);
  const node=message.sourceId?controller.library.node(message.sourceId,message.nodeName):null;
+ const sourceVersion=node?controller.library.get(message.sourceId).updatedAt:null;
  let x;const value={id:null,created:false,started:false,startError:'',timezoneError:'',configurationError:''};
  const savedRegion=message.regionMode==='saved'&&message.syncTimezone===true;
  if(savedRegion&&node){const evidence=require('./node-evidence.cjs').describe(controller,message.sourceId,node.name);plannedEnvironment=environment(require('./node-evidence.cjs').environmentFor(evidence,plannedEnvironment||environment()));value.regionSource=evidence.locale?.origin||'unknown';value.regionCountry=evidence.locale?.country||'';if(!evidence.locale?.timezone)value.regionNotice=evidence.locale?evidence.locale.origin==='name'?'已按节点名称设置语言；此地区有多个时区，已保留原时区，请在环境配置中确认。':'已按实测国家设置语言，但检测记录没有可确认的时区；已保留原时区，请在环境配置中确认。':'没有已测地区且节点名称无法识别，已保留原语言和时区。';}
  const phase=text=>{controller.creationProgress={phase:text,name:String(message.name||''),id:x?.id||null};controller.emit();};
  try{
-  if(message.syncLocale===true){phase('按所选出口同步时区和语言');const locale=await require('./exit-locale.cjs').lookup(controller,node,{force:true});if(message.sourceId&&message.sourceVersion&&controller.library.get(message.sourceId).updatedAt!==message.sourceVersion)throw Error('节点源已更新，请重新生成草稿');plannedEnvironment=environment({...plannedEnvironment,language:locale.language,timezone:locale.timezone});value.exitLocale=locale;}
+  if(message.syncLocale===true){phase('按所选出口同步时区和语言');const locale=await require('./exit-locale.cjs').lookup(controller,node,{force:true,signal});if(message.sourceId&&message.sourceVersion&&controller.library.get(message.sourceId).updatedAt!==message.sourceVersion)throw Error('节点源已更新，请重新生成草稿');plannedEnvironment=environment({...plannedEnvironment,language:locale.language,timezone:locale.timezone});value.exitLocale=locale;}
+  if(node){
+   let unchanged=false;try{unchanged=controller.library.get(message.sourceId).updatedAt===sourceVersion&&JSON.stringify(controller.library.node(message.sourceId,node.name))===JSON.stringify(node);}catch{}
+   if(!unchanged||message.sourceVersion&&message.sourceVersion!==sourceVersion)throw Error('节点源已更新或节点已删除，未创建；请重新选择节点或生成草稿');
+  }
+  if(message.requireUnusedNode===true&&node){
+   const eligible=require('./node-evidence.cjs').selectionOptions(controller).some(row=>row.sourceId===message.sourceId&&row.name===node.name&&row.available&&!row.usage);
+   if(!eligible)throw Error('节点已被其他实例分配或检测不可用，未创建；请重新生成草稿');
+  }
+  signal?.throwIfAborted();if(controller.disposing)throw Error('应用正在退出，未创建实例');
   phase('创建实例');x=controller.store.create(message.name,node?{mode:'mihomo',nodeName:node.name}:undefined,plannedEnvironment||undefined);value.id=x.id;value.created=true;
   try{if(node)controller.store.saveNodes(x.id,[node],null,{sourceId:message.sourceId,name:node.name});}catch{value.configurationError='实例已创建，但节点副本保存失败。实例保持停止，请重新分配节点。';controller.log(x.id,value.configurationError,'ERROR');}
   if(value.exitLocale&&node&&!value.configurationError){const sourceId=require('./instance-node.cjs').nodeDiagnosticKey(x.id,node),result={...value.exitLocale,kind:'ip',ok:true,sourceId,instanceId:x.id,name:node.name,at:new Date().toISOString()};controller.diagnostics.results.set(JSON.stringify([sourceId,node.name,'ip']),result);controller.diagnostics.history.record(result);}

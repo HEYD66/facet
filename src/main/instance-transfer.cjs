@@ -38,7 +38,7 @@ function validateMetadata(raw){
   if(!row||typeof row.name!=='string'||!row.name.trim()||row.name.length>40||!Array.isArray(row.cookies)||row.cookies.length>200000||ids.has(row.id))throw Error('备份实例信息无效');profile('',row.id);ids.add(row.id);
   row.cookies.forEach(cookieDetails);
   const previousExit=row.previousExit||{};
-  return {id:row.id,name:row.name,url:safeURL(row.url),environment:environment(row.environment),notes:notes(row.notes||''),muted:row.muted===true,volume:Number.isInteger(row.volume)&&row.volume>=0&&row.volume<=100?row.volume:100,cookies:row.cookies,previousExit:{country:String(previousExit.country||'').slice(0,120),countryCode:/^[A-Z]{2}$/.test(previousExit.countryCode)?previousExit.countryCode:'',ip:net.isIP(previousExit.ip)?previousExit.ip:'',queriedAt:String(previousExit.queriedAt||'').slice(0,40)}};
+  return {id:row.id,name:row.name,url:safeURL(row.url),...(row.browserTabs?{browserTabs:require('./browser-tabs-state.cjs').normalize(row.browserTabs)}:{}),environment:environment(row.environment),notes:notes(row.notes||''),muted:row.muted===true,volume:Number.isInteger(row.volume)&&row.volume>=0&&row.volume<=100?row.volume:100,cookies:row.cookies,previousExit:{country:String(previousExit.country||'').slice(0,120),countryCode:/^[A-Z]{2}$/.test(previousExit.countryCode)?previousExit.countryCode:'',ip:net.isIP(previousExit.ip)?previousExit.ip:'',queriedAt:String(previousExit.queriedAt||'').slice(0,40)}};
  })};
 }
 function previousExit(c,id){
@@ -112,7 +112,7 @@ class InstanceTransfer{
    const value=selections[i],row=draft.metadata.instances[i];if(!value||!['direct','mihomo'].includes(value.mode))throw Error('请选择代理或明确选择本机 IP 直连');
    const node=value.mode==='mihomo'?structuredClone(this.c.library.node(value.sourceId,value.nodeName)):null;
    let name=row.name,n=1;while(used.has(name))name=row.name.slice(0,30)+'（导入 '+n+++'）';used.add(name);
-   const id=crypto.randomUUID();plans.push({id,name,url:row.url,environment:row.environment,notes:row.notes,muted:row.muted,volume:row.volume,autoStart:false,network:{mode:node?'mihomo':'direct',nodeName:node?.name||''},node,sourceId:value.sourceId,index:i,cookies:row.cookies,syncLocale:value.syncLocale===true});
+   const id=crypto.randomUUID();plans.push({id,name,url:row.url,...(row.browserTabs?{browserTabs:structuredClone(row.browserTabs)}:{}),environment:row.environment,notes:row.notes,muted:row.muted,volume:row.volume,autoStart:false,network:{mode:node?'mihomo':'direct',nodeName:node?.name||''},node,sourceId:value.sourceId,index:i,cookies:row.cookies,syncLocale:value.syncLocale===true});
   }
   if(this.c.disposing)throw Error('应用正在退出');
   const installed=[];let committed=false;

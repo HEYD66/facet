@@ -33,10 +33,11 @@
  }
  const show=v=>{
   if(!custom)return;const meter=document.getElementById('resMeter');
-  meter.querySelector('[data-cpu]').textContent=pct(v.cpu);
+  meter.querySelector('[data-cpu]').textContent=(v.cpuComplete===false?'≥':'')+pct(v.cpu);
   const g=meter.querySelector('[data-gpu]');g.textContent=v.gpu==null?'—':pct(v.gpu);meter.querySelectorAll('.res-gpu').forEach(el=>el.hidden=v.gpu===undefined);
-  meter.querySelector('[data-mem]').textContent=size(v.memoryMB);
-  const d=v.breakdown;meter.title=(d?`内存分项：网页/扩展/界面 ${size(d.rendererMB)}；主进程 ${size(d.mainMB)}；GPU 进程 ${size(d.gpuMB)}；网络等 ${size(d.utilityMB)}；代理 ${size(d.coreMB)}；进程保护 ${size(d.hostMB)}；采样 ${size(d.samplerMB)}。\n`:'')+`共 ${v.totalProcesses??v.processes+v.cores} 个进程。Windows 内存为私有提交量（不是实际驻留物理内存）；代理与辅助进程每 5 秒采样。${v.memoryComplete===false?'部分进程采样失败，当前合计不完整。':''}\nCPU 为 Electron 进程按总核数折算；GPU 为最忙引擎利用率，GPU 进程内存不是专用显存。`;
+  meter.querySelector('[data-mem]').textContent=(v.memoryComplete===false?'≥':'')+size(v.memoryMB);
+  meter.querySelector('[data-mem-label]').textContent=v.memoryKind==='private-commit'?'内存提交':'内存';
+  const d=v.breakdown,c=v.cpuBreakdown;meter.title=`全应用占用（含所有实例及公共进程）。\n`+(d?`内存分项：网页/扩展/界面 ${size(d.rendererMB)}；主进程 ${size(d.mainMB)}；GPU 进程 ${size(d.gpuMB)}；网络等 ${size(d.utilityMB)}；代理 ${size(d.coreMB)}；进程保护 ${size(d.hostMB)}；采样 ${size(d.samplerMB)}。\n`:'')+(c?`CPU 分项：Electron ${pct(c.electron)}；代理 ${pct(c.core)}；进程保护 ${pct(c.host)}；采样 ${pct(c.sampler)}。\n`:'')+`共 ${v.totalProcesses??v.processes+v.cores} 个进程。${v.memoryKind==='private-commit'?'内存为私有提交量（不是实际驻留物理内存）':'内存为工作集'}；代理与辅助进程每 5 秒采样。${v.memoryComplete===false?'部分进程内存采样失败，≥ 表示仅已采集部分。':''}\nCPU 按总逻辑核数折算，包含代理与辅助进程。${v.cpuComplete===false?'CPU 正在建立采样基线或部分采样不可用，≥ 表示仅已采集部分。':''}共享代理按运行实例分摊，顶部只计一次。GPU 为最忙引擎利用率，GPU 进程内存不是专用显存。`;
  };
  const wanted=()=>!document.hidden&&(custom||(typeof view!=='undefined'&&view==='grid'));
  let busy=false;

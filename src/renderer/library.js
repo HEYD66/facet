@@ -27,6 +27,8 @@ function rowSource(el) {
 }
 function libraryPage() {
   const scroll = $("#content").scrollTop;
+  const previousTable = $("#content .library-table");
+  const tableScroll = previousTable ? { key: previousTable.dataset.libraryView, top: previousTable.scrollTop, left: previousTable.scrollLeft } : null;
   if (!state.instances.some((x) => x.id === libraryTargetId))
     libraryTargetId = state.instances.some((x) => x.id === activeId)
       ? activeId
@@ -68,6 +70,7 @@ function libraryPage() {
   const pages = Math.max(1, Math.ceil(filtered.length / 100));
   libraryPageIndex = Math.min(libraryPageIndex, pages - 1);
   const nodes = filtered.slice(libraryPageIndex * 100, libraryPageIndex * 100 + 100);
+  const tableView = JSON.stringify([librarySource, libraryPageIndex, librarySearch, librarySort, libraryOnly, libraryIncludeHints, libraryMinSuccess, libraryRegion, libraryProtocol]);
   const help = (text, label = "说明") =>
     `<details class="inline-help"><summary>${icon("info")}<span>${esc(label)}</span></summary><p>${esc(text)}</p></details>`;
   $("#content").innerHTML =
@@ -96,11 +99,44 @@ function libraryPage() {
    [10, "≥10 次"],
  ]
    .map(([v, l]) => `<option value="${v}" ${v === libraryMinSuccess ? "selected" : ""}>${l}</option>`)
-   .join("")}</select></label><label class="check-label"><input type="checkbox" id="libraryIncludeHints" ${libraryIncludeHints ? "checked" : ""}> 显示疑似订阅提示</label>${help("使用临时独立 Mihomo 检测，无直连回退。延迟为访问 Cloudflare 的 HTTPS 首响应耗时，不是 ICMP Ping。IP 与地区来自 IP.SB 及备用服务，地区仅供参考。延迟柱条越短越快：≤300 ms 为绿色，301–800 ms 为黄色，超过 800 ms 为红色；柱长统一按 1000 ms 显示，超出则封顶，毫秒数保留。下载测速每次约 5 MB。结果显示在对应节点行，悬停可查看地区、错误原因和检测时间。", "检测说明")}</div>${nodeChipsHTML(visible.length, regionCounts, protocolCounts)}<div class="subscription-actions node-batch"><button class="btn tiny" data-lib="batch-latency">${icon("bolt")}批量连通性 / 延迟</button><button class="btn tiny" data-lib="batch-ip">${icon("globe")}批量出口 IP</button><button class="btn tiny" data-lib="assign-many" ${librarySelected.size ? "" : "disabled"} title="把已选节点分别分配给多个实例">分配给多个实例…</button><button class="btn ghost danger tiny" data-lib="delete-selected" ${librarySelected.size ? "" : "disabled"}>删除已选</button><span class="actions-note selection-count">已选 <span id="librarySelectionCount">${librarySelected.size}</span> · 共 ${filtered.length} 个节点</span></div><div class="library-table"><table class="logs-table compact-node-table"><thead><tr><th class="col-check"><input type="checkbox" id="librarySelectAll" aria-label="全选本页节点" title="全选 / 取消全选本页节点"></th><th>节点 / 协议</th><th>连通性 / 延迟</th><th>出口 IP</th><th>下载速度</th><th class="col-actions">操作</th></tr></thead><tbody>${nodes.map((n) => `<tr data-hint="${!!n.hint}" data-source="${n.sid}"><td><input type="checkbox" data-library-node="${esc(n.name)}" ${n.hint ? "disabled" : ""} ${librarySelected.has(libKey(n.sid, n.name)) ? "checked" : ""} aria-label="选择 ${esc(n.name)}"></td><td class="node-identity"><button class="node-favorite" data-lib="favorite" data-node="${esc(n.name)}" title="${favoriteExists(n.sid, n.name) ? "取消收藏" : "收藏节点"}" ${n.hint ? "disabled" : ""}>${favoriteExists(n.sid, n.name) ? "★" : "☆"}</button>${all ? nodeSourceMark(sources.find((s) => s.id === n.sid)) : ""}<span class="node-name" title="${esc(n.name)}">${esc(n.name)}</span><small class="node-protocol">${esc(n.type)}</small><small class="node-stat" data-stat-node="${esc(n.name)}"></small></td>${["latency", "ip", "speed"].map((kind) => `<td class="node-result" data-result-node="${esc(n.name)}" data-result-kind="${kind}">—</td>`).join("")}<td class="col-actions"><div class="row-actions"><button class="btn tiny" data-lib="assign" data-node="${esc(n.name)}" ${n.hint ? "disabled" : ""}>分配</button><details class="row-menu"><summary class="icon-btn" title="更多操作" aria-label="${esc(n.name)} 的更多操作">${icon("more")}</summary><div class="menu"><button class="menu-item" data-lib="latency" data-node="${esc(n.name)}">${icon("bolt")}连通性检测</button><button class="menu-item" data-lib="ip" data-node="${esc(n.name)}">${icon("globe")}查询出口 IP</button><button class="menu-item" data-lib="speed" data-node="${esc(n.name)}">${icon("download")}下载测速（约 5 MB）</button><hr><button class="menu-item danger" data-lib="delete-node" data-node="${esc(n.name)}">${icon("trash")}删除节点</button></div></details></div></td></tr>`).join("") || '<tr><td colspan="6" class="empty-list">没有匹配节点</td></tr>'}</tbody></table></div><div class="subscription-actions pager"><button class="btn tiny ghost" data-lib="prev" ${libraryPageIndex === 0 ? "disabled" : ""}>上一页</button><span>${libraryPageIndex + 1} / ${pages}</span><button class="btn tiny ghost" data-lib="next" ${libraryPageIndex + 1 >= pages ? "disabled" : ""}>下一页</button></div></section></section>`;
+   .join("")}</select></label><label class="check-label"><input type="checkbox" id="libraryIncludeHints" ${libraryIncludeHints ? "checked" : ""}> 显示疑似订阅提示</label>${help("独立模式下检测使用独立临时内核；共享模式下检测复用节点端口。检测结束不影响其他使用者，无直连回退。延迟为访问 Cloudflare 的 HTTPS 首响应耗时，不是 ICMP Ping。IP 与地区来自 IP.SB 及备用服务，地区仅供参考。延迟柱条越短越快：≤300 ms 为绿色，301–800 ms 为黄色，超过 800 ms 为红色；柱长统一按 1000 ms 显示，超出则封顶，毫秒数保留。下载测速每次约 5 MB。结果显示在对应节点行，悬停可查看地区、错误原因和检测时间。", "检测说明")}</div><div id="nodePortService" class="node-port-service"></div>${nodeChipsHTML(visible.length, regionCounts, protocolCounts)}<div class="subscription-actions node-batch"><button class="btn tiny" data-lib="batch-latency">${icon("bolt")}批量连通性 / 延迟</button><button class="btn tiny" data-lib="batch-ip">${icon("globe")}批量出口 IP</button><button class="btn tiny" data-lib="assign-many" ${librarySelected.size ? "" : "disabled"} title="把已选节点分别分配给多个实例">分配给多个实例…</button><button class="btn ghost danger tiny" data-lib="delete-selected" ${librarySelected.size ? "" : "disabled"}>删除已选</button><span class="actions-note selection-count">已选 <span id="librarySelectionCount">${librarySelected.size}</span> · 共 ${filtered.length} 个节点</span></div><div class="library-table"><table class="logs-table compact-node-table"><thead><tr><th class="col-check"><input type="checkbox" id="librarySelectAll" aria-label="全选本页节点" title="全选 / 取消全选本页节点"></th><th>节点 / 协议</th><th>连通性 / 延迟</th><th>出口 IP</th><th>下载速度</th><th class="col-actions">操作</th></tr></thead><tbody>${nodes.map((n) => `<tr data-hint="${!!n.hint}" data-source="${n.sid}"><td><input type="checkbox" data-library-node="${esc(n.name)}" ${n.hint ? "disabled" : ""} ${librarySelected.has(libKey(n.sid, n.name)) ? "checked" : ""} aria-label="选择 ${esc(n.name)}"></td><td class="node-identity"><div class="node-heading"><button class="node-favorite" data-lib="favorite" data-node="${esc(n.name)}" title="${favoriteExists(n.sid, n.name) ? "取消收藏" : "收藏节点"}" ${n.hint ? "disabled" : ""}>${favoriteExists(n.sid, n.name) ? "★" : "☆"}</button>${all ? nodeSourceMark(sources.find((s) => s.id === n.sid)) : ""}<span class="node-name" title="${esc(n.name)}">${esc(n.name)}</span><small class="node-protocol">${esc(n.type)}</small></div><span class="node-metadata"><small class="node-origin" title="${esc(sources.find(s=>s.id===n.sid)?.name||'来源不可用')}">来源：${esc(sources.find(s=>s.id===n.sid)?.name||'来源不可用')}</small><small class="node-port" data-port-node="${esc(n.name)}"></small><small class="node-stat" data-stat-node="${esc(n.name)}"></small></span></td>${["latency", "ip", "speed"].map((kind) => `<td class="node-result" data-result-node="${esc(n.name)}" data-result-kind="${kind}">—</td>`).join("")}<td class="col-actions"><div class="row-actions"><button class="btn tiny" data-lib="assign" data-node="${esc(n.name)}" ${n.hint ? "disabled" : ""}>分配</button><details class="row-menu"><summary class="icon-btn" title="更多操作" aria-label="${esc(n.name)} 的更多操作">${icon("more")}</summary><div class="menu"><button class="menu-item" data-lib="latency" data-node="${esc(n.name)}">${icon("bolt")}连通性检测</button><button class="menu-item" data-lib="ip" data-node="${esc(n.name)}">${icon("globe")}查询出口 IP</button><button class="menu-item" data-lib="speed" data-node="${esc(n.name)}">${icon("download")}下载测速（约 5 MB）</button><hr><button class="menu-item" data-lib="copy-node-http" data-node="${esc(n.name)}">复制 HTTP 代理地址</button><button class="menu-item" data-lib="copy-node-socks" data-node="${esc(n.name)}">复制 SOCKS5 代理地址</button><hr><button class="menu-item danger" data-lib="delete-node" data-node="${esc(n.name)}">${icon("trash")}删除节点</button></div></details></div></td></tr>`).join("") || '<tr><td colspan="6" class="empty-list">没有匹配节点</td></tr>'}</tbody></table></div><div class="subscription-actions pager"><button class="btn tiny ghost" data-lib="prev" ${libraryPageIndex === 0 ? "disabled" : ""}>上一页</button><span>${libraryPageIndex + 1} / ${pages}</span><button class="btn tiny ghost" data-lib="next" ${libraryPageIndex + 1 >= pages ? "disabled" : ""}>下一页</button></div></section></section>`;
   renderDiagnostics();
+  const table = $("#content .library-table");
+  table.dataset.libraryView = tableView;
+  if (tableScroll?.key === tableView) {
+    table.scrollTop = tableScroll.top;
+    table.scrollLeft = tableScroll.left;
+  }
   $("#content").scrollTop = scroll;
 }
+let proxyModePending = null;
+function renderNodePorts() {
+  const service = $("#nodePortService");
+  if (!service) return;
+  const status = state.nodePorts || {}, failures = status.lastResult?.failed || [], nodeMode = status.mode === "node" || status.enabled;
+  if (proxyModePending === (nodeMode ? "node" : "instance") && !status.busy) proxyModePending = null;
+  service.closest(".proxy-workbench").dataset.proxyMode = nodeMode ? "node" : "instance";
+  const currentMode = nodeMode ? "node" : "instance";
+  const modes = [
+    ["instance", "独立代理", "每个实例单独运行", "每个代理实例一个内核，进程和内存开销较多。"],
+    ["node", "共享代理", "每个节点分配端口", "节点共用内核，本机其他软件也能连接节点端口。"],
+  ];
+  service.innerHTML = `<div class="proxy-mode-heading"><strong>代理运行方式</strong><span class="actions-note">二选一 · 对全部代理实例生效</span></div>
+    <div class="proxy-mode-options" role="group" aria-label="代理运行方式">${modes.map(([mode,label,subtitle,description])=>{
+      const active = currentMode === mode, pending = proxyModePending === mode;
+      return `<button type="button" class="proxy-mode-card${pending ? " is-pending" : ""}" data-lib="ports-mode" data-mode="${mode}" aria-pressed="${active}" ${status.busy ? "disabled" : ""}><span class="proxy-mode-card-heading"><span class="proxy-mode-card-title"><span class="proxy-mode-indicator" aria-hidden="true"></span>${label}<span class="proxy-mode-subtitle">${subtitle}</span></span><span class="proxy-mode-badge">${active ? "✓ 使用中" : pending ? "待确认" : "点击切换"}</span></span><span class="proxy-mode-description">${description}</span></button>`;
+    }).join("")}</div>
+    <div class="proxy-mode-status"><span class="actions-note" role="status">${status.switching ? "正在切换并恢复实例…" : status.busy ? "同步中…" : nodeMode ? `${status.listeners || 0} 个端口 · ${status.processes || 0} 个共享内核` : "当前：每个代理实例独立运行内核"}</span>${nodeMode ? `<button class="btn tiny" data-lib="ports-sync" ${status.busy ? "disabled" : ""}>同步 / 重试</button><button class="btn tiny" data-lib="copy-all-node-ports" ${!status.listeners || status.busy ? "disabled" : ""}>复制全部地址</button><span class="actions-note">仅本机 HTTP / SOCKS5 · 重启尽量保留端口</span>` : ""}</div>
+    ${nodeMode ? `<p class="proxy-mode-isolation actions-note">仅共享代理进程，Cookie 和网站数据仍按实例隔离。</p>` : ""}
+    ${nodeMode && failures.length ? `<details class="node-port-failures"><summary>${failures.length} 个启动失败</summary><ul>${failures.slice(0,50).map(row=>`<li>${esc(row.name)}：${esc(row.error)}</li>`).join("")}</ul></details>` : ""}
+    ${proxyModePending ? `<div class="proxy-mode-confirm" role="alert"><span>即将切换为${proxyModePending === "node" ? "共享代理" : "独立代理"}。切换会取消检测、重启代理实例，未保存的网页输入可能丢失；切回独立模式会关闭供外部软件使用的节点端口。</span><button class="btn tiny primary" data-lib="ports-mode-confirm" ${status.busy ? "disabled" : ""}>确认切换</button><button class="btn tiny" data-lib="ports-mode-cancel" ${status.busy ? "disabled" : ""}>取消</button></div>` : ""}`;
+  for (const cell of service.closest(".library-nodes").querySelectorAll("[data-port-node]")) {
+    const sid = rowSource(cell), node = state.library?.find(source=>source.id===sid)?.nodes.find(row=>row.name===cell.dataset.portNode), proxy = node?.localProxy;
+    cell.innerHTML = nodeMode && proxy?.port ? `<button class="node-port-copy ${proxy.running ? "is-active" : ""}" data-lib="copy-node-http" data-node="${esc(node.name)}" ${proxy.running ? "" : "disabled"} title="${proxy.running ? "HTTP / SOCKS5 共用此端口；点击复制 HTTP 地址" : "上次分配的端口；启动节点后可连接"}">所用端口：127.0.0.1:${proxy.port}${proxy.running ? "" : " · 未启动"}</button>` : nodeMode ? "所用端口：未分配" : node?.activeProxies?.length ? [...new Map(node.activeProxies.map(item=>[item.port,item])).values()].map(item=>`<span title="${esc(node.activeProxies.filter(row=>row.port===item.port).map(row=>row.instanceName).join('、'))}">所用端口：127.0.0.1:${item.port}（${esc(item.instanceName)}）</span>`).join(" · ") : "所用端口：未启动";
+  }
+}
 function renderDiagnostics() {
+  renderNodePorts();
   refreshIPBookmarks();
   if (!$("#libraryTaskbar")) return;
   syncDiagnosticHistory();
@@ -211,6 +247,25 @@ document.addEventListener("click", async (event) => {
     sourceId = button.dataset.source || rowSource(button),
     source = state.library?.find((s) => s.id === sourceId);
   try {
+    if (action === "ports-mode-cancel") { proxyModePending = null; renderNodePorts(); return; }
+    if (action === "ports-mode") {
+      if (button.dataset.mode === (state.nodePorts?.enabled ? "node" : "instance")) return;
+      proxyModePending = button.dataset.mode; renderNodePorts(); return;
+    }
+    if (action === "ports-mode-confirm" || action === "ports-sync") {
+      button.disabled = true;
+      try {
+        const result = await request(action === "ports-mode-confirm" ? "proxy-mode-set" : "node-ports-sync", action === "ports-mode-confirm" ? { mode: proxyModePending, confirmed: true } : {});
+        proxyModePending = null;
+        toast(result?.restartFailed?.length ? "模式已切换，部分实例未能恢复，请查看实例日志" : result?.failed?.length ? "部分节点端口启动失败，请查看端口服务详情" : "代理模式已更新");
+      } finally { renderNodePorts(); }
+      return;
+    }
+    if (action === "copy-all-node-ports") { const result = await request("node-ports-copy"); toast("已复制 " + result.count + " 个节点地址"); return; }
+    if (action === "copy-node-http" || action === "copy-node-socks") {
+      await request("node-port-copy", { sourceId, name: button.dataset.node, protocol: action === "copy-node-socks" ? "socks5" : "http" });
+      toast("已复制本机代理地址"); return;
+    }
     if (action === "add-source") { openProxyEntry(); return; }
     if (action === "region" || action === "protocol") {
       if (action === "region") libraryRegion = button.dataset.value || "";
