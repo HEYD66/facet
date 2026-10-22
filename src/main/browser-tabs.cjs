@@ -18,7 +18,8 @@ function snapshot(x,r){
 }
 async function loadPage(c,id,r,tab){
  if(tab.view&&!tab.view.webContents.isDestroyed())return tab;
- const x=c.store.get(id),view=new WebContentsView({webPreferences:{session:r.session,sandbox:true,nodeIntegration:false,nodeIntegrationInSubFrames:true,contextIsolation:true,webSecurity:true,backgroundThrottling:true}}),wc=view.webContents;
+ // Running browser tabs keep timers/rendering alive when another instance or window is selected.
+ const x=c.store.get(id),view=new WebContentsView({webPreferences:{session:r.session,sandbox:true,nodeIntegration:false,nodeIntegrationInSubFrames:true,contextIsolation:true,webSecurity:true,backgroundThrottling:false}}),wc=view.webContents;
  tab.view=view;view.setVisible(false);c.window.contentView.addChildView(view);wc.setAudioMuted(c.mutedFor(id));
  const alive=()=>!wc.isDestroyed()&&c.runtimes.get(id)===r&&r.tabs?.get(tab.id)===tab;
  const changed=()=>{if(!alive())return;const url=wc.getURL();if(url==='about:blank'||/^https?:/i.test(url))tab.url=url;tab.title=wc.getTitle();sync(r,tab);c.emitSoon();};

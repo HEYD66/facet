@@ -43,6 +43,7 @@
     "test:viewport-bookmarks": "node scripts/launch-electron.cjs tests/viewport-bookmarks.cjs",
     "test:viewport-screen": "node scripts/launch-electron.cjs tests/viewport-screen-electron.cjs",
     "test:quick-links": "node scripts/launch-electron.cjs tests/quick-links.cjs",
+    "test:navigation-background": "node scripts/launch-electron.cjs tests/navigation-background-electron.cjs",
     "test:privacy-sites": "node scripts/launch-electron.cjs tests/privacy-sites-electron.cjs",
     "test:appearance-ui": "node tests/appearance-audit.cjs",
     "test:extensions": "node --test tests/extensions.test.cjs tests/extension-dnr-rulesets.test.cjs",

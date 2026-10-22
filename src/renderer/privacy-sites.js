@@ -9,7 +9,7 @@ const privacySites=Object.freeze([
 ]);
 let privacyMenuFor=null,privacyMenuClosedAt=0,privacyMenuKey='';
 function privacySitesButtonHTML(){return `<button type="button" class="privacy-sites-trigger" data-privacy-toggle aria-label="隐私检测网站" title="展开隐私检测网站" aria-haspopup="dialog" aria-expanded="${privacyMenuFor===activeId}">${icon('shield')}<span>检测</span>${icon('chevron')}</button>`;}
-function privacySitesMenuHTML(x){return `<div class="privacy-sites-menu"><header><strong>隐私检测</strong><small title="${esc(x.name)}">${esc(x.name)}</small></header><div class="privacy-sites-list">${privacySites.map(site=>`<button type="button" class="privacy-site ${site.tone}" data-privacy-site="${site.id}" data-instance-id="${esc(x.id)}" ${x.status!=='running'||quickNavigating.has(x.id)?'disabled':''}><span class="privacy-site-icon">${icon(site.icon)}</span><span class="privacy-site-label"><b>${site.name}</b><small>${site.note}</small></span>${icon('arrow')}</button>`).join('')}</div><p class="privacy-sites-note">${x.status==='running'?`在当前实例打开 · ${x.network.mode==='direct'?'使用实例直连网络':'沿用当前代理'}`:'请先启动当前实例'}</p></div>`;}
+function privacySitesMenuHTML(x){return `<div class="privacy-sites-menu"><header><strong>隐私检测</strong><small title="${esc(x.name)}">${esc(x.name)}</small></header><div class="privacy-sites-list">${privacySites.map(site=>`<button type="button" class="privacy-site ${site.tone}" data-privacy-site="${site.id}" data-instance-id="${esc(x.id)}" ${x.status!=='running'?'disabled':''}><span class="privacy-site-icon">${icon(site.icon)}</span><span class="privacy-site-label"><b>${site.name}</b><small>${site.note}</small></span>${icon('arrow')}</button>`).join('')}</div><p class="privacy-sites-note">${x.status==='running'?`在当前实例打开 · ${x.network.mode==='direct'?'使用实例直连网络':'沿用当前代理'}`:'请先启动当前实例'}</p></div>`;}
 function privacyMenuNative(){return !!window.facet?.onOverlay;}
 function closePrivacySitesMenu(returnFocus=false){const was=!!privacyMenuFor;privacyMenuFor=null;privacyMenuKey='';$('[data-privacy-toggle]')?.setAttribute('aria-expanded','false');if(!was)return;if(privacyMenuNative())window.facet.request('overlay-hide').catch(()=>{});else{document.getElementById('privacySitesMenu')?.close();layout();}if(returnFocus)$('[data-privacy-toggle]')?.focus();}
 function syncPrivacySitesMenu(){
@@ -29,7 +29,7 @@ async function openPrivacySitesMenu(){
 }
 async function openPrivacySite(siteId,instanceId){
  const site=privacySites.find(row=>row.id===siteId),x=current();if(!site||!x||view!=='browser'||x.id!==instanceId)return;
- closePrivacySitesMenu();if(x.status!=='running'){toast('请先启动当前实例');return;}if(quickNavigating.has(x.id))return;
+ closePrivacySitesMenu();if(x.status!=='running'){toast('请先启动当前实例');return;}
  quickNavigating.add(x.id);render();try{await request('navigate',{id:x.id,url:site.url});}catch(e){if(!String(e.message).includes('ERR_ABORTED'))toast(e.message);}finally{quickNavigating.delete(x.id);render();}
 }
 window.facet?.onOverlay?.(e=>{if(e?.type==='closed'&&privacyMenuFor){privacyMenuFor=null;privacyMenuKey='';privacyMenuClosedAt=Date.now();$('[data-privacy-toggle]')?.setAttribute('aria-expanded','false');if(e.reason==='escape')$('[data-privacy-toggle]')?.focus();}else if(e?.type==='action'&&e.data?.privacySite)openPrivacySite(e.data.privacySite,e.data.instanceId);});

@@ -51,7 +51,7 @@ function installIPC(window,controller){
     case 'open-feedback':await shell.openExternal('https://github.com/HEYD66/facet/issues');break;
     case 'quick-link-remove':controller.workspace.removeQuickLink(message.linkId);controller.emit();break;
     case 'quick-link-move':controller.workspace.moveQuickLink(message.linkId,message.direction);controller.emit();break;
-    case 'quick-link-open':await controller.navigate(id,controller.workspace.quickLink(message.linkId).url);break;
+    case 'quick-link-open':return {ok:true,value:await controller.navigate(id,controller.workspace.quickLink(message.linkId).url)};
     case 'extension-import':return {ok:true,value:await controller.queue('extensions',async()=>{const zip=message.format==='zip';const pick=await dialog.showOpenDialog(window,zip?{title:'选择 ZIP 扩展文件',properties:['openFile'],filters:[{name:'ZIP 扩展',extensions:['zip']}]}:{title:'选择包含manifest.json的解压扩展文件夹',properties:['openDirectory']});if(pick.canceled)return {cancelled:true};if(controller.disposing)throw Error('应用正在退出');const catalog=controller.extensions.catalog,row=await require('./extension-zip.cjs').stageSource(catalog,pick.filePaths[0]);try{const answer=await dialog.showMessageBox(window,{type:'warning',title:row.requiresElevatedReview?'确认导入高风险浏览器扩展':'确认导入浏览器扩展',message:row.name+' · '+row.version,detail:'扩展可能读取或修改网页内容。只导入可信来源；导入后默认不启用。'+(row.requiresElevatedReview?'\n此扩展声明了高风险权限或全站网页范围，请确认来源、发布者和权限用途后再导入。':'')+'\n声明权限：'+row.permissions.join(', ')+'\n可选权限：'+row.optionalPermissions.join(', ')+'\n内容脚本范围：'+row.matches.join(', ')+'\n大小：'+sizeText(row.bytes)+' · '+row.files+' 个文件和目录'+(row.skipped?.length?'\n已跳过开发用文件夹/文件（扩展运行用不到）：'+row.skipped.map(x=>x.name+'（'+sizeText(x.size)+'）').join('、'):'')+'\n'+row.warnings.join('\n'),buttons:['取消',row.requiresElevatedReview?'确认高风险导入':'信任并导入'],defaultId:0,cancelId:0,noLink:true});if(answer.response!==1||controller.disposing){catalog.discard(row);return {cancelled:true};}catalog.accept(row);controller.emit();return {id:row.id};}catch(e){catalog.discard(row);throw e;}})};
     case 'extension-refresh':return {ok:true,value:await controller.queue('extensions',()=>refreshOne(controller,window,dialog,message.extensionId))};
     case 'extension-refresh-all':return {ok:true,value:await controller.queue('extensions',()=>refreshAll(controller,window,dialog))};
@@ -159,7 +159,7 @@ function installIPC(window,controller){
     case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||'about:blank',active:message.active!==false})};
     case 'tab-activate':return {ok:true,value:await controller.activateTab(id,message.tabId)};
     case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
-    case 'navigate':await controller.navigate(id,message.url);break;
+    case 'navigate':return {ok:true,value:await controller.navigate(id,message.url)};
     case 'toggle-devtools':return {ok:true,value:await controller.toggleDevTools(id)};
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
     case 'settings':return {ok:true,value:await controller.settings(id,message.patch||{})};
