@@ -46,10 +46,15 @@ app.whenReady().then(async()=>{let error;try{
  assign(0);
  const random=async expected=>{await ui("document.querySelector('[data-new-env=random]').click()");await wait(()=>ui('!modal.newEnvironmentBusy && !!modal.newEnvironment'),'random plan');if(expected!==null){assert.equal(await ui('document.querySelector("#newSource").value'),sourceId);assert.equal(await ui('document.querySelector("#newNode").value'),nodes[expected].name);}return ui('document.querySelector("#newNodeChoice").textContent');};
  const open=async()=>{await ui("openModal('new')");await wait(()=>ui('!!document.querySelector("[data-new-env=random]")'),'new instance dialog');};
- await open();let notice=await random(null);const selectedName=await ui('document.querySelector("#newNode").value');const selectedIndex=nodes.findIndex(node=>node.name===selectedName);assert([1,2].includes(selectedIndex));assert.equal(await ui('document.querySelector("#newSource").value'),sourceId);assert(notice.includes('未分配的可用节点'));
+ await open();let notice=await random(null);const selectedName=await ui('document.querySelector("#newNode").value');let selectedIndex=nodes.findIndex(node=>node.name===selectedName);assert([1,2].includes(selectedIndex));assert.equal(await ui('document.querySelector("#newSource").value'),sourceId);assert(notice.includes('未分配的可用节点'));
  assert.equal(await ui('document.querySelector("#newNodeField").hidden'),false);assert.equal(await ui('document.querySelector("#newNodeEvidence").hidden'),false);
  if(process.env.FACET_NEW_NODE_ARTIFACTS){fs.mkdirSync(process.env.FACET_NEW_NODE_ARTIFACTS,{recursive:true});win.show();await new Promise(resolve=>setTimeout(resolve,500));fs.writeFileSync(path.join(process.env.FACET_NEW_NODE_ARTIFACTS,'new-instance-node.png'),(await win.webContents.capturePage()).toPNG());}
  const create=async name=>{await ui(`document.querySelector('#nameInput').value=${JSON.stringify(name)};document.querySelector('#startNew').checked=false;document.querySelector('#modal [data-action=confirm]').click()`);await wait(()=>c.store.list().some(row=>row.name===name)&&!c.creationProgress,'creation persisted');await wait(()=>ui('!modal'),'creation dialog closed');return c.store.list().find(row=>row.name===name);};
+ const competitor=assign(selectedIndex),countBeforeConflict=c.store.list().length;
+ await ui("document.querySelector('#nameInput').value='Stale random plan';document.querySelector('#startNew').checked=false;document.querySelector('#modal [data-action=confirm]').click()");
+ await wait(()=>ui('!!document.querySelector("#nameError")?.textContent'),'stale plan rejected');assert.equal(c.store.list().length,countBeforeConflict);assert((await ui('document.querySelector("#nameError").textContent')).includes('节点已被其他实例分配'));
+ c.store.update(competitor.id,{network:{mode:'direct',nodeName:''}});c.emit();await random(null);const reselection=await ui('document.querySelector("#newNode").value');selectedIndex=nodes.findIndex(node=>node.name===reselection);assert([1,2].includes(selectedIndex));
+ pass('Automatic selection is rechecked at confirmation; a node assigned after preview cannot be reused');
  const first=await create('自动选择实例 '+selectedIndex);assert.equal(first.network.nodeName,nodes[selectedIndex].name);assert.equal(first.environment.language,'ja-JP');assert.equal(first.environment.timezone,'Asia/Tokyo');assert(first.environment.fingerprint.enabled);
  assert.equal(c.store.source(first.id).assignment.sourceId,sourceId);assert.deepEqual(new Store(root).get(first.id),first);
  pass('The visible random button selects an unused available node; confirmation persists proxy, fingerprint and saved IP locale');
@@ -69,7 +74,10 @@ app.whenReady().then(async()=>{let error;try{
  assert.equal(await ui('document.querySelector("#newNodeChoice").hidden'),true);assert.equal(await ui('modal.newEnvironment.fingerprint.seed'),selectedSeed);
  await ui("document.querySelector('[data-new-env=native]').click()");await wait(()=>ui('!modal.newEnvironmentBusy'),'native environment');assert.equal(await ui('modal.newEnvironment'),null);assert.equal(await ui('document.querySelector("#newNode").value'),nodes[2].name);
  pass('Manual node changes clear automatic hints and native environment mode keeps the selected network');
- c.store.update(first.id,{network:{mode:'direct',nodeName:''}});c.store.update(second.id,{network:{mode:'direct',nodeName:''}});c.emit();
+ const manual=await create('Manual shared node');assert.equal(manual.network.nodeName,nodes[2].name);assert.equal(manual.environment.fingerprint.enabled,false);
+ pass('Explicit manual selection can still reuse an assigned node');
+ await open();
+ c.store.update(first.id,{network:{mode:'direct',nodeName:''}});c.store.update(second.id,{network:{mode:'direct',nodeName:''}});c.store.update(manual.id,{network:{mode:'direct',nodeName:''}});c.emit();
  failed.add(1);await measure([1]);assert.equal(measurements[1].ok,true);assert.equal([...c.diagnostics.results.values()].find(row=>row.name===nodes[1].name&&row.kind==='latency').ok,false);await random(2);
  pass('An actual failed latest connectivity check excludes a previously successful node');
  failed.add(0);failed.add(2);await measure([0,2]);const count=c.store.list().length;notice=await random(null);assert(notice.includes('没有未分配且最近检测连通'));assert.equal(await ui('document.querySelector("#newNode").value'),nodes[2].name);assert.equal(await ui('document.querySelector("#newSource").value'),sourceId);assert.equal(c.store.list().length,count);

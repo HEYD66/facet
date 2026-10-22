@@ -49,6 +49,8 @@ API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，�
 
 ## 批量创建节点分配（当前源码）
 
+普通新建的 `instance-new-plan` 返回自动选择的未分配可用节点及 `sourceVersion`。确认自动方案时传 `requireUnusedNode:true` 和该版本；写入前再次验证连通记录、分配与源版本。界面手动修改节点后解除自动方案限制，仍允许显式复用。AI 的 `create random:true` 同样排除已分配配置并实测连通与出口地区；环境重置按原约定保留代理，导入与手动指定节点不强制独占。
+
 通过 `/v1/actions` 调用 `instance-batch-options` 获取节点的 `available`（最近有效连通检测）、`usage`（已保存分配数，包含停止实例）和出口信息，不包含节点凭据。
 
 `instance-batch-plan` 的代理模式使用 `mode:"mihomo"`：

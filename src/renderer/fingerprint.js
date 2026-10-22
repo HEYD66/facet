@@ -14,11 +14,12 @@ function applyNewInstanceNode(node){
  if(!node){notice.textContent='没有未分配且最近检测连通的节点，未自动更换网络；请先检测节点、释放分配或手动选择。';notice.hidden=false;return;}
  const source=state.library?.find(row=>row.id===node.sourceId);
  if(!source?.nodes.some(row=>row.name===node.name&&!row.hint))throw Error('节点列表已变化，请重新点击一键随机');
+ modal.newNodePlan={sourceId:node.sourceId,nodeName:node.name,sourceVersion:node.sourceVersion};
  $('#newSource').value=node.sourceId;refreshNewNodeOptions();$('#newNode').value=node.name;renderNewNodeEvidence();
  notice.textContent=`已随机选择 ${node.sourceName} / ${node.name} · 未分配的可用节点。占用包含已停止实例；可用状态来自最近连通性检测。`;
  notice.hidden=false;
 }
-document.addEventListener('change',event=>{if(['newSource','newNode'].includes(event.target.id)){const notice=$('#newNodeChoice');if(notice)notice.hidden=true;}if(event.target.id==='newSource')refreshNewNodeOptions();else if(['newNode','timezoneNew'].includes(event.target.id))renderNewNodeEvidence();});
+document.addEventListener('change',event=>{if(['newSource','newNode'].includes(event.target.id)){if(modal?.type==='new')modal.newNodePlan=null;const notice=$('#newNodeChoice');if(notice)notice.hidden=true;}if(event.target.id==='newSource')refreshNewNodeOptions();else if(['newNode','timezoneNew'].includes(event.target.id))renderNewNodeEvidence();});
 
 function fingerprintPlan(e){const f=e.fingerprint||{};return `<div class="environment-plan"><div><h3>环境方案</h3><p id="fingerprintPlanSummary" class="actions-note"></p></div><div class="subscription-actions"><select id="fingerprintPreset"><option value="custom" ${!f.template||f.template==='custom'?'selected':''}>自定义 / 选择设备预设</option>${fingerprintPresets.map(([v,n])=>`<option value="${v}" ${f.template===v?'selected':''}>${n}</option>`).join('')}</select><button class="btn tiny soft" type="button" data-fp="preset">填入预设</button><button class="btn tiny primary" type="button" data-fp="random">一键随机</button><button class="btn tiny danger" type="button" data-action="reset-environment" title="清除当前实例网页数据并重新生成环境">重置环境</button><button class="btn tiny subtle" type="button" data-fp="undo" disabled>撤销上次方案修改</button><button class="btn tiny subtle" type="button" data-fp="native">使用原生方案</button></div><p class="actions-note">一键随机会同时开启 Canvas、音频、WebGL 覆盖，并生成新固定种子；可能影响网页功能。方案只填表，保存后才应用，可撤销。一键随机保留浏览尺寸；选择“扩展设备库 · 整套随机”后填入方案，会同时生成屏幕、像素比和硬件，视口保持自适应（手动固定的宽高保留）。语言、时区及固定定位保持原值。</p></div>`;}
 

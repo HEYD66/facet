@@ -71,7 +71,7 @@ function selectForNewInstance(controller){
  for(const row of selectionOptions(controller)){
   if(!row.available||row.usage)continue;
   const key=nodeKey(controller.library.node(row.sourceId,row.name));if(seen.has(key))continue;seen.add(key);
-  candidates.push({sourceId:row.sourceId,sourceName:row.sourceName,name:row.name,usage:0,checkedAt:row.checkedAt});
+  candidates.push({sourceId:row.sourceId,sourceVersion:controller.library.get(row.sourceId).updatedAt,sourceName:row.sourceName,name:row.name,usage:0,checkedAt:row.checkedAt});
  }
  return candidates.length?candidates[crypto.randomInt(candidates.length)]:null;
 }
