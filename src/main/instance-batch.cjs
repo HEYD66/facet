@@ -49,21 +49,22 @@ async function execute(controller,token){
  const exclusive=plan.allocation==='unique',eligible=new Set(exclusive?selectionOptions(controller).filter(row=>row.available&&!row.usage).map(row=>JSON.stringify([row.sourceId,row.name])):[]),reserved=new Set();
  for(const item of plan.items){controller.store.name(item.name);if(item.sourceId){const source=controller.library.get(item.sourceId);if(source.updatedAt!==item.sourceVersion)throw Error('所选节点源已经更新，请重新生成草稿');const key=nodeKey(controller.library.node(item.sourceId,item.nodeName));if(exclusive){if(!eligible.has(JSON.stringify([item.sourceId,item.nodeName]))||reserved.has(key))throw Error('草稿节点已被分配、检测不可用或配置重复，请重新生成草稿；未创建实例');reserved.add(key);}}}
  controller.instanceBatchPlan=null;
+ const abort=new AbortController();controller.instanceBatchAbort=abort;
  const job={id:crypto.randomUUID(),running:true,cancelling:false,total:plan.items.length,done:0,created:0,failed:0,results:[]};controller.batchCreation=job;controller.emit();
  const file=path.join(controller.dir,'instance-create-batches',job.id+'.json');
  const save=()=>atomic(file,{...job,updatedAt:new Date().toISOString()});
  try{
   save();for(const item of plan.items){
    if(job.cancelling||controller.disposing)break;
-   try{if(item.localeError)throw Error('此草稿出口地区查询失败，未创建；请重新生成草稿重试。'+item.localeError);if(item.sourceId&&controller.library.get(item.sourceId).updatedAt!==item.sourceVersion)throw Error('节点源已更新，未创建此实例；请重新生成草稿');if(exclusive&&item.sourceId&&assignmentUsage(controller).has(nodeKey(controller.library.node(item.sourceId,item.nodeName))))throw Error('节点已被其他实例分配，未创建；请重新生成草稿');const value=await createInstance(controller,{...item,start:plan.start,syncTimezone:false,syncLocale:plan.syncLocale,requireUnusedNode:exclusive});job.created+=Number(value.created);const error=[value.configurationError,value.startError].filter(Boolean).join('；');if(error)job.failed++;job.results.push({name:item.name,...value,status:error?'warning':'success'});}
-   catch(error){job.failed++;job.results.push({name:item.name,created:false,status:'failed',error:redact(error.message)});}
+   try{if(item.localeError)throw Error('此草稿出口地区查询失败，未创建；请重新生成草稿重试。'+item.localeError);if(item.sourceId&&controller.library.get(item.sourceId).updatedAt!==item.sourceVersion)throw Error('节点源已更新，未创建此实例；请重新生成草稿');if(exclusive&&item.sourceId&&assignmentUsage(controller).has(nodeKey(controller.library.node(item.sourceId,item.nodeName))))throw Error('节点已被其他实例分配，未创建；请重新生成草稿');const value=await createInstance(controller,{...item,start:plan.start,syncTimezone:false,syncLocale:plan.syncLocale,requireUnusedNode:exclusive},{signal:abort.signal});job.created+=Number(value.created);const error=[value.configurationError,value.startError].filter(Boolean).join('；');if(error)job.failed++;job.results.push({name:item.name,...value,status:error?'warning':'success'});}
+   catch(error){if(job.cancelling||controller.disposing)break;job.failed++;job.results.push({name:item.name,created:false,status:'failed',error:redact(error.message)});}
    job.done++;save();controller.emit();await new Promise(resolve=>setImmediate(resolve));
   }
- }finally{job.running=false;job.cancelled=job.done<job.total;save();controller.emit();}
+ }finally{if(controller.instanceBatchAbort===abort)controller.instanceBatchAbort=null;job.running=false;job.cancelled=job.done<job.total;save();controller.emit();}
  controller.workspace.log('application',`批量创建：已创建 ${job.created} 个，处理 ${job.done}/${job.total}，异常 ${job.failed} 个${job.cancelled?'，已停止继续创建':''}`);
  return {...job};
 }
-function cancel(controller){if(controller.batchCreation?.running){controller.batchCreation.cancelling=true;controller.emit();}return {requested:controller.batchCreation?.running===true};}
+function cancel(controller){if(controller.batchCreation?.running){controller.batchCreation.cancelling=true;controller.instanceBatchAbort?.abort(Error('已停止继续创建'));controller.emit();}return {requested:controller.batchCreation?.running===true};}
 async function prepareLocale(controller,message){
  if(controller.instanceBatchPlanning)throw Error('正在查询出口地区，请稍候');
  const plan=prepare(controller,message);if(!plan.syncLocale)return plan;
