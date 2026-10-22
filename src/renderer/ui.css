@@ -906,7 +906,7 @@ html[data-frame="custom"] .toast{top:80px}
 .system-log-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .system-log-tabs button{height:32px;padding:0 18px}
 /* Shared node ports stay in the existing proxy workbench. */
-.node-port-service{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--border,#d9dee8);margin-bottom:8px}
+.node-port-service{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line);margin-bottom:8px}
 .node-port{display:block;grid-column:2 / -1;font-size:11px}
 .node-metadata{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;flex:0 0 100%;min-width:0;padding-left:24px;box-sizing:border-box;color:var(--muted);font-size:11px;line-height:1.3;white-space:normal;overflow-wrap:anywhere}
 .node-metadata .node-stat{margin-left:0;white-space:nowrap}
@@ -916,7 +916,26 @@ html[data-frame="custom"] .toast{top:80px}
 .node-port-copy:disabled{cursor:default}
 .node-port-failures{font-size:12px;color:var(--danger,#dc4848)}
 .node-port-failures ul{max-height:140px;overflow:auto;padding-left:20px;margin:4px 0}
-.proxy-mode-options{display:flex;gap:4px;flex-wrap:wrap}
-.proxy-mode-options [aria-pressed="true"]{box-shadow:inset 0 0 0 1px var(--accent,#2879e8);font-weight:600}
-.proxy-mode-confirm{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px}
+.proxy-mode-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex-basis:100%}
+.proxy-mode-heading strong{font-size:13px}
+.proxy-mode-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:10px;flex-basis:100%;min-width:0}
+.proxy-mode-card{display:flex;flex-direction:column;justify-content:center;gap:7px;min-width:0;min-height:80px;padding:12px 14px;border:2px solid var(--line2);border-radius:9px;background:var(--panel);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s}
+.proxy-mode-card:hover:not(:disabled){border-color:var(--accent);background:var(--hover)}
+.proxy-mode-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.proxy-mode-card[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-weak);box-shadow:inset 0 0 0 1px var(--accent)}
+.proxy-mode-card.is-pending:not([aria-pressed="true"]){border-color:var(--accent);border-style:dashed}
+.proxy-mode-card:disabled{cursor:wait;opacity:.65}
+.proxy-mode-card-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.proxy-mode-card-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:14px;font-weight:700}
+.proxy-mode-subtitle{font-size:12px;font-weight:500}
+.proxy-mode-indicator{display:inline-grid;place-items:center;flex:none;width:16px;height:16px;border:2px solid var(--muted);border-radius:50%;background:var(--panel)}
+.proxy-mode-card[aria-pressed="true"] .proxy-mode-indicator{border-color:var(--accent)}
+.proxy-mode-card[aria-pressed="true"] .proxy-mode-indicator::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.proxy-mode-badge{flex:none;padding:3px 8px;border:1px solid var(--line2);border-radius:5px;background:var(--panel2);color:var(--text);font-size:11px;font-weight:600;line-height:1.4}
+.proxy-mode-card[aria-pressed="true"] .proxy-mode-badge{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.proxy-mode-description{color:var(--text);font-size:12px;line-height:1.5}
+.proxy-mode-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%}
+.proxy-mode-isolation{flex-basis:100%;margin:0}
+.proxy-mode-confirm{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--panel2);border:1px solid var(--accent);border-radius:6px;font-size:12px;line-height:1.6}
+.proxy-mode-confirm>span{flex:1 1 320px}
 .proxy-workbench[data-proxy-mode="instance"] [data-lib="copy-node-http"],.proxy-workbench[data-proxy-mode="instance"] [data-lib="copy-node-socks"]{display:none}
