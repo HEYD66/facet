@@ -28,7 +28,7 @@
 | 常用扩展 API、参数边界、隔离与专项验证 | [扩展兼容层](EXTENSION-COMPATIBILITY.md) |
 | 日夜主题、布局和原生视图 | [外观](APPEARANCE.md) |
 | 快捷网站与隐私检测入口 | [快捷网站](QUICK-LINKS.md) |
-| 后台执行、收藏切站与导航取消修复（源码待重启验收） | [后台与导航验证](NAVIGATION-BACKGROUND.md) |
+| 后台执行、收藏切站与导航取消修复（已重启验收，公网加载另有未解决项） | [后台与导航验证](NAVIGATION-BACKGROUND.md) |
 | 固定视口、DPR 与历史 IP 收藏功能 | [视口与 IP](VIEWPORT-IP-BOOKMARKS.md) |
 | 指纹候选库、整套生成与验证边界 | [指纹候选库](FINGERPRINT-CATALOG.md) |
 | 内存统计口径、宫格截图限流及资源回收验证（源码待发布） | [内存与性能](MEMORY-PERFORMANCE.md) |
