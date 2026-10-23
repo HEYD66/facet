@@ -1,5 +1,17 @@
 # UX交付状态（第一至四批）
 
+## 2026-10-23：AI 面板按 DSH 交互改造（路线 C，第一轮，当前源码未发布）
+
+用户选择保留千面面板、复用 DSH 能力并参照 DSH 交互（不嵌入 DSH Web 服务，避免明文落盘和本机端口）。
+
+- [x] 回复 Markdown：主进程用与 DSH 官方界面相同的解析管线（`mdast-util-from-markdown` + GFM + 移植的 CJK 粗体扩展，版本与 DSH 锁文件一致），渲染端只用 createElement/textContent 按固定节点白名单绘制；原始 HTML 为文字，链接仅 http(s)，图片不加载。
+- [x] 链接在运行中的实例里新开标签打开，沿用实例代理与登录；控制窗口不发外部请求。
+- [x] 工具调用合并为一组（状态、目标实例、参数摘要、结果摘要），参数摘要不含键入文字、对话框回答和网址查询。
+- [x] 增量渲染：按条目身份复用节点、按段落复用 Markdown 块；执行中 0.25 秒轮询，空闲 0.9 秒。完成的计划自动折叠，引擎版本并入标题，「回到最新消息」浮在对话区上，发送方式移到模型旁，完全权限醒目提示，空白页提供配置入口和示例。
+- 验证：`test:ai-panel`（单元 8 项 + 真实 Electron 6 组），`test:ai-agent`、`ai-dsh`、`ai-browser`、`ai-capabilities`、`ai-recovery`、`ai-sessions`、`ai-stop`、`ai-memory` 全部通过；全部单元测试 416 项 0 失败；生产依赖审计 0 漏洞。截图对比在 `.local-dev/ai-panel-review/`（`after/` 为改造后）。
+- [ ] 第二轮：接入 DSH 后端插件——追问用户（tool-ask-user / user-questions）、上下文压缩（compaction-basic / tool-result-pruner）、会话标题、Token 计量、审批服务；逐项评估与千面加密存储和权限模式的对接。
+- 未做：新安装包未构建，打包态的 Markdown 依赖加载未验证；正式应用未重启。
+
 ## 2026-10-23：运行输出不再被重复的扩展加载警告占满（当前源码未发布）
 
 - [x] 依据：正式数据目录的 `runtime-output.json`（10-20～10-23，22 次运行）中，Electron 的 `ExtensionLoadWarning` 及其权限明细占保留的 5000 行中的 1157 行（23.1%），已有 6612 行被挤出保留窗口。它们是同一个扩展加载到每个实例会话、每次启动都重复报一遍（cookies 214、notifications 132、webNavigation 112、downloads 106、sidePanel 72 次等），这些权限多数由千面兼容层实现，警告本身不代表故障。

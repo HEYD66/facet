@@ -18,7 +18,7 @@ function messages(rows,images=new Map()){
  });
 }
 async function drive(host,definitions,system,prior){
- const r=host.run,imageMessages=new Map(),callNames=new Map(),pendingSteers=new Map();
+ const r=host.run,imageMessages=new Map(),callNames=new Map(),callArgs=new Map(),pendingSteers=new Map();
  const [{Context},llm,session,projection,prompt,tools,registry,loop]=await load();r.abort.signal.throwIfAborted();
  const ctx=new Context();let handle,driver,failure,haltReason='',haltStatus,requests=0,streamedEntry;
  const signal=r.abort.signal,model=host.config.model;
@@ -45,7 +45,7 @@ async function drive(host,definitions,system,prior){
     const seen=new Set();let index=textStarted?1:0;
     for(const call of calls||[]){
      if(!call.id||seen.has(call.id)||!call.function?.name||typeof call.function.arguments!=='string')throw Error('模型工具调用不完整或ID重复');seen.add(call.id);
-     callNames.set(call.id,call.function.name);const block={type:'tool-call',id:llm.ToolCallId(call.id),name:call.function.name,arguments:call.function.arguments};
+     callNames.set(call.id,call.function.name);callArgs.set(call.id,call.function.arguments);const block={type:'tool-call',id:llm.ToolCallId(call.id),name:call.function.name,arguments:call.function.arguments};
      push({type:'block-start',index,blockType:'tool-call'});push({type:'tool-call-delta',index,id:block.id,name:block.name,argumentsDelta:block.arguments});push({type:'block-end',index,block});index++;
     }
     push({type:'finish',reason:{kind:calls?.length?'tool-calls':'stop'}});
@@ -83,7 +83,7 @@ async function drive(host,definitions,system,prior){
    if(event.type==='user/message')pendingSteers.delete(event.data.message.id);
    if(event.type==='tool/result'){
     const m=event.data.message,id=m.source.callId,name=callNames.get(id)||'tool',raw=text(m.content);let result;try{result=JSON.parse(raw);}catch{result=m.isError?{error:raw}:{text:raw};}
-    host.entry('tool',name+'：'+raw);
+    host.entry('tool',name+'：'+raw,require('./ai-tool-display.cjs').describe(name,callArgs.get(id),result,m.isError===true));callArgs.delete(id);
    }
    if(['user/message','assistant/message','assistant/attempt','tool/result'].includes(event.type))checkpoint();
   });

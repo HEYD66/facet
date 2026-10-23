@@ -27,6 +27,7 @@ function installIPC(window,controller){
     case 'ai-provider-remove':return {ok:true,value:ai.removeProvider(message.providerId)};
     case 'ai-models':return {ok:true,value:await ai.models(message.settings||{})};
     case 'ai-state':return {ok:true,value:ai.snapshot()};
+    case 'ai-markdown':return {ok:true,value:await require('./ai-markdown.cjs').parseMany(message.texts)};
     case 'ai-settings':return {ok:true,value:ai.save(message.settings||{})};
     case 'ai-run':return {ok:true,value:ai.begin(message)};
     case 'ai-submit':return {ok:true,value:ai.run?.busy?require('./ai-inbox.cjs').submit(ai,message):ai.begin(message)};

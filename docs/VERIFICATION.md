@@ -1,5 +1,13 @@
 # 验证入口与历史记录
 
+## 2026-10-23：AI 面板 DSH 式对话（第一轮）
+
+- `tests/ai-markdown.test.cjs` 5 项：GFM 结构、顶层偏移、位置信息剥离；CJK 粗体扩展生效（对照：不加扩展时同一文本不产生 strong）；HTML 节点保持惰性；超长、过深、非法输入回落为 null；批量上限与缓存。
+- `tests/ai-tool-display.test.cjs` 3 项：键入文字、对话框文字、网址查询不进入摘要；结果摘要按真实返回结构；畸形参数降级为空摘要。
+- `tests/ai-panel-electron.cjs` 6 组（真实 Electron、IPC、Controller、官方 DSH 引擎，模型为本机协议夹具）：未配置时「配置模型」打开设置；示例任务填入输入框；Markdown 标题/粗体/右对齐表格/代码块；`<img onerror>`、`<script>` 与 `javascript:` 链接均无效果（页面无 img/script 元素、`window.pwned` 为空）；图片未被请求；三步工具合成一组（含 1 步失败），键入的密码既不显示也不存入条目；追加段落时前面的块元素被复用；点击链接在实例中新开标签并跟随。
+- 回归：`test:ai-agent`、`test:ai-dsh`、`test:ai-browser`、`test:ai-capabilities`、`test:ai-recovery`、`test:ai-sessions`、`test:ai-stop`、`test:ai-memory` 通过；全部 `tests/*.test.cjs` 416 项 415 通过、1 项 POSIX 跳过；`check` 353 个脚本、`test:control-api`、`test:packaging`、`git diff --check` 通过；`npm audit --omit=dev` 0 漏洞。
+- 未覆盖：真实模型的流式长回复、打包后的 ASAR 中加载新增 ESM 依赖（未重新构建安装包）、屏幕阅读器体验。
+
 ## 2026-10-23：扩展加载警告去重与单元测试全绿
 
 - 依据只读统计正式 `runtime-output.json`：5000 行中 1157 行（23.1%）为重复的 `ExtensionLoadWarning`；统计时去掉了网址和凭据，未改动正式数据。
