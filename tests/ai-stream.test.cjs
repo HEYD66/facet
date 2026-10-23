@@ -7,3 +7,17 @@ test('UTF-8 byte splitting, CRLF, tool fragments and incremental callbacks',asyn
 test('truncated stream and truncated tool arguments fail',async()=>{await assert.rejects(readCompletion(response(event({content:'部分'}))),/中断/);await assert.rejects(readCompletion(response(event({tool_calls:[{index:0,id:'x',function:{name:'fill',arguments:'{'}}]})+event({},'tool_calls'))),/参数不完整/);});
 test('JSON fallback, service error and token limit',async()=>{assert.equal((await readCompletion(new Response(JSON.stringify({choices:[{message:{content:'兼容'}}]})))).content,'兼容');await assert.rejects(readCompletion(response('data: {"error":{"message":"private"}}\n\n')),/服务返回错误/);await assert.rejects(readCompletion(response(event({},'length'))),/未完整结束/);});
 test('cancelled body propagates failure after partial output',async()=>{let controller;const seen=[];const r=new Response(new ReadableStream({start(c){controller=c;c.enqueue(Buffer.from(event({content:'部分'})));}}),{headers:{'content-type':'text/event-stream'}});const pending=readCompletion(r,t=>{seen.push(t);controller.error(new Error('aborted'));});await assert.rejects(pending,/aborted/);assert.deepEqual(seen,['部分']);});
+test('streamed usage maps to disjoint DSH buckets and never enters history',async()=>{
+ const usage='data: '+JSON.stringify({choices:[],usage:{prompt_tokens:1200,completion_tokens:80,total_tokens:1280,prompt_tokens_details:{cached_tokens:1000},completion_tokens_details:{reasoning_tokens:30}}})+'\n\n';
+ const m=await readCompletion(response(event({content:'好'})+event({},'stop')+usage+'data: [DONE]\n\n'));
+ assert.deepEqual(m.usage,{inputTokens:200,outputTokens:80,totalTokens:1280,cacheReadTokens:1000,reasoningTokens:30});
+ assert.equal(Object.keys(m).includes('usage'),false);assert.equal(JSON.stringify(m).includes('usage'),false);
+ const deepseek=await readCompletion(new Response(JSON.stringify({choices:[{message:{content:'兼容'}}],usage:{prompt_tokens:50,completion_tokens:5,prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:10}})));
+ assert.deepEqual(deepseek.usage,{inputTokens:10,outputTokens:5,cacheReadTokens:40});
+ const none=await readCompletion(response(event({content:'无用量'})+event({},'stop')+'data: [DONE]\n\n'));assert.equal(none.usage,undefined);
+});
+test('malformed usage is ignored',()=>{
+ const {usageOf}=require('../src/main/ai-stream.cjs');
+ assert.equal(usageOf({prompt_tokens:-1,completion_tokens:2}),null);assert.equal(usageOf({prompt_tokens:'9',completion_tokens:2}),null);assert.equal(usageOf(null),null);
+ assert.deepEqual(usageOf({input_tokens:7,output_tokens:3,total_tokens:5}),{inputTokens:7,outputTokens:3});
+});

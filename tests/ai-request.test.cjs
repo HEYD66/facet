@@ -34,3 +34,15 @@ test('stop aborts a pending retry before another HTTP request',async t=>{
 test('repeated service errors stop after the third attempt',async t=>{
  let count=0;const url=await provider(t,(_req,res)=>{count++;res.writeHead(503,{'Retry-After':'0'});res.end();});await assert.rejects(request(url),/HTTP 503/);assert.equal(count,3);
 });
+test('a service rejecting stream_options gets one immediate retry without it',async t=>{
+ const bodies=[];let downgraded=0;
+ const url=await provider(t,async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;bodies.push(JSON.parse(body));if(bodies.length===1){res.writeHead(400,{'Content-Type':'application/json'});res.end('{"error":{"message":"Unrecognized request argument supplied: stream_options"}}');}else ok(res);});
+ const result=await request(url,{body:JSON.stringify({model:'local-fixture',messages:[],stream:true,stream_options:{include_usage:true}}),onDowngrade:()=>downgraded++});
+ assert.equal(result.content,'已收到');assert.equal(bodies.length,2);assert.equal(downgraded,1);assert.deepEqual(bodies[0].stream_options,{include_usage:true});assert.equal('stream_options' in bodies[1],false);
+});
+test('a context-length rejection is classified for DSH compaction without echoing the body',async t=>{
+ let count=0;const url=await provider(t,(_req,res)=>{count++;res.writeHead(400,{'Content-Type':'application/json'});res.end('{"error":{"message":"This model\'s maximum context length is 8192 tokens. SECRET_PROMPT_ECHO"}}');});
+ await assert.rejects(request(url),e=>e.code==='CONTEXT_WINDOW_EXCEEDED'&&/上下文超出上限/.test(e.message)&&!e.message.includes('SECRET'));assert.equal(count,1);
+ const plain=await provider(t,(_req,res)=>{res.writeHead(400);res.end('bad model name');});
+ await assert.rejects(request(plain),e=>e.code===undefined&&/HTTP 400/.test(e.message)&&!e.message.includes('bad model'));
+});

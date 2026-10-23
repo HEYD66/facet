@@ -139,3 +139,23 @@
 .ai-compose .ai-send-options{flex:none;margin:0;padding:0;border:0}
 .ai-compose .ai-send-options select{width:auto;max-width:96px;padding:4px 6px;font-size:11px;background:transparent;border-color:var(--accent);color:var(--accent)}
 .ai-compose #aiPermission[data-level="full"]{color:var(--amber);font-weight:600}
+/* DSH ask_user_question card: docked above the composer like an approval. */
+.ai-question{flex:none;max-height:45%;overflow:auto;margin:0 10px;padding:10px 12px;border:1px solid var(--accent);border-radius:12px;background:var(--accent-weak)}
+.ai-question[hidden],.ai-meter[hidden]{display:none}
+.ai-question-title{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}.ai-question-title strong{font-size:12px}.ai-question-title span{color:var(--muted);font-size:11px}
+.ai-question-item{margin:8px 0 0;padding:0;border:0;min-width:0}
+.ai-question-item legend{padding:0;margin-bottom:6px;font-weight:600;line-height:1.55;overflow-wrap:anywhere}
+.ai-question-chip{display:inline-block;margin-right:6px;padding:0 6px;border-radius:6px;background:var(--panel);color:var(--accent-text);font-size:10px;font-weight:600}
+.ai-question-option{display:flex;align-items:flex-start;gap:8px;margin:4px 0;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--panel);cursor:pointer}
+.ai-question-option:hover,.ai-question-option:has(input:checked){border-color:var(--accent)}
+.ai-panel .ai-question-option input{flex:none;width:15px;height:15px;margin:2px 0 0;padding:0;border:0;accent-color:var(--accent)}
+.ai-question-option span{flex:1}
+.ai-question-option span{min-width:0;overflow-wrap:anywhere}.ai-question-option b{display:block;font-weight:600}.ai-question-option small{display:block;color:var(--muted);line-height:1.5}
+.ai-panel .ai-question-custom{margin-top:4px;min-height:32px;resize:vertical;font-size:12px}
+.ai-question .ai-actions{justify-content:flex-end}
+.ai-edit-settings .ai-question,.ai-show-sessions .ai-question{display:none}
+/* DSH token-meter context pressure ring. */
+.ai-meter{flex:none;display:inline-flex;align-items:center;gap:3px;color:var(--muted);font-size:10px;cursor:default}
+.ai-meter svg{width:14px;height:14px;transform:rotate(-90deg)}
+.ai-meter circle{fill:none;stroke-width:3}.ai-meter-track{stroke:var(--line2)}.ai-meter-value{stroke:var(--accent);stroke-linecap:round}
+.ai-meter[data-level="mid"] .ai-meter-value{stroke:var(--amber)}.ai-meter[data-level="high"]{color:var(--red)}.ai-meter[data-level="high"] .ai-meter-value{stroke:var(--red)}

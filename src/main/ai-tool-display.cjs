@@ -39,6 +39,7 @@ function argsSummary(name, args) {
     case 'read_manual': return clip(args.document || '');
     case 'update_plan': return Array.isArray(args.steps) ? args.steps.length + ' 步' : '';
     case 'click': case 'fill': return args.selector ? '页面元素' : '';
+    case 'ask_user_question': return Array.isArray(args.questions) ? clip(args.questions.map(q => q?.question).filter(Boolean).join(' / '), 120) : '';
     default: return '';
   }
 }
@@ -47,6 +48,7 @@ function resultSummary(name, result) {
   if (!result || typeof result !== 'object') return '';
   if (typeof result.error === 'string') return clip(result.error);
   if (Array.isArray(result)) return result.length + ' 项';
+  if (name === 'ask_user_question' && Array.isArray(result.answers)) return '已回答：' + clip(result.answers.map(a => [...(Array.isArray(a?.selected) ? a.selected : []), a?.custom].filter(Boolean).join('、')).join('；'), 100);
   const parts = [];
   if (typeof result.title === 'string' && result.title) parts.push(clip(result.title, 60));
   if (Array.isArray(result.elements)) parts.push(result.elements.length + ' 个可操作元素');

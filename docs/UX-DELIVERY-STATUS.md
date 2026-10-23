@@ -1,5 +1,18 @@
 # UX交付状态（第一至四批）
 
+## 2026-10-23：AI 面板接入 DSH 后端插件（路线 C，第二轮，当前源码未发布）
+
+用户已取消「不新增明文落盘、不扩大权限和实例范围、旧加密会话可读」三项限制；本轮实际没有用到这些放宽：新数据仍走系统加密，权限三档与实例范围未变，旧会话可读。
+
+- [x] AI 追问用户：DSH `tool-ask-user`（legacy 阻塞模式）+ `user-questions`，千面在输入框上方显示提问卡片（标题、选项与说明、多选、其他回答、暂不回答），停止时取消提问；工具步骤显示为「询问你」及回答摘要。
+- [x] 上下文用量：DSH `token-meter`；请求附带 `stream_options.include_usage`，用量按 DSH 互斥口径（输入不含缓存命中）映射；模型旁圆环显示占用与本次任务累计；不支持该参数的服务自动降级一次。
+- [x] 任务内自动压缩：DSH `compaction-basic` + `tool-result-pruner`，摘要由千面中文浏览器任务模板生成；HTTP 400/413/422 的上下文超限被识别为 DSH `CONTEXT_WINDOW_EXCEEDED`，可先压缩再重试。
+- [x] 设置新增按提供商的「上下文窗口（tokens）」，留空按模型名称估计。
+- [x] 修复：DSH `user/message` 事件的数据就是消息本身，原代码读 `event.data.message.id` 会抛错，导致立即补充的消息在检查点里重复；被精简的工具结果不再重复显示为新步骤。
+- [x] 依赖：新增 DSH 包及其必需 peer（`dsh-commands`、`dsh-attachment`、`dsh-llm-retry`、`dsh-compaction-image-offload`）列为精确版本生产依赖，`test:packaging` 的 peer 可达检查通过。
+- 验证：新增 `test:ai-plugins`（单元 + 真实 Electron 5 组）；其余 AI 套件、全部单元测试 423 项 0 失败、check、control-api、packaging、diff 通过。
+- [ ] 未做：会话自动标题（DSH 标题插件按 DSH 会话触发，千面每个任务是一个 DSH 会话、短任务会在标题返回前结束，需单独设计）；`user-approval` 替换千面确认（价值低）；新安装包未构建，ASAR 内加载新增 ESM 未验证；正式应用未重启。
+
 ## 2026-10-23：AI 面板按 DSH 交互改造（路线 C，第一轮，当前源码未发布）
 
 用户选择保留千面面板、复用 DSH 能力并参照 DSH 交互（不嵌入 DSH Web 服务，避免明文落盘和本机端口）。
@@ -9,7 +22,7 @@
 - [x] 工具调用合并为一组（状态、目标实例、参数摘要、结果摘要），参数摘要不含键入文字、对话框回答和网址查询。
 - [x] 增量渲染：按条目身份复用节点、按段落复用 Markdown 块；执行中 0.25 秒轮询，空闲 0.9 秒。完成的计划自动折叠，引擎版本并入标题，「回到最新消息」浮在对话区上，发送方式移到模型旁，完全权限醒目提示，空白页提供配置入口和示例。
 - 验证：`test:ai-panel`（单元 8 项 + 真实 Electron 6 组），`test:ai-agent`、`ai-dsh`、`ai-browser`、`ai-capabilities`、`ai-recovery`、`ai-sessions`、`ai-stop`、`ai-memory` 全部通过；全部单元测试 416 项 0 失败；生产依赖审计 0 漏洞。截图对比在 `.local-dev/ai-panel-review/`（`after/` 为改造后）。
-- [ ] 第二轮：接入 DSH 后端插件——追问用户（tool-ask-user / user-questions）、上下文压缩（compaction-basic / tool-result-pruner）、会话标题、Token 计量、审批服务；逐项评估与千面加密存储和权限模式的对接。
+- [x] 第二轮：追问用户、上下文压缩、Token 计量已接入（见上一节）；会话标题与审批服务未接入。
 - 未做：新安装包未构建，打包态的 Markdown 依赖加载未验证；正式应用未重启。
 
 ## 2026-10-23：运行输出不再被重复的扩展加载警告占满（当前源码未发布）

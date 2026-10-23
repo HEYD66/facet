@@ -40,6 +40,7 @@ function installIPC(window,controller){
     case 'ai-session-rename':ai.sessions.rename(message.sessionId,message.title);return {ok:true};
     case 'ai-session-delete':ai.sessions.remove(message.sessionId,message.confirmed);return {ok:true};
     case 'ai-approve':ai.approve(message.approvalId,message.allow);return {ok:true};
+    case 'ai-answer':ai.answer(message.questionId,message.answers,message.skip===true);return {ok:true};
     case 'proxy-mode-set':return {ok:true,value:await controller.setProxyMode(message.mode,{confirmed:message.confirmed===true})};
     case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled,{confirmed:message.confirmed===true})};
     case 'node-ports-sync':return {ok:true,value:await controller.syncNodePorts()};

@@ -1,5 +1,15 @@
 # 验证入口与历史记录
 
+## 2026-10-23：AI 面板接入 DSH 后端插件（第二轮）
+
+- `tests/ai-stream.test.cjs` 新增 2 项：OpenAI `cached_tokens` 与 DeepSeek `prompt_cache_hit_tokens` 映射为 DSH 互斥用量（输入不含缓存命中），用量是不可枚举字段、不进入历史；畸形用量被忽略。
+- `tests/ai-request.test.cjs` 新增 2 项：服务拒绝 `stream_options` 时立即去掉重发一次并通知调用方；上下文超限的 400 归类为 `CONTEXT_WINDOW_EXCEEDED`，错误文字不含服务返回体；普通 400 不被误判。
+- `tests/ai-dsh-plugins.test.cjs` 2 项：提问卡片的数量与长度上限、空选项过滤；压缩摘要输入去掉系统消息、保留工具调用并遵守字数预算。`tests/ai-tool-display.test.cjs` 新增 ask_user_question 摘要。
+- `tests/ai-dsh-plugins-electron.cjs` 5 组（真实 Electron、IPC、Controller、官方 DSH 插件，模型为本机协议夹具）：请求带 `include_usage`，模型返回用量成为 token-meter 基线（`estimated:false`），圆环显示 16% 与缓存命中，测量随会话加密保存；提问卡片显示标题、选项说明和两个问题，空提交被拒且不发请求，选项加自定义文字原样作为工具结果回到模型，「暂不回答」与「停止」各自生效，过期回答被拒；24K 窗口下 DSH 压缩把较早 4 次 observe 整理为摘要（只有 1 次无工具的摘要请求），下一次请求携带检查点、工具消息变少，任务在阈值下完成，每次 observe 只显示一次；夜间截图无横向溢出。
+- 回归：`test:ai-panel`、`test:ai-agent`、`test:ai-dsh`、`test:ai-browser`、`test:ai-capabilities`、`test:ai-recovery`、`test:ai-sessions`、`test:ai-stop`、`test:ai-memory` 通过；全部 `tests/*.test.cjs` 423 项 422 通过、1 项 POSIX 跳过；`check`、`test:control-api`、`test:packaging`、`git diff --check` 通过；`npm audit` 0 漏洞。
+- 发现并修复：新增 DSH 包的必需 peer 只被 npm 自动安装、不在 `dependencies` 中，electron-builder 会漏收；已列为精确版本生产依赖。
+- 未覆盖：真实模型服务的用量字段和超限报错原文（各家措辞不同，按常见英文/中文措辞匹配）、打包后 ASAR 中加载新增插件（未重新构建安装包）。
+
 ## 2026-10-23：AI 面板 DSH 式对话（第一轮）
 
 - `tests/ai-markdown.test.cjs` 5 项：GFM 结构、顶层偏移、位置信息剥离；CJK 粗体扩展生效（对照：不加扩展时同一文本不产生 strong）；HTML 节点保持惰性；超长、过深、非法输入回落为 null；批量上限与缓存。
