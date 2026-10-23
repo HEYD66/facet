@@ -58,3 +58,17 @@ test('refresh replaces files in the same package folder, keeps id and enable lis
  assert.equal(fs.readFileSync(path.join(folder,'content.js'),'utf8'),'console.log("v2")');assert.deepEqual(c.enabled('inst-a'),[row.id]);assert.equal(c.data.items.length,1);
  assert.deepEqual(fs.readdirSync(c.base).sort(),[row.id],'staging and old copies are cleaned up');
  c.setSource(row.id,'D:\\\\moved');assert.equal(c.get(row.id).source,'D:\\\\moved');}));
+
+test('a partial extension folder (missing scripts or icons) is refused at import and cannot be enabled by default',()=>fixture((c,s)=>{
+ const {missingFiles}=require('../src/main/extension-catalog.cjs');
+ const write=m=>fs.writeFileSync(path.join(s,'manifest.json'),JSON.stringify({manifest_version:3,name:'Partial',version:'3.2.4',...m}));
+ write({icons:{16:'icons/16.png'},background:{service_worker:'background.js'},content_scripts:[{matches:['https://example.test/*'],js:['content.js','no-leave.js','pin-page.js'],css:['./style.css']}],action:{default_icon:'/icons/action.png'},declarative_net_request:{rule_resources:[{id:'r',enabled:true,path:'rules.json'}]},side_panel:{default_path:'not-checked.html'}});
+ assert.deepEqual(missingFiles(s).sort(),['./style.css','/icons/action.png','background.js','icons/16.png','no-leave.js','pin-page.js','rules.json'].sort());
+ assert.throws(()=>c.stage(s),e=>/扩展文件不完整，Chromium 无法加载：清单引用的 7 个文件不存在（icons\/16\.png、/.test(e.message)&&/ 等）/.test(e.message)&&/导入完整的扩展文件夹/.test(e.message));
+ assert.equal(fs.readdirSync(c.base).length,0,'the staged copy is removed');assert.equal(c.data.items.length,0);
+ for(const f of ['icons/16.png','icons/action.png','background.js','no-leave.js','pin-page.js','style.css','rules.json']){fs.mkdirSync(path.dirname(path.join(s,f)),{recursive:true});fs.writeFileSync(path.join(s,f),'x');}
+ assert.deepEqual(missingFiles(s),[]);const row=c.stage(s);c.accept(row);
+ fs.rmSync(path.join(c.folder(row.id),'pin-page.js'));assert.throws(()=>c.setDefaultEnabled(row.id,true),/缺少|不完整.*不能设为默认启用/);assert.equal(c.get(row.id).defaultEnabled,undefined);
+ assert.equal(c.setDefaultEnabled(row.id,false).changed,false,'turning the default off still works');
+ write({content_scripts:[{matches:['https://example.test/*'],js:['../outside.js']}]});assert.deepEqual(missingFiles(s),['../outside.js'],'paths outside the package count as missing');
+}));

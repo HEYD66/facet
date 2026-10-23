@@ -8,9 +8,27 @@ const GLOBAL_MATCHES=new Set(['<all_urls>','*://*/*','http://*/*','https://*/*']
 const SKIP_DIRS=new Set(['.git','.svn','.hg','.vscode','.idea','node_modules','__pycache__']),SKIP_FILES=new Set(['.DS_Store','Thumbs.db','desktop.ini']);
 const sizeText=b=>b>=1024**3?(b/1024**3).toFixed(1)+' GB':b>=1024**2?(b/1024**2).toFixed(b>=100*1024**2?0:1).replace(/\.0$/,'')+' MB':Math.max(1,Math.ceil(b/1024))+' KB';
 function localPage(value){if(typeof value!=='string'||!value||value.length>1024||/[\\%?#\x00-\x1f]/.test(value)||value.startsWith('/')||value.includes(':')||value.split('/').some(x=>x==='..'||x==='.'||!x))throw Error('扩展页面必须是扩展目录内的相对路径');return value;}
+// Files Chromium reads while loading an extension; one missing file makes loadExtension fail for
+// every instance that enables it (verified on Electron 44: content js/css, background service worker
+// or scripts, manifest and action icons, DNR rule files; side_panel/devtools pages are not checked).
+function referencedFiles(m){
+ const out=[],add=v=>{if(typeof v==='string'&&v.trim())out.push(v.trim());},list=v=>{if(Array.isArray(v))v.forEach(add);},icons=v=>{if(typeof v==='string')add(v);else if(v&&typeof v==='object')Object.values(v).forEach(add);};
+ icons(m.icons);for(const a of [m.action,m.browser_action,m.page_action])icons(a?.default_icon);
+ add(m.background?.service_worker);add(m.background?.page);list(m.background?.scripts);
+ for(const c of Array.isArray(m.content_scripts)?m.content_scripts:[]){list(c?.js);list(c?.css);}
+ for(const r of Array.isArray(m.declarative_net_request?.rule_resources)?m.declarative_net_request.rule_resources:[])add(r?.path);
+ return [...new Set(out)];
+}
+function missingFiles(folder,manifest){
+ let m=manifest;if(!m){try{m=JSON.parse(fs.readFileSync(path.join(folder,'manifest.json'),'utf8').replace(/^\uFEFF/,''));}catch{return [];}}
+ const root=path.resolve(folder);
+ return referencedFiles(m).filter(raw=>{const file=path.resolve(root,raw.replace(/^\.?\//,''));if(file!==root&&!file.startsWith(root+path.sep))return true;try{return !fs.statSync(file).isFile();}catch{return true;}});
+}
+function incompleteMessage(missing){return `扩展文件不完整，Chromium 无法加载：清单引用的 ${missing.length} 个文件不存在（${missing.slice(0,5).join('、')}${missing.length>5?' 等':''}）。如果这是从完整扩展里拆出的部分文件，请导入完整的扩展文件夹`;}
 function inspect(folder){const file=path.join(folder,'manifest.json');if(!fs.existsSync(file)||fs.statSync(file).size>1024*1024)throw Error('请选择包含manifest.json的解压扩展文件夹（清单上限1MB）');let m;try{m=JSON.parse(fs.readFileSync(file,'utf8'));}catch{throw Error('扩展manifest.json不是有效JSON');}if(![2,3].includes(m.manifest_version)||typeof m.name!=='string'||!m.name.trim()||m.name.length>200||typeof m.version!=='string'||m.version.length>50)throw Error('扩展名称、版本或manifest_version无效');
  const entries={};for(const [key,value]of Object.entries({popup:m.action?.default_popup||m.browser_action?.default_popup||m.page_action?.default_popup,options:m.options_ui?.page||m.options_page})){if(value){entries[key]=localPage(value);if(!fs.statSync(path.join(folder,entries[key])).isFile())throw Error('扩展界面文件不存在');}}
  for(const key of ['permissions','host_permissions','optional_permissions','optional_host_permissions','content_scripts'])if(m[key]!==undefined&&!Array.isArray(m[key]))throw Error('扩展权限或脚本清单无效');
+ const missing=missingFiles(folder,m);if(missing.length)throw Error(incompleteMessage(missing));
  const permissions=[...(m.permissions||[]),...(m.host_permissions||[])];if(permissions.some(x=>typeof x!=='string')||permissions.length>500)throw Error('扩展权限清单无效');const matches=(m.content_scripts||[]).flatMap(x=>x.matches||[]);if(matches.some(x=>typeof x!=='string')||matches.length>500)throw Error('内容脚本范围无效');
  const optionalPermissions=[...(m.optional_permissions||[]),...(m.optional_host_permissions||[])].map(String).slice(0,500),riskPermissions=[...new Set([...permissions,...optionalPermissions].filter(x=>DANGEROUS_PERMISSIONS.has(x)))],globalMatches=[...new Set([...matches,...permissions,...optionalPermissions].filter(x=>GLOBAL_MATCHES.has(x)))],riskLevel=riskPermissions.length||globalMatches.length?'high':matches.length?'medium':'low';
  let name=m.name;if(/^__MSG_(.+)__$/.test(name)&&m.default_locale&&/^[a-zA-Z0-9_-]+$/.test(m.default_locale)){try{const messages=JSON.parse(fs.readFileSync(path.join(folder,'_locales',m.default_locale,'messages.json'),'utf8'));name=messages[name.slice(6,-2)]?.message||name;}catch{}}
@@ -63,7 +81,7 @@ class ExtensionCatalog{
   fs.rmSync(trash,{recursive:true,force:true});return next;}
  setSource(id,source){this.get(id);this.commit({...this.data,items:this.data.items.map(x=>x.id===id?{...x,source}:x)});}
  discard(row){fs.rmSync(path.join(this.base,row.id),{recursive:true,force:true});}
- setDefaultEnabled(id,enabled){const row=this.get(id);if(typeof enabled!=='boolean')throw Error('默认启用状态无效');if((row.defaultEnabled===true)===enabled)return {extensionId:id,enabled,changed:false};this.commit({...this.data,items:this.data.items.map(x=>x.id===id?{...x,defaultEnabled:enabled}:x)});return {extensionId:id,enabled,changed:true};}
+ setDefaultEnabled(id,enabled){const row=this.get(id);if(typeof enabled!=='boolean')throw Error('默认启用状态无效');if(enabled){const missing=missingFiles(this.folder(id));if(missing.length)throw Error(incompleteMessage(missing)+'；不能设为默认启用');}if((row.defaultEnabled===true)===enabled)return {extensionId:id,enabled,changed:false};this.commit({...this.data,items:this.data.items.map(x=>x.id===id?{...x,defaultEnabled:enabled}:x)});return {extensionId:id,enabled,changed:true};}
  applyDefaults(instanceId){const ids=this.data.items.filter(x=>x.defaultEnabled===true).map(x=>x.id);if(!ids.length)return;const enabled=[...new Set([...this.enabled(instanceId),...ids])];this.commit({...this.data,enabled:{...this.data.enabled,[instanceId]:enabled}});}
  setEnabled(instanceId,id,enabled){this.get(id);if(typeof enabled!=='boolean')throw Error('启用状态无效');const set=new Set(this.data.enabled[instanceId]||[]);enabled?set.add(id):set.delete(id);this.commit({...this.data,enabled:{...this.data.enabled,[instanceId]:[...set]}});}
  enabled(id){return this.data.enabled[id]||[];}
@@ -77,4 +95,4 @@ class ExtensionCatalog{
   let cleanupPending=false;if(exists)try{fs.rmSync(trash,{recursive:true,force:true,maxRetries:2});}catch{cleanupPending=true;}
   return {removed:true,cleanupPending};}
 }
-module.exports={ExtensionCatalog,inspect,localPage,extensionIcon,sizeText,DANGEROUS_PERMISSIONS,GLOBAL_MATCHES};
+module.exports={ExtensionCatalog,inspect,localPage,extensionIcon,sizeText,missingFiles,incompleteMessage,DANGEROUS_PERMISSIONS,GLOBAL_MATCHES};

@@ -130,6 +130,7 @@
 .ext-detail-section>p{margin:6px 0 0;font-size:12px;line-height:1.6}
 .ext-detail-errors{border-color:color-mix(in srgb,var(--red) 45%,var(--line))}
 .ext-detail-errors h4,.ext-detail-errors p{color:var(--red)}
+.ext-detail-errors .ext-missing-list{max-height:120px;overflow:auto;color:var(--muted);font:11px/1.6 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
 .ext-section-note{font-size:11px!important;color:var(--muted)}
 .ext-inst-list{display:flex;flex-direction:column;margin-top:8px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .ext-inst-row{display:flex;align-items:center;gap:8px;padding:4px 8px 4px 4px;min-height:40px}

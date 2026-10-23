@@ -29,7 +29,7 @@ function extensionSelectAllHTML(row){const instances=state.instances||[],all=ins
 
 function extensionCard(row){
  const instances=state.instances||[],used=row.instances.filter(i=>i.enabled),changes=extensionChangeList(row),errs=extensionErrors(row),open=extensionPopFor===row.id;
- const problem=errs.length?`${errs.length} 个实例加载失败`:row.compatibilityNotice||'';
+ const problem=row.missingCount?`扩展文件不完整：缺少 ${row.missingCount} 个文件，启用它的实例无法启动`:errs.length?`${errs.length} 个实例加载失败`:row.compatibilityNotice||'';
  return `<article class="ext-card ${open?'popping':''}" data-extension-card="${esc(row.id)}">
   <div class="ext-card-main">${extensionIconHTML(row)}<div class="ext-card-text"><h4><span class="ext-name" title="${esc(row.name)}">${esc(row.name)}</span><span class="ext-version">${esc(row.version)}</span></h4><p class="ext-desc">${row.description?esc(row.description):'<span class="ext-muted">此扩展没有描述</span>'}</p>
   <p class="ext-meta">ID：${row.chromeId?esc(row.chromeId):'<span class="ext-muted">启动启用它的实例后显示</span>'}</p><p class="ext-meta ext-source" title="${esc(row.source||'')}">来源：${row.source?esc(row.source):'<span class="ext-muted">未记录（点 ↻ 选择原文件夹）</span>'}</p></div></div>
@@ -43,7 +43,8 @@ function extensionCard(row){
 function extensionDetailHTML(row){
  const instances=state.instances||[],errs=extensionErrors(row),tags=list=>list?.length?list.map(x=>`<span class="ext-tag">${esc(x)}</span>`).join(''):'<span class="ext-muted">无</span>';
  const instRows=instances.map(inst=>{const info=extensionInfo(row,inst.id),ready=info.loaded&&inst.status==='running';return `<div class="ext-inst-row">${extensionToggleHTML(row,inst)}<span class="ext-inst-actions">${ready?[['popup','面板'],['options','设置']].filter(([k])=>row.entries[k]).map(([k,label])=>`<button class="btn subtle tiny" data-extension="open" data-extension-id="${esc(row.id)}" data-instance-id="${esc(inst.id)}" data-kind="${k}">${label}</button>`).join('')||'<span class="ext-muted">无面板，已在网页中自动运行</span>':''}</span></div>`;}).join('')||'<p class="ext-muted">还没有实例</p>';
- const problems=[row.compatibilityNotice?`<p>${esc(row.compatibilityNotice)}</p>`:'',...errs.map(x=>`<p><b>${esc(x.inst.name)}</b>：${esc(x.info.error)}</p>`)].join('');
+ const missing=row.missingCount?`<p><b>扩展文件不完整</b>：清单引用的 ${row.missingCount} 个文件不存在，Chromium 无法加载，启用它的实例都会启动失败。请点「刷新」选择完整的扩展文件夹，或在下方停用。</p><p class="ext-missing-list">缺少：${(row.incomplete||[]).map(esc).join('、')}${row.missingCount>(row.incomplete||[]).length?` 等共 ${row.missingCount} 个`:''}</p>`:'';
+ const problems=[missing,row.compatibilityNotice?`<p>${esc(row.compatibilityNotice)}</p>`:'',...errs.map(x=>`<p><b>${esc(x.inst.name)}</b>：${esc(x.info.error)}</p>`)].join('');
  return `<div class="ext-detail" data-extension-card="${esc(row.id)}">
   <div class="ext-detail-top"><button class="btn ghost tiny" data-extension="back">${icon('back')}扩展中心</button></div>
   <header class="ext-detail-head">${extensionIconHTML(row,'ext-icon ext-icon-lg')}<div class="ext-detail-title"><h3>${esc(row.name)} <span class="ext-version">${esc(row.version)}</span></h3><p>${row.description?esc(row.description):'<span class="ext-muted">此扩展没有描述</span>'}</p></div>
