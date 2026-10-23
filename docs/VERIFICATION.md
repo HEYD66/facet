@@ -1,5 +1,14 @@
 # 验证入口与历史记录
 
+## 2026-10-23 22:20：v0.2.20 发布候选构建（未发布）
+
+- 源码：`0b28c96`（发布说明与打包检查）。之后只提交了本记录，`docs/VERIFICATION.md` 不在安装包内，安装包内容不受影响。
+- 构建前门禁：`check`、`test:control-api`、`test:updates`、`test:packaging`、`git diff --check`、`npm audit --omit=dev`（0 漏洞）通过。
+- 构建：`build:environment-pipe` 未能重新链接 `environment-pipe.node`（LNK1104），原因是正式进程正在加载该文件。该文件与 manifest 的哈希一致，git 中也没有改动，因此直接运行 `node scripts/build-installer.cjs`，由它的 `verifyArtifacts()` 校验 Mihomo、进程保护和环境管道组件后构建。
+- 产物：`release/Facet-Setup-0.2.20-x64.exe`，131,082,668 字节，SHA256 `f0b2c8f15b005dcf8271ed7d3eb658f7ea31e57e00b3b09c00fa1655d28914b1`。`latest.yml` 版本 0.2.20，SHA512 与大小和安装包一致，blockmap 和 .sha256 齐全。
+- 打包验收：`win-unpacked` 复制到没有低完整性标签的 `%LOCALAPPDATA%\Temp`（`app.asar`、`Facet.exe` 哈希与构建输出一致），连续运行 `test:installed` 3 次。第 1 次 27 项全部通过，但最后一次正常退出超过 15 秒等待，记为失败：控制关闭后 16 秒才出现「正在退出」，像是测试用 `CloseMainWindow` 发出的 WM_CLOSE 没有送到主窗口。第 2、3 次 27/27 通过、退出码 0。新增的第 25 项确认 ASAR 内模型能收到 `ask_user_question`、请求附带 `include_usage`、token-meter 记录上下文用量，主进程能用 micromark/mdast 解析 Markdown 表格和粗体。
+- 未做：安装器本身的安装/卸载流程（只验收了解包程序）；未签名；未推送、未发布。
+
 ## 2026-10-23：AI 面板接入 DSH 后端插件（第二轮）
 
 - `tests/ai-stream.test.cjs` 新增 2 项：OpenAI `cached_tokens` 与 DeepSeek `prompt_cache_hit_tokens` 映射为 DSH 互斥用量（输入不含缓存命中），用量是不可枚举字段、不进入历史；畸形用量被忽略。
