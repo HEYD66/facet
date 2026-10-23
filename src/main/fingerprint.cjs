@@ -133,6 +133,11 @@ function preset(id,base={},seed=crypto.randomBytes(16).toString('hex')){
 function generatedUserAgent(){return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome||'0.0.0.0'} Safari/537.36`;}
 // Only a generated UA matching this runtime can reuse native UA-CH metadata.
 // An explicitly edited or old-version UA retains the existing custom-UA policy.
+// NOTE: adding a "Google Chrome" brand here would only cover the page and the
+// CDP-overridden workers; service workers keep native UA-CH (preload-based, no
+// metadata override), so a page-only brand would split page vs. service worker.
+// A consistent "Google Chrome" brand belongs with the Sec-CH-UA header gap at
+// the kernel level, where native UA-CH applies to every context and the headers.
 function generatedMetadata(env,native){
  if(!env.fingerprint?.enabled||env.fingerprint.template==='custom'||env.platform!=='Win32'||env.userAgent!==generatedUserAgent()||native?.metadata?.platform!=='Windows')return null;
  return {...native.metadata,platform:'Windows',mobile:false,model:''};

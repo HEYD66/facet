@@ -89,6 +89,59 @@
       define(Screen.prototype,'pixelDepth',fp.ColorDepth);
     }
   }
+  /* ---------------- window.chrome 外观 ----------------
+   * 真实 Chrome 的 window.chrome 带 app / csi / loadTimes；Electron 只留一个空对象，
+   * 是常见的自动化/非 Chrome 标志。这里在窗口上补齐这三项（Worker 没有 window.chrome 不处理），
+   * 取值来自本页自己的 performance 计时，保持自洽。runtime 在普通网页本就缺省，不添加。 */
+  if (!worker && root.chrome && typeof root.chrome === 'object') try {
+    var chromeObj = root.chrome;
+    var ownProp = Object.prototype.hasOwnProperty;
+    var nativeFn = function (name, fn) { apply(mapSet, sources, [fn, 'function ' + name + '() { [native code] }']); return fn; };
+    var addChrome = function (key, val) {
+      if (apply(ownProp, chromeObj, [key])) return;
+      try { Object.defineProperty(chromeObj, key, { value: val, writable: true, enumerable: true, configurable: true }); } catch (e) {}
+    };
+    var perf = root.performance;
+    var navEntry = perf && perf.getEntriesByType ? perf.getEntriesByType('navigation')[0] : null;
+    var originMs = perf && perf.timeOrigin ? perf.timeOrigin : Date.now();
+    var secOf = function (ms) { return (originMs + (ms || 0)) / 1000; };
+    addChrome('csi', nativeFn('csi', function csi() {
+      return {
+        startE: floor(originMs),
+        onloadT: floor(originMs + (navEntry ? navEntry.domContentLoadedEventEnd : 0)),
+        pageT: perf && perf.now ? perf.now() : 0,
+        tran: 15,
+      };
+    }));
+    addChrome('loadTimes', nativeFn('loadTimes', function loadTimes() {
+      var d = navEntry || {};
+      return {
+        requestTime: secOf(d.requestStart || d.startTime || 0),
+        startLoadTime: secOf(d.startTime || 0),
+        commitLoadTime: secOf(d.responseStart || 0),
+        finishDocumentLoadTime: secOf(d.domContentLoadedEventEnd || 0),
+        finishLoadTime: secOf(d.loadEventEnd || 0),
+        firstPaintTime: secOf((d.responseEnd || 0) + 1),
+        firstPaintAfterLoadTime: 0,
+        navigationType: 'Other',
+        wasFetchedViaSpdy: true,
+        wasNpnNegotiated: true,
+        npnNegotiatedProtocol: 'h2',
+        wasAlternateProtocolAvailable: false,
+        connectionInfo: 'h2',
+      };
+    }));
+    addChrome('app', {
+      isInstalled: false,
+      InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+      RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+      getDetails: nativeFn('getDetails', function getDetails() { return null; }),
+      getIsInstalled: nativeFn('getIsInstalled', function getIsInstalled() { return false; }),
+      installState: nativeFn('installState', function installState() { return 'not_installed'; }),
+      runningState: nativeFn('runningState', function runningState() { return 'cannot_run'; }),
+    });
+  } catch (e) {}
+
   /* ---------------- Canvas 噪声 ----------------
    * 种子决定步长与增量，同一实例跨会话恒定。
    * 注意 toDataURL / toBlob 走「离屏副本」路径：必须先克隆再写噪点，

@@ -40,11 +40,20 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA 仍沿用清空自定义 UA-CH 的兼容策略，避免套用错误版本信息。关闭参考覆盖后恢复原生方案。
 
+## 2026-10-24 检测对抗：CPU/显卡配套与 window.chrome（源码修改，未发布）
+
+起因：在一个检测页上实测伪装实例，读出两处破绽——(1) `navigator.hardwareConcurrency` 报 24 却配 `Intel(R) UHD Graphics 617`（2018 年超低功耗双核集显），24 线程 + UHD 617 是现实中不存在的机器；(2) `window.chrome` 是空对象（真 Chrome 带 `app`/`csi`/`loadTimes`），是常见的非 Chrome / 自动化标志。
+
+- **CPU 与显卡配套**（`fingerprint-catalog.cjs`）：给每个候选显卡按型号判一个粗档 `gpuTier`（low/mid/high，未知归 mid），线程数从该档的池里选（low=[6,8]、mid=[8,12,16,20]、high=[16,20,24,28,32]，三池并集仍是原 8 个线程值）。这样低端/老显卡不会再配 24–32 线程，旗舰不会配 6 线程。显存沿用原逻辑（线程≤8 时 4/8GB，否则 8GB，浏览器本就把 `deviceMemory` 封顶 8）。屏幕与 DPR 这轮未按档位收口，仍从可容纳当前视口的池中等概率选取。
+- **window.chrome 外观**（`fingerprint-inject.js`）：仅在窗口（Worker 没有 window.chrome 不处理）补齐 `chrome.app`、`chrome.csi()`、`chrome.loadTimes()`，取值来自本页 `performance` 计时保持自洽，函数的 `toString` 经 `sources` 表返回原生样式字符串，`name`/`length` 与原生一致。`chrome.runtime` 在普通网页本就缺省，不添加。
+- 验证：`tests/fingerprint.test.cjs` 的 2000 种子用例新增配套断言（每个计划的线程数必须落在所选显卡档位的池内，0 例不合理；8 个线程值仍全部出现）；独立 Electron 探针确认运行时 `window.chrome.{app,csi,loadTimes}` 存在且 `toString` 为原生样式、低端显卡（GT 625）配 6 线程。`fingerprint-contexts` / `fingerprint-electron` 的首阶段通过；其 fresh-process-restart / 第二阶段在本机因自定义 HTTPS 主机连接被拒而超时，去掉本次改动后同样复现，属既有环境问题，与本修改无关。
+
 ## 已知限制与内核后续
 
-- 字体、媒体设备、语音、WebGPU、完整 WebGL 能力、TLS 均未因导入库而改动。
+- 字体、媒体设备、语音、WebGPU、完整 WebGL 能力、TLS 均未因导入库而改动。实测发现：宿主已装的 SAPI 语音会按真实系统语言暴露（例如中文 Windows 只有 `Microsoft Huihui/Kangkang/Yaoyao` 中文语音），与伪装的 en-US 出口不一致；伪造一份可用的英文语音列表风险较高（`speechSynthesis.speak` 实际不可用会成为新破绽），留待内核或专项处理。`navigator.languages` 目前只有单个地区码（如 `["en-US"]`），真 Chrome 默认带回退项（`["en-US","en"]`），这轮未改（改动会波及多个 Worker 语言一致性的 Electron 用例）。
 - 主页面、同源 iframe、跨站独立进程 iframe、Dedicated Worker、网站 Service Worker 和受测 SharedWorker 的所测设备字段及 OffscreenCanvas PNG 导出已对齐，见下节。bitmaprenderer 导出和完整 GPU 能力等不完整覆盖，不能宣称所有上下文完全一致。
 - 当前 Electron 44.4.5 的原生对照和库实例在受控 HTTPS 上均未发送 `Sec-CH-UA-*` 请求头；页面 `navigator.userAgentData` 与 UA 版本一致。不能把 JS 元数据验证写成 HTTP Client Hints 已完整支持。[该版本 Electron 源码](https://github.com/electron/electron/blob/v44.4.5/shell/browser/electron_browser_context.cc) 的 `GetClientHintsControllerDelegate` 返回空指针，相关支持需在内核阶段实现。
+- UA 字符串报 `Chrome/<版本>`，但 `navigator.userAgentData` 的 brands / fullVersionList 只有 `Chromium`（加 GREASE 项），缺 `Google Chrome` 品牌，这是「是 Chromium/Electron 不是 Chrome」的直接信号。这轮未补：页面可用 CDP `setUserAgentOverride` 的 `userAgentMetadata` 加上 Google Chrome，但 Service Worker 走的是 preload（不下发 metadata 覆盖），只改页面会造成「页面有 Google Chrome、SW 没有」的跨上下文不一致（项目自有的上下文一致性测试会据此判失败）。要一致需要让每个上下文（含 SW 和 Sec-CH-UA 请求头）都带 Google Chrome，与上一条同属内核阶段。
 - 第三方采样中的 Canvas/音频数值不通用，沿用千面现有固定种子扰动，不导入其签名或私有算法。
 
 ## 2026-10-21 上下文一致性与 API 行为修复
