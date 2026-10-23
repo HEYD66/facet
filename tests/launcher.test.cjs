@@ -16,7 +16,8 @@ function fixture(t) {
   fs.writeFileSync(path.join(source, 'electron.exe'), 'fake runtime');
   fs.writeFileSync(path.join(source, 'locales', 'en-US.pak'), 'locale');
   return {source, executable: path.join(source, 'electron.exe'), version: '44.4.5',
-    platform: 'win32', env: {}, cacheRoot: path.join(root, 'localappdata', 'cache'), warn() {}};
+    platform: 'win32', env: {}, cacheRoot: path.join(root, 'localappdata', 'cache'), warn() {},
+    integrity() { return null; }};
 }
 
 test('child environment removes Electron host flags without mutating the parent', () => {
@@ -89,6 +90,25 @@ test('unsuccessful fallback stops rather than weakening the sandbox', t => {
   const f = fixture(t);
   assert.throws(() => resolveRuntime({...f, probe: breakpoint}), /本地缓存自检也失败/);
   assert.equal(fs.readFileSync(f.executable, 'utf8'), 'fake runtime');
+});
+
+test('breakpoint diagnosis names a Low integrity runtime folder, without probing healthy runtimes', t => {
+  const f = fixture(t); const messages = []; let probed = 0;
+  const integrity = () => { probed++; return 'low'; };
+  assert.equal(resolveRuntime({...f, probe: good, integrity}), f.executable);
+  assert.equal(probed, 0, 'healthy runtimes are not probed for integrity');
+  resolveRuntime({...f, integrity, probe: file => file === f.executable ? breakpoint() : good(), warn: m => messages.push(m)});
+  assert.equal(probed, 1);
+  assert.match(messages[0], /低完整性标签/);
+  assert.throws(() => resolveRuntime({...f, integrity, probe: breakpoint}), /低完整性标签.*本地缓存自检也失败/);
+});
+
+test('an integrity probe failure does not change the fallback decision', t => {
+  const f = fixture(t); const messages = [];
+  const chosen = resolveRuntime({...f, integrity() { throw Error('probe broke'); },
+    probe: file => file === f.executable ? breakpoint() : good(), warn: m => messages.push(m)});
+  assert.notEqual(chosen, f.executable);
+  assert.match(messages[0], /0x80000003/);
 });
 
 test('cache cannot be nested in the source runtime', t => {

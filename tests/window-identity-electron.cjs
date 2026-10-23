@@ -8,12 +8,14 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-window-identity-'));
 app.setPath('userData',root);
 app.on('window-all-closed',()=>{});
 const results=[];
+// PowerShell 7 is optional on Windows; fall back to the built-in Windows PowerShell 5.1 for this read-only probe.
+async function runPowerShell(args,options){try{return await promisify(execFile)('pwsh.exe',args,options);}catch(e){if(e.code!=='ENOENT')throw e;return promisify(execFile)('powershell.exe',['-ExecutionPolicy','Bypass',...args],options);}}
 const timeout=setTimeout(()=>app.exit(2),90000);timeout.unref();
 app.whenReady().then(async()=>{
  try{
   if(process.platform!=='win32')throw Error('This verification requires Windows');
   const icon=resourcePath(app,'facet.ico');
-  const probe=async win=>JSON.parse((await promisify(execFile)('pwsh.exe',['-NoProfile','-File',path.join(__dirname,'window-identity-properties.ps1'),'-WindowHandle',win.getNativeWindowHandle().readBigUInt64LE().toString()],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
+  const probe=async win=>JSON.parse((await runPowerShell(['-NoProfile','-File',path.join(__dirname,'window-identity-properties.ps1'),'-WindowHandle',win.getNativeWindowHandle().readBigUInt64LE().toString()],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
   const previous=new BrowserWindow({show:false,icon,title:'Facet icon baseline',webPreferences:{sandbox:true,contextIsolation:true}});
   await previous.loadURL('data:text/plain,Facet icon baseline');
   const before=await probe(previous);

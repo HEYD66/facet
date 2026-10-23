@@ -42,8 +42,11 @@ async function setIsolatedGeoEndpoint(url){
  // Only redirect the diagnostic destination in this isolated test process.
  assert.equal(await mainValue("process.getBuiltinModule('module').createRequire(process.resourcesPath+'/app.asar/package.json')('./src/main/diagnostics.cjs').TARGETS.ip="+JSON.stringify(url)),url);
 }
+// PowerShell 7 is optional on Windows; fall back to the built-in Windows PowerShell 5.1.
+// Bypass applies to this one process only so the read-only probe script can run under the default policy.
+async function runPowerShell(args,options){try{return await promisify(execFile)('pwsh.exe',args,options);}catch(e){if(e.code!=='ENOENT')throw e;return promisify(execFile)('powershell.exe',['-ExecutionPolicy','Bypass',...args],options);}}
 async function verifyTaskbar(){
- const native=JSON.parse((await promisify(execFile)('pwsh.exe',['-NoProfile','-File',path.join(__dirname,'../tests/window-identity-properties.ps1'),'-ProcessId',String(child.pid)],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
+ const native=JSON.parse((await runPowerShell(['-NoProfile','-File',path.join(__dirname,'../tests/window-identity-properties.ps1'),'-ProcessId',String(child.pid)],{encoding:'utf8',windowsHide:true,timeout:15000})).stdout);
  assert.equal(native.pid,child.pid);assert.equal(native.appId,'Facet.MultiInstanceBrowser');
  assert.equal(native.icon,path.join(path.dirname(executable),'resources/facet.ico')+',0');
  assert.equal(native.command,'"'+executable+'"');assert.equal(native.name,'千面 Facet');

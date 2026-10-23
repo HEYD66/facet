@@ -35,7 +35,7 @@ Add-Type -AssemblyName System.Drawing
 function BitmapHash($bitmap) {
  $stream = [System.IO.MemoryStream]::new()
  $hash = [System.Security.Cryptography.SHA256]::Create()
- try { $bitmap.Save($stream,[System.Drawing.Imaging.ImageFormat]::Png); return [Convert]::ToHexString($hash.ComputeHash($stream.ToArray())) }
+ try { $bitmap.Save($stream,[System.Drawing.Imaging.ImageFormat]::Png); return ([BitConverter]::ToString($hash.ComputeHash($stream.ToArray()))).Replace('-','') }
  finally { $stream.Dispose(); $hash.Dispose() }
 }
 function IconDetails([bool]$small) {

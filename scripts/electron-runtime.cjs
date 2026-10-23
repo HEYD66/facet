@@ -1,6 +1,10 @@
 'use strict';
-// Windows can abort before JS/Chromium logging while starting from some volumes.
-// Relocate identical runtime bytes only for the observed STATUS_BREAKPOINT failure.
+// A process inherits the integrity level of its executable file. When the runtime sits in a
+// folder carrying a Low mandatory label (e.g. AppData\LocalLow, or folders labelled by a sandbox /
+// folder-protection tool), electron.exe runs at Low integrity and Chromium aborts with
+// STATUS_BREAKPOINT (0x80000003) before any JS or logging. This is not drive-specific.
+// Relocate identical runtime bytes (the copy inherits the cache folder's normal label) only
+// for that observed failure; never lower the sandbox or rewrite the source folder's security.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -21,6 +25,26 @@ function probeVersion(executable, env) {
   return spawnSync(executable, ['--version'], {
     env, encoding: 'utf8', timeout: 15000, windowsHide: true
   });
+}
+
+const INTEGRITY = {'S-1-16-0': 'untrusted', 'S-1-16-4096': 'low', 'S-1-16-8192': 'medium',
+  'S-1-16-8448': 'medium-plus', 'S-1-16-12288': 'high', 'S-1-16-16384': 'system'};
+// Read the integrity level a process started from `executable` actually gets. Runs it in
+// ELECTRON_RUN_AS_NODE mode (Chromium is not initialised, so it cannot hit the same abort)
+// and asks whoami for the locale-independent integrity SID. Returns null when unknown.
+function probeIntegrity(executable, env) {
+  const code = "process.stdout.write(require('child_process').execFileSync('whoami.exe',['/groups','/fo','csv','/nh']).toString('latin1'))";
+  const result = spawnSync(executable, ['-e', code], {
+    env: {...env, ELECTRON_RUN_AS_NODE: '1'}, encoding: 'latin1', timeout: 15000, windowsHide: true
+  });
+  const sid = !result.error && result.status === 0 && String(result.stdout || '').match(/S-1-16-\d+/);
+  return sid ? INTEGRITY[sid[0]] || sid[0] : null;
+}
+
+function breakpointCause(level) {
+  return level === 'low' ?
+    '原运行时所在目录带有低完整性标签（Low Mandatory Level），electron.exe 以低完整性运行，Chromium 启动即中止' :
+    'Electron 原路径启动异常 0x80000003' + (level ? `（进程完整性：${level}）` : '');
 }
 
 function versionMatches(result, version) {
@@ -86,7 +110,7 @@ function verifiedCopy(source, cacheRoot, key, digest) {
 }
 
 function resolveRuntime({executable, version, env, platform = process.platform,
-  cacheRoot, probe = probeVersion, warn = console.warn}) {
+  cacheRoot, probe = probeVersion, integrity = probeIntegrity, warn = console.warn}) {
   if (platform !== 'win32') return executable;
   const original = probe(executable, env);
   if (versionMatches(original, version)) return executable;
@@ -95,8 +119,11 @@ function resolveRuntime({executable, version, env, platform = process.platform,
     throw new Error(`Electron ${version} 启动自检失败：${exitDescription(original)}；` +
       `请检查安装版本和运行环境。${String(original.stderr || '').trim()}`);
   }
+  let level = null;
+  try { level = integrity(executable, env); } catch { /* diagnosis only; the fallback decides */ }
+  const cause = breakpointCause(level);
   if (!cacheRoot) {
-    if (!env.LOCALAPPDATA) throw new Error('Electron 启动异常 0x80000003，且 LOCALAPPDATA 不可用');
+    if (!env.LOCALAPPDATA) throw new Error(`${cause}，且 LOCALAPPDATA 不可用`);
     cacheRoot = path.join(env.LOCALAPPDATA, 'FacetRuntime', 'electron');
   }
   const source = path.dirname(executable);
@@ -110,11 +137,11 @@ function resolveRuntime({executable, version, env, platform = process.platform,
   const candidate = path.join(cached, path.basename(executable));
   const result = probe(candidate, env);
   if (!versionMatches(result, version)) {
-    throw new Error(`原运行时启动异常 0x80000003；本地缓存自检也失败：${exitDescription(result)}。` +
+    throw new Error(`${cause}；本地缓存自检也失败：${exitDescription(result)}。` +
       '未关闭沙盒或改动系统服务，请保留报错继续排查。');
   }
-  warn(`Electron 原路径启动异常 0x80000003，已使用校验一致的本地运行时：${cached}`);
+  warn(`${cause}，已使用校验一致的本地运行时：${cached}`);
   return candidate;
 }
 
-module.exports = {childEnvironment, exitDescription, probeVersion, resolveRuntime, treeDigest};
+module.exports = {childEnvironment, exitDescription, probeIntegrity, probeVersion, resolveRuntime, treeDigest};
