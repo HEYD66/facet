@@ -88,6 +88,7 @@
     "test:fingerprint-contexts": "node tests/fingerprint-contexts-runner.cjs",
     "test:cdp-workers": "node tests/cdp-worker-main-process.cjs",
     "test:fingerprint-offscreen": "node scripts/launch-electron.cjs tests/fingerprint-offscreen-electron.cjs",
+    "test:ai-capabilities": "node scripts/launch-electron.cjs tests/ai-capabilities-electron.cjs",
     "test:ai-dsh": "node tests/ai-dsh-runner.cjs",
     "test:ai-agent": "node scripts/launch-electron.cjs tests/ai-agent-electron.cjs",
     "test:ai-memory": "node tests/ai-memory-runner.cjs",

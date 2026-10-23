@@ -32,7 +32,8 @@ app.whenReady().then(async()=>{let error;try{
     res.write('data: '+JSON.stringify({choices:[{index:0,delta,finish_reason:mode==='unexpected-tool'?'tool_calls':'stop'}]})+'\n\n');res.end('data: [DONE]\n\n');return;
    }
    round++;
-   const calls=mode==='limit'?[call('read-'+round,'cdp_command',{instanceId:target,method:'Page.getLayoutMetrics',params:{}})]:[call('read-'+round,'read_page',{instanceId:target})];
+   if(mode==='unbounded'&&round===25){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:'正常轮询24次后完成。'}}]}));return;}
+   const calls=['limit','unbounded'].includes(mode)?[call('read-'+round,'cdp_command',{instanceId:target,method:'Page.getLayoutMetrics',params:{}})]:[call('read-'+round,'read_page',{instanceId:target})];
    if(round===3&&mode!=='limit')calls.push(call('skipped-fill','fill',{instanceId:target,selector:'#should-not-run',text:'no'}));
    res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:null,tool_calls:calls}}]}));
   });await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -40,23 +41,23 @@ app.whenReady().then(async()=>{let error;try{
   require('../src/main/ipc.cjs').installIPC(win,c);await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));
   const agent=c.aiAgent;agent.save({baseURL:base+'/v1',model:'local-stop-protocol'});
   for(const scenario of ['normal','failure','empty','unexpected-tool','timeout','abort','limit','unbounded','normal']){
-   mode=scenario==='unbounded'?'limit':scenario;round=0;summaryCount=0;summaryStarted=false;requests=[];agent.clear();
-   agent.save({baseURL:base+'/v1',model:'local-stop-protocol',maxRounds:scenario==='limit'?5:0});assert.equal(agent.settings().maxRounds,scenario==='limit'?5:0);
+   mode=scenario;round=0;summaryCount=0;summaryStarted=false;requests=[];agent.clear();
+   agent.save({baseURL:base+'/v1',model:'local-stop-protocol',maxRounds:scenario==='unbounded'?0:scenario==='limit'?5:3});assert.equal(agent.settings().maxRounds,scenario==='unbounded'?0:scenario==='limit'?5:3);
    agent.begin({prompt:'Read the test page',ids:[target],permission:'full'});
    if(mode==='abort'){await wait(()=>summaryStarted);agent.stop();}
    await wait(()=>!agent.run.busy);
-   assert.equal(summaryCount,scenario==='failure'?3:1);assert.equal(round,scenario==='limit'?5:scenario==='unbounded'?20:3);
-   assert.equal(agent.run.status,mode==='abort'?'已停止':scenario==='limit'?'已达到 5 轮上限':'已停止：无进展');
-   if(scenario==='unbounded')assert(agent.run.entries.some(x=>x.kind==='system'&&x.text.includes('原地循环')));
-   assert(!agent.run.entries.some(x=>x.kind==='tool'&&x.text.startsWith('fill：')));
+   assert.equal(summaryCount,scenario==='unbounded'?0:scenario==='failure'?3:1);assert.equal(round,scenario==='limit'?5:scenario==='unbounded'?25:3);
+   assert.equal(agent.run.status,mode==='abort'?'已停止':scenario==='unbounded'?'已完成':scenario==='limit'?'已达到 5 轮上限':'已达到 3 轮上限');
+   if(scenario==='unbounded')assert(!agent.run.entries.some(x=>x.kind==='system'&&x.text.includes('原地循环')));
+   if(!['limit','unbounded'].includes(mode))assert(agent.run.entries.some(x=>x.kind==='tool'&&x.text.startsWith('fill：')));
    if(mode!=='abort'){
     const answer=agent.run.entries.filter(x=>x.kind==='assistant').at(-1)?.text;assert(answer?.trim());
     if(['failure','empty','unexpected-tool','timeout'].includes(mode))assert(answer.includes('千面提供的停止说明'));
-    else assert(answer.includes('页面连续为空'));
+    else assert(answer.includes(scenario==='unbounded'?'24次':'页面连续为空'));
     const restored=new AIAgent(c);assert(restored.run.entries.some(x=>x.kind==='assistant'&&x.text===answer));
     assert(restored.memory.turns.some(t=>t.messages.some(m=>m.role==='assistant'&&m.content===answer)));assert.equal(restored.memory.turns.length,1);
    }
-   if(mode!=='limit')assert(JSON.stringify(requests.at(-1).messages).includes('此操作未执行'));
+   assert(!JSON.stringify(requests.at(-1).messages).includes('无进展保护已触发'));
    results.push(scenario+': tools stop, final response/fallback or explicit cancellation, complete tool protocol and persistence verified');
   }
   await win.webContents.executeJavaScript("document.querySelector('#aiToggle').click()");

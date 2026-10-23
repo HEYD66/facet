@@ -23,10 +23,10 @@ app.whenReady().then(async()=>{let error;try{
   if(!body.tools){reply(res,{content:'已停止，工具不被支持，未修改网页。'});return;}
   const planned=body.messages.find(m=>m.role==='user'&&['PLAN_FOLLOWTHROUGH','PLAN_STUCK','PLAN_LIMIT'].includes(m.content));
   if(planned){
-   const results=body.messages.filter(m=>m.role==='tool'),reminded=body.messages.some(m=>m.role==='user'&&String(m.content).startsWith('千面任务收尾检查'));
+   const results=body.messages.filter(m=>m.role==='tool'),reminders=body.messages.filter(m=>m.role==='user'&&String(m.content).startsWith('千面任务收尾检查')).length,reminded=reminders>0;
    const step=status=>({steps:[{id:'inspect',title:'读取并核对真实网页',status}]});
    if(!results.length)reply(res,{tool_calls:[call('update_plan',step('in_progress'),'plan-start')]});
-   else if(!reminded||planned.content!=='PLAN_FOLLOWTHROUGH')reply(res,{content:'先到这里，需要我继续吗？'});
+   else if(!reminded||planned.content==='PLAN_LIMIT'||planned.content==='PLAN_STUCK'&&reminders<4)reply(res,{content:'先到这里，需要我继续吗？'});
    else if(!results.some(m=>m.content.includes('DSH browser fixture')))reply(res,{tool_calls:[call('observe',{instanceId:target,full_text:true},'plan-observe')]});
    else if(results.filter(m=>m.content.includes('"changed":true')).length<2)reply(res,{tool_calls:[call('update_plan',step('completed'),'plan-finish')]});
    else reply(res,{content:'已读取并核对真实网页，任务完成。'});
@@ -38,7 +38,7 @@ app.whenReady().then(async()=>{let error;try{
    reply(res,done?{content:'补充已执行，已读取真实网页。'}:{content:null,tool_calls:[call('read_page',{instanceId:target},'inspect-steer')]});return;
   }
   if(prompt==='UNKNOWN'||prompt==='INVALID'){
-   const n=body.messages.filter(m=>m.role==='tool').length;
+   const n=body.messages.filter(m=>m.role==='tool').length;if(n>=6){reply(res,{content:'错误已核对，六次尝试后正常回复。'});return;}
    reply(res,{content:null,tool_calls:[call(prompt==='UNKNOWN'?'nonexistent_tool':'read_page',prompt==='UNKNOWN'?{}:'{broken',prompt+'-'+n)]});return;
   }
   reply(res,{content:'完成 '+prompt});
@@ -88,15 +88,15 @@ app.whenReady().then(async()=>{let error;try{
   await wait(()=>ui("document.querySelector('#aiPlan summary')?.textContent.includes('历史计划')&&document.querySelector('#aiContinue').textContent==='继续旧任务'"));
   assert.equal(await ui("document.querySelector('#aiPlan').open"),false);
   reports.push('Greeting preserves an old six-instance plan as collapsed history; current scope stays authoritative, no old operation resumes and the reply is not falsely marked unfinished');
-  a.clear();a.begin({prompt:'PLAN_STUCK',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已暂停：计划未完成');assert(a.run.plan.steps.some(s=>s.status==='in_progress'));
-  assert.equal(a.run.entries.filter(e=>e.kind==='system'&&e.text.includes('正在核对并继续')).length,2);
-  reports.push('Unfinished-plan follow-through is bounded to two reminders, then pauses with a final explanation instead of looping or marking success');
+  a.clear();a.begin({prompt:'PLAN_STUCK',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert(a.run.plan.steps.every(s=>s.status==='completed'));
+  assert.equal(a.run.entries.filter(e=>e.kind==='system'&&e.text.includes('正在核对并继续')).length,4);
+  reports.push('Current task continues beyond two reminders and finishes the real page inspection without an artificial follow-through cutoff');
   a.clear();a.maxRounds=2;a.begin({prompt:'PLAN_LIMIT',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已达到 2 轮上限');a.maxRounds=0;
   reports.push('Configured round limit remains effective during plan follow-through');
   for(const prompt of ['UNKNOWN','INVALID']){
-   a.clear();const before=requests.length;a.begin({prompt,ids:[target],permission:'full'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已停止：无进展');assert.equal(requests.length-before,4);assert(a.run.entries.some(e=>e.kind==='assistant'&&e.text.includes('已停止')));
+   a.clear();const before=requests.length;a.begin({prompt,ids:[target],permission:'full'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert.equal(requests.length-before,7);assert(a.run.entries.some(e=>e.kind==='assistant'&&e.text.includes('六次')));
   }
-  reports.push('Unknown tools and malformed arguments are bounded by the same no-progress guard, with a persisted final answer');
+  reports.push('Six repeated tool or argument errors reach the model for correction without a host-imposed no-progress stop');
   a.clear();a.begin({prompt:'HOLD_BOUND',ids:[target],permission:'read'});await wait(()=>held&&a.dsh);
   await a.tool('update_plan',{steps:[{id:'pending',title:'等待后续核对',status:'pending'}]});
   for(let i=0;i<8;i++)await ipc('ai-message',{taskId:a.run.id,mode:'queue',prompt:'BOUND_'+i});

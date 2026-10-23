@@ -109,11 +109,11 @@ app.whenReady().then(async()=>{try{
  reports.push('act sends trusted clicks/typing to main frame, shadow DOM, custom checkbox, native select, OOPIF and offscreen element; occluded element refused');
  r=await tool('act',{action:'scroll',direction:'up',amount:20000});assert(/^0\//.test(r.scroll));
  r=await tool('act',{action:'scroll',direction:'down',amount:700});assert(Number(r.scroll.split('/')[0])>0,'wheel scrolled page');
- await assert.rejects(tool('act',{ref:ref('Password'),action:'type',text:'x'}),/密码/);
+ const pw=await tool('act',{ref:ref('Password'),action:'type',text:'local-fixture-password'});assert.equal(await wc().executeJavaScript("document.querySelector('#pw').value"),'local-fixture-password');assert(!JSON.stringify(pw).includes('local-fixture-password'));
  r=await tool('act',{ref:ref('Go SPA'),action:'click'});
  assert(JSON.stringify(r).includes('Next step'),'settle waited for delayed SPA render: '+JSON.stringify(r));assert(r.url.endsWith('/page/next'));
  obs=await tool('observe',{});await tool('act',{ref:ref('Next step'),action:'click'});await logged('next:true');
- reports.push('wheel scroll, password refusal, SPA route + delayed render captured by settle');
+ reports.push('wheel scroll, password input without echo, SPA route + delayed render captured by settle');
  r=await tool('act',{ref:ref('Alert'),action:'click'});assert.equal(r.dialog?.message,'Hello dialog',JSON.stringify(r));
  const blocked=await tool('observe',{});assert.equal(blocked.dialog.type,'alert');
  r=await tool('dialog',{accept:true});assert.equal(r.handled,true);await logged('after-alert');
