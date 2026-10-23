@@ -79,6 +79,9 @@ class MenuOverlay {
     view.webContents.send("overlay:render", { html, attrs, label: String(message?.label || "扩展") });
     if (!update) {
       view.setVisible(true);
+      // Electron 44 / Windows：先隐藏创建的浮层显示后可能停在首帧，网页仍按初始 216px 布局、
+      // 不响应新尺寸，菜单底部被裁掉。重新应用同一原生策略恢复出帧（与网页标签相同，见 background-rendering.cjs）。
+      require("./background-rendering.cjs").resume(view.webContents);
       this.open = true;
       view.webContents.focus();
     }
