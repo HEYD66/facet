@@ -10,7 +10,7 @@ try{
  const source=JSON.parse(fs.readFileSync(path.join(path.dirname(settings),'Local State'),'utf8'));
  if(!source.os_crypt)throw Error('Existing profile has no safeStorage key material');
  fs.writeFileSync(localState,JSON.stringify({os_crypt:source.os_crypt}));
- result=spawnSync(process.execPath,[path.join(__dirname,'../scripts/launch-electron.cjs'),path.join(__dirname,'ai-live-electron.cjs'),'--settings='+settings,'--test-profile='+root],{stdio:'inherit',windowsHide:true,timeout:180000});
+ result=spawnSync(process.execPath,[path.join(__dirname,'../scripts/launch-electron.cjs'),path.join(__dirname,'ai-live-electron.cjs'),'--settings='+settings,'--test-profile='+root,...(process.argv.includes('--history-greeting')?['--history-greeting']:[])],{stdio:'inherit',windowsHide:true,timeout:180000});
 }finally{
  for(const name of ['Local State','Local State.bak','Local State.tmp'])fs.rmSync(path.join(root,name),{force:true});
 }

@@ -21,6 +21,17 @@ app.whenReady().then(async()=>{let error;try{
   let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);requests.push(body);
   const latest=body.messages.findLast(m=>m.role==='user'),prompt=Array.isArray(latest.content)?latest.content.find(b=>b.type==='text')?.text:latest.content;
   if(!body.tools){reply(res,{content:'已停止，工具不被支持，未修改网页。'});return;}
+  const planned=body.messages.find(m=>m.role==='user'&&['PLAN_FOLLOWTHROUGH','PLAN_STUCK','PLAN_LIMIT'].includes(m.content));
+  if(planned){
+   const results=body.messages.filter(m=>m.role==='tool'),reminded=body.messages.some(m=>m.role==='user'&&String(m.content).startsWith('千面任务收尾检查'));
+   const step=status=>({steps:[{id:'inspect',title:'读取并核对真实网页',status}]});
+   if(!results.length)reply(res,{tool_calls:[call('update_plan',step('in_progress'),'plan-start')]});
+   else if(!reminded||planned.content!=='PLAN_FOLLOWTHROUGH')reply(res,{content:'先到这里，需要我继续吗？'});
+   else if(!results.some(m=>m.content.includes('DSH browser fixture')))reply(res,{tool_calls:[call('observe',{instanceId:target,full_text:true},'plan-observe')]});
+   else if(results.filter(m=>m.content.includes('"changed":true')).length<2)reply(res,{tool_calls:[call('update_plan',step('completed'),'plan-finish')]});
+   else reply(res,{content:'已读取并核对真实网页，任务完成。'});
+   return;
+  }
   if(prompt==='FIRST'||prompt==='HOLD_STOP'||prompt==='HOLD_BOUND'){held={res,body};req.on('close',()=>{});return;}
   if(prompt?.startsWith('立即补充')){
    const lastUser=body.messages.lastIndexOf(latest),done=body.messages.slice(lastUser).some(m=>m.role==='tool');
@@ -37,6 +48,7 @@ app.whenReady().then(async()=>{let error;try{
  assert.equal(a.snapshot().engine.version,'0.2.1-rc.2');
  if(resume){
   assert.equal(requests.length,0);assert.equal(a.run.busy,false);assert.equal(a.run.permission,'confirm');assert.equal(a.run.queue[0].prompt,'RESUME_AFTER_RESTART');assert.equal(a.run.queue[0].images.length,1);
+  assert(a.run.plan);assert.equal(a.snapshot().task.planCurrent,false);
   await wait(()=>ui("document.querySelector('#aiQueue').textContent.includes('RESUME_AFTER_RESTART')&&!!document.querySelector('#aiQueueNext')"));
   reports.push('Fresh process restores encrypted pending text/image and resets permission; no model request or action resumes automatically');
   a.save({baseURL:base+'/v1',model:'dsh-fixture'});await ui("document.querySelector('#aiPermission').value='read';document.querySelector('#aiQueueNext').click()");await wait(()=>requests.length&&a.run&&!a.run.busy);
@@ -66,11 +78,27 @@ app.whenReady().then(async()=>{let error;try{
   assert.equal((await ui(`bridge.request('ai-message',{taskId:${JSON.stringify(taskId)},mode:'queue',prompt:'stale'})`)).ok,false);
   await ipc('ai-message',{taskId:a.run.id,mode:'queue',prompt:'POLL_FINISH_RACE',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.permission,'read');assert(a.run.entries.some(e=>e.text==='完成 POLL_FINISH_RACE'));
   reports.push('A send click racing with task completion starts a new turn once, with the explicitly selected permission');
+  a.clear();a.begin({prompt:'PLAN_FOLLOWTHROUGH',ids:[target],permission:'read'});await wait(()=>!a.run.busy);
+  assert.equal(a.run.status,'已完成');assert(a.run.plan.steps.every(s=>s.status==='completed'));assert(a.run.entries.some(e=>e.kind==='system'&&e.text.includes('正在核对并继续')));
+  assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));assert.equal(a.snapshot().task.planCurrent,true);
+  reports.push('Official DSH continues an unfinished current plan after a premature text-only reply, reads the real page and verifies completion');
+  const old=structuredClone(a.run.plan);old.steps=[{id:'old',title:'核对旧的6个实例',status:'in_progress'}];a.run.plan=old;a.persist();const beforeGreeting=requests.length;
+  a.begin({prompt:'hi',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert.equal(requests.length,beforeGreeting+1);assert.equal(a.snapshot().task.planCurrent,false);assert.deepEqual(a.run.plan,old);
+  const greeting=requests.at(-1);assert(greeting.messages[0].content.includes('本轮开始时授权数量为 1 个'));assert(greeting.messages.some(m=>String(m.content).startsWith('历史任务计划')));
+  await wait(()=>ui("document.querySelector('#aiPlan summary')?.textContent.includes('历史计划')&&document.querySelector('#aiContinue').textContent==='继续旧任务'"));
+  assert.equal(await ui("document.querySelector('#aiPlan').open"),false);
+  reports.push('Greeting preserves an old six-instance plan as collapsed history; current scope stays authoritative, no old operation resumes and the reply is not falsely marked unfinished');
+  a.clear();a.begin({prompt:'PLAN_STUCK',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已暂停：计划未完成');assert(a.run.plan.steps.some(s=>s.status==='in_progress'));
+  assert.equal(a.run.entries.filter(e=>e.kind==='system'&&e.text.includes('正在核对并继续')).length,2);
+  reports.push('Unfinished-plan follow-through is bounded to two reminders, then pauses with a final explanation instead of looping or marking success');
+  a.clear();a.maxRounds=2;a.begin({prompt:'PLAN_LIMIT',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已达到 2 轮上限');a.maxRounds=0;
+  reports.push('Configured round limit remains effective during plan follow-through');
   for(const prompt of ['UNKNOWN','INVALID']){
    a.clear();const before=requests.length;a.begin({prompt,ids:[target],permission:'full'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已停止：无进展');assert.equal(requests.length-before,4);assert(a.run.entries.some(e=>e.kind==='assistant'&&e.text.includes('已停止')));
   }
   reports.push('Unknown tools and malformed arguments are bounded by the same no-progress guard, with a persisted final answer');
   a.clear();a.begin({prompt:'HOLD_BOUND',ids:[target],permission:'read'});await wait(()=>held&&a.dsh);
+  await a.tool('update_plan',{steps:[{id:'pending',title:'等待后续核对',status:'pending'}]});
   for(let i=0;i<8;i++)await ipc('ai-message',{taskId:a.run.id,mode:'queue',prompt:'BOUND_'+i});
   assert.equal((await ui(`bridge.request('ai-message',{taskId:${JSON.stringify(a.run.id)},mode:'queue',prompt:'OVERFLOW'})`)).ok,false);
   for(const item of a.run.queue.slice())await ipc('ai-queue-remove',{messageId:item.id});

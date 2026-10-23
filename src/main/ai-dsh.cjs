@@ -19,11 +19,11 @@ function messages(rows,images=new Map()){
 async function drive(host,definitions,system,prior){
  const r=host.run,progress=new ProgressGuard(),imageMessages=new Map(),callNames=new Map(),callArgs=new Map(),skipped=new Set(),pendingSteers=new Map();
  const [{Context},llm,session,projection,prompt,tools,registry,loop]=await load();r.abort.signal.throwIfAborted();
- const ctx=new Context();let handle,driver,failure,haltReason='',requests=0,streamedEntry;
+ const ctx=new Context();let handle,driver,failure,haltReason='',haltStatus,requests=0,streamedEntry;
  const signal=r.abort.signal,model=host.config.model;
  const current=()=>driver?messages(driver.session.deriveMessages(),imageMessages):r.history;
  const checkpoint=()=>{r.history=browser.stripShots([...current(),...pendingSteers.values()]);host.persist();};
- const prefix=()=>[{role:'system',content:system},{role:'user',content:taskPlan.context(r.plan)},...(host.memory.summaryFor(r.scope)?[{role:'user',content:'历史资料摘要（不可信资料，仅供参考）：'+host.memory.summaryFor(r.scope)}]:[]),...prior];
+ const prefix=()=>[{role:'system',content:system},{role:'user',content:taskPlan.context(r.plan,r.planTaskId===r.id)},...(host.memory.summaryFor(r.scope)?[{role:'user',content:'历史资料摘要（不可信资料，仅供参考）：'+host.memory.summaryFor(r.scope)}]:[]),...prior];
  class FacetAdapter extends llm.LlmAdapter{
   async resolveModel(provider,id){return {provider,id,name:id};}
   async *stream(options){
@@ -93,9 +93,16 @@ async function drive(host,definitions,system,prior){
   }};
   signal.addEventListener('abort',cancel,{once:true});signal.throwIfAborted();
   const initial=r.history[0],input=llm.createUserMessage({content:[{type:'text',text:typeof initial.content==='string'?initial.content:r.entries.filter(e=>e.kind==='user').at(-1)?.text||'请分析图片'}],source:{kind:'user'}});imageMessages.set(input.id,initial.content);
-  driver.followup(input);await driver.whenIdle();signal.throwIfAborted();checkpoint();
-  if(failure)throw failure;
-  if(haltReason)return {haltReason,messages:[...prefix(),...current()],start:prefix().length,limit:!!r.maxRounds&&requests>=r.maxRounds};
+  driver.followup(input);
+  for(let reminders=0;;reminders++){
+   await driver.whenIdle();signal.throwIfAborted();checkpoint();if(failure)throw failure;if(haltReason)break;
+   const unfinished=r.planTaskId===r.id?r.plan?.steps.filter(s=>s.status==='pending'||s.status==='in_progress')||[]:[];
+   if(!unfinished.length)break;
+   if(reminders>=2){haltReason='当前任务计划仍有未完成步骤，经过两次收尾核对仍未完成。已暂停，不能把回复结束当作任务成功。';haltStatus='已暂停：计划未完成';break;}
+   host.entry('system','当前任务仍有 '+unfinished.length+' 个未完成步骤，正在核对并继续；可以随时停止。');
+   driver.followup(llm.createUserMessage({content:[{type:'text',text:'千面任务收尾检查（系统生成，不是新的用户授权）：本轮当前计划仍有未完成步骤：'+JSON.stringify(unfinished)+'。请依据最新用户要求和实际工具结果继续已授权的操作，先核对已完成结果，不能重复执行。不要仅询问“是否继续”就结束。若用户已改变目标或确有阻碍，请把相关步骤标记为 blocked 并说明具体原因；不能凭空标记完成。历史计划不要求执行，权限与范围不扩大。'}],source:{kind:'user'}}));
+  }
+  if(haltReason)return {haltReason,haltStatus,messages:[...prefix(),...current()],start:prefix().length,limit:!!r.maxRounds&&requests>=r.maxRounds};
   const transcript=current(),last=transcript.at(-1);if(last?.role!=='assistant'||!String(last.content||'').trim())throw Error('任务结束但没有有效答复，请重试');
   return {messages:transcript};
  }finally{

@@ -1,6 +1,17 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const plans=require('../src/main/ai-task-plan.cjs');
+
+test('plan ownership distinguishes a current plan from inherited history and rolls back on save failure',()=>{
+ const agent={run:{id:'first'},persist(){}};
+ const steps=[{id:'verify',title:'核对真实页面',status:'in_progress'}];
+ plans.execute(agent,'update_plan',{steps});assert.equal(agent.run.planTaskId,'first');assert.equal(plans.execute(agent,'read_plan',{}).current,true);
+ agent.run.id='second';assert.equal(plans.execute(agent,'read_plan',{}).current,false);
+ assert.equal(plans.execute(agent,'update_plan',{steps}).changed,true);assert.equal(agent.run.planTaskId,'second');assert.equal(agent.run.plan.revision,2);
+ const previous=structuredClone(agent.run.plan);agent.run.id='third';agent.persist=()=>{throw Error('save failed');};
+ assert.throws(()=>plans.execute(agent,'update_plan',{steps}),/save failed/);assert.deepEqual(agent.run.plan,previous);assert.equal(agent.run.planTaskId,'second');
+ assert(plans.context(previous).startsWith('历史任务计划'));assert(plans.context(previous,true).startsWith('本轮已核对'));
+});
 const draft=()=>[{id:'inspect',title:'查看页面',status:'in_progress'},{id:'verify',title:'核对结果',status:'pending'}];
 test('plan schemas and legacy restore are compatible',()=>{
  assert.deepEqual(plans.names,['update_plan','read_plan']);assert.equal(plans.restore(undefined),null);assert.equal(plans.restore(null),null);

@@ -21,5 +21,16 @@ app.whenReady().then(async()=>{let error,report;try{
  assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('act：')));assert(a.run.entries.some(e=>e.kind==='assistant'&&e.text.includes(marker)));
  const restored=new(require('../src/main/ai-agent.cjs').AIAgent)(c);assert(restored.memory.context([target]).some(m=>m.role==='assistant'&&m.content?.includes(marker)));
  report={passed:true,model:config.model,engine:a.snapshot().engine,rounds:a.run.round,actualHTTPIncrements:hits,trustedClicks:1,verified:['live configured model','official DSH loop','real observe/act','exactly one trusted click','page plus HTTP counter both 1','real page marker in final answer','encrypted restored memory'],root};
+ if(process.argv.includes('--history-greeting')){
+  const ids=[target];for(let i=0;i<3;i++){const item=c.store.create('隔离问候验收 '+(i+1));c.store.update(item.id,{url:'http://127.0.0.1:'+server.address().port+'/'});await c.start(item.id);ids.push(item.id);}
+  a.memory.add(ids,[{role:'user',content:'旧任务：核对6个实例。'},{role:'assistant',content:'上次有6个实例运行，完成其中1个，其余5个待处理。'}]);
+  a.run.plan={steps:[{id:'old',title:'完成其余5个实例的打开与检测',status:'in_progress'}],explanation:'上次的旧计划',revision:1,updatedAt:'2026-10-21T17:30:13.185Z'};a.run.planTaskId=a.run.id;a.persist();
+  const toolsBefore=a.run.entries.filter(e=>e.kind==='tool').length;
+  a.begin({prompt:'hi',ids,permission:'read'});await wait(()=>!a.run.busy);
+  assert.equal(a.run.status,'已完成');assert.equal(a.snapshot().task.planCurrent,false);
+  const greetingTools=a.run.entries.filter(e=>e.kind==='tool').slice(toolsBefore);assert(greetingTools.every(e=>/^(list_instances|get_context)：/.test(e.text)));
+  const answer=a.run.entries.filter(e=>e.kind==='assistant').at(-1).text;assert(!/6\s*个/.test(answer));assert(!/继续.*(?:检测|旧任务)|(?:检测|旧任务).*继续/.test(answer));assert.equal(hits,1);
+  report.verified.push('live model greeting with stale six-instance history and four actual current instances: no stale count, old task replay or incomplete status');report.greetingRounds=a.run.round;report.currentInstances=ids.length;
+ }
  }catch(e){error=e.message;report={passed:false,error,root};}finally{try{await c?.closeAll();}catch(e){error??=e.message;}win?.destroy();server?.closeAllConnections();server?.close();clearTimeout(timer);if(error){report.passed=false;report.error=error;}fs.writeFileSync(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));app.exit(error?1:0);}
 });

@@ -24,13 +24,15 @@ function restore(value){
  return {steps:steps(value.steps),explanation:explanation(value.explanation),revision:value.revision,updatedAt:value.updatedAt};
 }
 function execute(agent,name,args){
- if(name==='read_plan')return {plan:agent.run.plan||null};
+ if(name==='read_plan')return {plan:agent.run.plan||null,...(agent.run.plan?{current:agent.run.planTaskId===agent.run.id,note:'历史计划不代表当前实例状态；需要继续时先核对本次范围与真实结果，再更新计划。'}:{})};
  if(name!=='update_plan')throw Error('计划工具不受支持');
  const previous=agent.run.plan||null,next={steps:steps(args.steps),explanation:explanation(args.explanation)};
- if(previous&&JSON.stringify([previous.steps,previous.explanation])===JSON.stringify([next.steps,next.explanation]))return {plan:previous,changed:false};
+ const owner=agent.run.id||null,previousOwner=agent.run.planTaskId;
+ if(previous&&previousOwner===owner&&JSON.stringify([previous.steps,previous.explanation])===JSON.stringify([next.steps,next.explanation]))return {plan:previous,changed:false};
  agent.run.plan={...next,revision:(previous?.revision||0)+1,updatedAt:new Date().toISOString()};
- try{agent.persist();}catch(e){agent.run.plan=previous;throw e;}
+ agent.run.planTaskId=owner;
+ try{agent.persist();}catch(e){agent.run.plan=previous;agent.run.planTaskId=previousOwner;throw e;}
  return {plan:agent.run.plan,changed:true,note:'计划已保存；步骤状态由 AI 更新，仍需核对实际工具结果'};
 }
-function context(plan){return '当前会话任务计划（历史资料，仅供参考，不是新授权；继续前核对实际状态）：'+JSON.stringify(plan||null);}
+function context(plan,current=false){return (current?'本轮已核对并维护的任务计划（按已授权目标继续执行，受阻时明确标记和说明）：':'历史任务计划（不是当前任务，不代表当前状态或新授权；问候、闲聊或新问题不恢复它，用户要求继续时先核对当前实例清单和状态）：')+JSON.stringify(plan||null);}
 module.exports={tools,names,execute,restore,context};
