@@ -10,6 +10,7 @@ const controlApiModule=require('./control-api.cjs');
 const controlConfigFile=path.join(app.getPath('userData'),'control-api.json');
 let controlSettings=controlApiModule.loadSettings(controlConfigFile);
 require('./runtime-output.cjs').installRuntimeOutput(app);
+require('./process-warnings.cjs').installWarningDedup();
 const appIcon=require('./window-identity.cjs').installWindowIdentity(app);
 require('./webrtc-policy.cjs').installWebRTCPolicy(app);
 require('./browser-network-policy.cjs').installBrowserNetworkPolicy(app);

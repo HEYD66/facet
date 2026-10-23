@@ -1,5 +1,12 @@
 # UX交付状态（第一至四批）
 
+## 2026-10-23：运行输出不再被重复的扩展加载警告占满（当前源码未发布）
+
+- [x] 依据：正式数据目录的 `runtime-output.json`（10-20～10-23，22 次运行）中，Electron 的 `ExtensionLoadWarning` 及其权限明细占保留的 5000 行中的 1157 行（23.1%），已有 6612 行被挤出保留窗口。它们是同一个扩展加载到每个实例会话、每次启动都重复报一遍（cookies 214、notifications 132、webNavigation 112、downloads 106、sidePanel 72 次等），这些权限多数由千面兼容层实现，警告本身不代表故障。
+- [x] 新增 `src/main/process-warnings.cjs`，由 `main.cjs` 启动时接入：只针对 `ExtensionLoadWarning`，每次运行内相同内容保留首次、丢弃重复；不同扩展或权限变化仍各记一次，其他警告不受影响。单元测试 5 项；真实 Electron 中同一扩展加载到 3 个会话只记 1 次，另一扩展单独记录；正式入口 `test:cdp-workers` 通过。
+- 同时修正 `browser-tabs` 测试先释放 IPC 再关窗导致的 `No handler registered for 'core:request'`（生产代码不调用该释放函数，属测试顺序问题），重跑 12 项通过、该报错为 0。
+- 体验单元测试夹具已更新，全部单元测试 403 项中 402 通过、0 失败、1 项 POSIX 专用跳过。
+
 ## 2026-10-23：本机 0x80000003 启动中止的根因
 
 - [x] 查明不是 D 盘问题：开发机项目所在的 `D:\AProgram\arena` 带有可继承的低完整性标签，其下的 electron.exe / Facet.exe 以低完整性运行，Chromium 启动即中止。复制到无标签的 D 盘目录正常；给 C 盘副本加低标签即复现。默认安装到 `D:\Facet` 的用户不受影响。D 盘无标签副本的打包验收 26 项通过。详见 [验证记录](VERIFICATION.md)。

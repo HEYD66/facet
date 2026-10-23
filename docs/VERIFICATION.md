@@ -1,5 +1,11 @@
 # 验证入口与历史记录
 
+## 2026-10-23：扩展加载警告去重与单元测试全绿
+
+- 依据只读统计正式 `runtime-output.json`：5000 行中 1157 行（23.1%）为重复的 `ExtensionLoadWarning`；统计时去掉了网址和凭据，未改动正式数据。
+- `tests/process-warnings.test.cjs` 5 项；`.local-dev/extension-warning-probe/probe-dedup.cjs` 在真实 Electron 中把两个扩展各加载到 3 个会话，运行输出只有 2 条警告头、丢弃 4 条重复。正式入口 `test:cdp-workers` 通过；`test:browser-tabs` 12 项、`test:extension-defaults` 通过。
+- 全部 `tests/*.test.cjs`：403 项，402 通过、0 失败、1 项 POSIX 专用跳过（此前 `experience.test.cjs` 4 项因夹具缺少 `applyDefaults` / `library.get` 失败）。
+
 ## 2026-10-23：0x80000003 根因（低完整性目录标签，不是 D 盘）
 
 - 现象：本机从项目目录直接运行 `node_modules\electron\dist\electron.exe --version` 或 `release\build-*\win-unpacked\Facet.exe`，立即以 0x80000003 退出，无输出。此前的记录写作“D 盘路径”，这是误判。

@@ -25,7 +25,7 @@
 | 记录 | 上限与位置 |
 | --- | --- |
 | 操作 | 数据目录 `global-events.json`，最近 1000 条 |
-| 应用/内核输出 | `runtime-output.json`，最近 5000 行；界面显示最近 1000 行；单行最多 700 字符 |
+| 应用/内核输出 | `runtime-output.json`，最近 5000 行；界面显示最近 1000 行；单行最多 700 字符。Electron 的 `ExtensionLoadWarning`（如兼容层已实现的 cookies、webNavigation 权限被标为 unknown）每次运行内相同内容只记录首次，不同扩展或权限变化仍各记一次（`process-warnings.cjs`） |
 | 网络任务 | `network-trace.json`，最近 300 个任务，每任务最多 160 个阶段；文本字段最多 180 字符 |
 | 节点历史导出 | 最近最多 1000 个节点统计，来自现有检测历史存储 |
 
