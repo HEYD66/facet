@@ -36,5 +36,7 @@ test('malformed or hostile arguments degrade to an empty summary', () => {
 test('ask_user_question shows the question and the user answer', () => {
   const asked = describe('ask_user_question', {questions: [{id: 'mode', question: '使用哪种网络？', options: [{label: '代理（推荐）'}, {label: '直连'}]}]}, {answers: [{id: 'mode', selected: ['代理（推荐）'], custom: '用香港节点'}]});
   assert.deepEqual(asked, {ok: true, args: '使用哪种网络？', result: '已回答：代理（推荐）、用香港节点'});
-  assert.equal(describe('ask_user_question', {questions: []}, {error: 'ask_user_question was aborted'}).ok, false);
+  const stopped = describe('ask_user_question', {questions: []}, {error: 'ask_user_question was aborted before the user answered'});
+  assert.equal(stopped.ok, false);
+  assert.equal(stopped.result, '提问已取消', 'the English DSH abort text is not shown');
 });

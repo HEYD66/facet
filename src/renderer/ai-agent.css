@@ -159,3 +159,62 @@
 .ai-meter svg{width:14px;height:14px;transform:rotate(-90deg)}
 .ai-meter circle{fill:none;stroke-width:3}.ai-meter-track{stroke:var(--line2)}.ai-meter-value{stroke:var(--accent);stroke-linecap:round}
 .ai-meter[data-level="mid"] .ai-meter-value{stroke:var(--amber)}.ai-meter[data-level="high"]{color:var(--red)}.ai-meter[data-level="high"] .ai-meter-value{stroke:var(--red)}
+/* ── Panel polish (2026-10-23 evening) ─────────────────────────────────────────────── */
+/* Header: icon actions keep the title and engine version readable; open views stay marked. */
+.ai-panel header{gap:2px;padding:10px 8px 10px 14px}
+.ai-panel header .ai-title{margin-right:6px}
+.ai-panel .ai-head-btn{width:30px;height:30px;color:var(--muted)}
+.ai-panel .ai-head-btn svg{width:17px;height:17px}
+.ai-panel .ai-head-btn[aria-expanded="true"]{background:var(--accent-weak);color:var(--accent-text)}
+/* Thin scrollbars without arrow buttons; the standard properties would disable the pseudo-elements. */
+.ai-panel *{scrollbar-width:auto;scrollbar-color:auto}
+.ai-panel ::-webkit-scrollbar{width:6px;height:6px}
+.ai-panel ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+.ai-panel ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+.ai-panel ::-webkit-scrollbar-track,.ai-panel ::-webkit-scrollbar-corner{background:transparent}
+.ai-panel ::-webkit-scrollbar-button{display:none;width:0;height:0}
+/* History fades at its edges so text scrolling under the plan or the cards does not look cut off. */
+.ai-history-wrap .ai-history{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%)}
+.ai-history-wrap .ai-latest{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;bottom:14px;border:1px solid var(--line2);border-radius:50%;background:var(--panel);color:var(--text);box-shadow:var(--shadow);cursor:pointer}
+.ai-history-wrap .ai-latest:hover{background:var(--hover)}
+.ai-history-wrap .ai-latest[hidden]{display:none}
+.ai-latest svg{width:15px;height:15px;transform:rotate(180deg)}
+/* Running indicator: a soft pulse in the activity line. */
+.ai-activity{display:flex;align-items:center;gap:8px}
+.ai-activity::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:currentColor;animation:ai-pulse 1.2s ease-in-out infinite}
+@keyframes ai-pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.ai-activity::before{animation:none}}
+/* Composer context row: scope and model are quiet pills, usage sits on the right. */
+.ai-context{gap:6px}
+.ai-panel .ai-context #aiScope{flex:0 1 auto;width:auto;max-width:46%;height:26px;padding:0 4px 0 8px;border:1px solid transparent;border-radius:13px;background:var(--hover);font-size:11px;cursor:pointer}
+.ai-panel .ai-context #aiScope:hover:not(:disabled){border-color:var(--line2)}
+.ai-context #aiModelBadge{display:block;position:relative;flex:0 1 auto;min-width:0;max-width:46%;height:26px;padding:0 22px 0 10px;border:1px solid transparent;border-radius:13px;background:transparent;color:var(--muted);font-size:11px;line-height:24px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-context #aiModelBadge::after{content:'';position:absolute;right:10px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-75%) rotate(45deg)}
+.ai-context #aiModelBadge:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.ai-context .ai-meter{margin-left:auto}
+.ai-context .ai-meter[hidden]+.ai-send-options{margin-left:auto}
+/* Approval card matches the question card; amber marks that an action waits for consent. */
+.ai-approval{flex:none;margin:0 10px;padding:10px 12px;border:1px solid var(--amber);border-top:1px solid var(--amber);border-radius:12px;background:var(--amber-weak);max-height:40%}
+.ai-card-head{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;min-width:0}
+.ai-card-head strong{flex:none;font-size:12px}
+.ai-card-head span{min-width:0;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-approval pre{margin:0;padding:8px 10px;border-radius:8px;background:var(--panel);font:11px/1.6 ui-monospace,Consolas,monospace;max-height:160px;overflow:auto}
+.ai-approval .ai-actions,.ai-question-actions{justify-content:flex-end}
+/* Question card: compact chips for short options, actions pinned while the card scrolls. */
+.ai-question{padding:10px 12px 0;max-height:52%}
+.ai-question-options{display:flex;flex-direction:column;gap:5px}
+.ai-question-option{margin:0}
+.ai-question-option:has(input:checked){background:color-mix(in srgb,var(--accent) 9%,var(--panel))}
+.ai-question-item.compact .ai-question-options{flex-direction:row;flex-wrap:wrap;gap:6px}
+.ai-question-item.compact .ai-question-option{align-items:center;padding:5px 12px 5px 9px;border-radius:999px}
+.ai-question-item.compact .ai-question-option input{margin:0}
+.ai-question-multi{margin-left:6px;color:var(--muted);font-size:10px;font-weight:400}
+.ai-panel .ai-question-custom{margin-top:6px}
+.ai-question .ai-question-actions{position:sticky;bottom:0;margin:8px -12px 0;padding:8px 12px 10px;background:var(--accent-weak);border-top:1px solid color-mix(in srgb,var(--accent) 22%,var(--line))}
+/* Settings: the row being edited and the provider in use are labelled. */
+.ai-provider-row.editing{border-color:var(--accent);background:var(--accent-weak)}
+.ai-provider-active{margin-left:6px;padding:1px 6px;border-radius:6px;background:var(--accent-weak);color:var(--accent-text);font-size:10px;font-style:normal;font-weight:600;vertical-align:1px}
+.ai-provider-row.editing .ai-provider-active{background:var(--panel)}
+.ai-editor-title{margin:0;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+/* Empty state sits slightly above the middle of the conversation area, as in DSH. */
+.ai-history:has(>.ai-empty:only-child){display:flex;flex-direction:column;justify-content:center;padding-bottom:12%}

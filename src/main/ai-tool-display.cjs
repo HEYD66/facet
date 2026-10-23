@@ -46,6 +46,8 @@ function argsSummary(name, args) {
 
 function resultSummary(name, result) {
   if (!result || typeof result !== 'object') return '';
+  // DSH reports a stopped question in English (UserQuestionError ASK_ABORTED).
+  if (name === 'ask_user_question' && typeof result.error === 'string' && /abort|取消/i.test(result.error)) return '提问已取消';
   if (typeof result.error === 'string') return clip(result.error);
   if (Array.isArray(result)) return result.length + ' 项';
   if (name === 'ask_user_question' && Array.isArray(result.answers)) return '已回答：' + clip(result.answers.map(a => [...(Array.isArray(a?.selected) ? a.selected : []), a?.custom].filter(Boolean).join('、')).join('；'), 100);
