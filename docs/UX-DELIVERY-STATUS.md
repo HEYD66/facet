@@ -1,5 +1,20 @@
 # UX交付状态（第一至四批）
 
+## 2026-10-23：收藏 / 扩展 / 检测菜单浮层被截断（当前源码未发布）
+
+- [x] 修复原生菜单浮层显示后停在首帧：浮层原生 View 已按菜单高度拉到 407～573，网页视口却一直停在初始 216px、requestAnimationFrame 只执行1次，收藏菜单底部「管理收藏网站」落在可见区外，悬停等变化也不再绘制。生产默认硬件加速、软件渲染、正常显示与非激活显示四种条件都能复现。修复为显示浮层后重新应用同一后台节流策略（`background-rendering.resume`，与网页标签 10-23 的修复相同）；对照试过 `invalidate`、重设尺寸、隐藏再显示，均无效。修复后400ms内视口变为407，持续出帧。
+- [x] `test:browser-tabs` 11项（含两次独立 Electron 重启）全部通过，修复前就停在这项「收藏菜单原生高度」超时。截图 `.local-dev/browser-tabs-20261022/artifacts/favorites-menu.png` 显示五个收藏和底部管理入口完整。`test:quick-links` 16项、`test:privacy-sites` 7项、`test:extensions-electron` 15项、`test:navigation-background` 6组通过。
+- 两处测试时序修正，不改业务：Windows 上对浮层 `capturePage` 会使其失焦，而浮层按设计失焦即关闭，截图后改为重新打开再点击；`quick-links` 在菜单长高稳定后再计算点击坐标（原先坐标在长高、滚动归零后落到 Gemini 上）。`quick-links` 的这项失败在 HEAD `a6f1b31` 上同样存在。
+- 已知遗留：`browser-tabs` 每轮退出时日志有一条 `No handler registered for 'core:request'`（控制页面在 IPC 释放后仍发请求），10-22 的历史日志里就有，本轮未处理。
+- 正式应用未重启；源码备份 `.local-dev/grid-thumb-backup-20261023/menu-overlay.cjs`，诊断脚本 `.local-dev/overlay-height-probe/`。
+
+## 2026-10-23：宫格省资源模式缩略图（当前源码未发布）
+
+- [x] 修复从未显示过的运行网页在省资源宫格中一直没有缩略图。原因：这类网页还没有绘制表面，`capturePage` 不论是否 `stayHidden`、是否关闭后台节流都立即返回 0×0 空图；显示过一次后，隐藏且节流时仍可截图。现在仅在省资源模式、无弹窗/菜单/放大时，把该网页在本格原位短暂显示到首帧（实测约11ms，最长1.5秒），再按布局隐藏；每个 WebContents 成功一次后不再重复，失败10秒后才重试。没有改变节流策略、缩略图轮询间隔或实时模式。
+- [x] `grid-electron` 16项、`grid-live-stress-electron` 8项真实 Electron 通过；新增 `npm.cmd run test:grid` 依次运行这两项。新增用例在弹窗打开时启动从未显示过的实例，15ms 采样确认原生网页始终未显示、无缩略图；关闭弹窗后得到铺满格子的缩略图并恢复隐藏。临时去掉遮挡保护时该用例失败，恢复后通过。
+- 同步更新两处过期断言，不改业务：格子占用文案已改为 `CPU ≥? x% · 提交/内存 ≥? n MB`（与 `test:resource-metrics` 一致）；格子喇叭左键静音、右键才打开音量浮层；离开宫格后普通网页按现行策略关闭后台节流。修复前基线上 `grid-live-stress` 同样在最后一项失败，不是本次改动引入。
+- 正式应用未重启；回滚检查点 `a6f1b31`，源码备份 `.local-dev/grid-thumb-backup-20261023/`。
+
 ## 2026-10-23：DSH Agent 候选成品
 
 - [x] 官方DSH执行引擎，保留已有模型、会话、图片、压缩摘要与实例/网页工具。
@@ -15,7 +30,7 @@
 - [x] 修复宫格省资源模式与多标签切换后的节流残留：新建/切换标签、进入/退出宫格、扩展弹窗打开/关闭均对所有已加载标签应用当前策略。退出宫格后旧页与当前页均为 `backgroundThrottling=false`；重新激活并隐藏旧页650ms后，动画实测增长39帧，文档未重载。
 - [x] 修复最小化期间新建非活动标签恢复后视口为零：新页面先建立有效原生尺寸，隐藏后台页继续保留临时设备指标；实际显示并完成布局后才清除覆盖。恢复后保持 `970×558`，激活后覆盖已清除，调整窗口后变为 `1070×607`，输入与文档标识保留。
 - 正式组合回归：`npm.cmd run test:background-tabs-policy`，3组断言通过，报告 `.local-dev/background-tabs-policy-after.json`。旧审查脚本和报告保留供排查，但旧报告曾在修复期间复测覆盖，不作为完整的原始修复前快照。
-- 相关回归通过：`test:minimized-rendering` 7项、`test:navigation-background` 6项、`test:grid-transition-electron` 4项、`test:creation-lifecycle`（取消/退出/节点竞争与AI随机创建）、`test:extension-configure` 11项。未重新验收已有的完整收藏菜单与宫格缩略图旧失败，不能据此宣称全项目无问题。
+- 相关回归通过：`test:minimized-rendering` 7项、`test:navigation-background` 6项、`test:grid-transition-electron` 4项、`test:creation-lifecycle`（取消/退出/节点竞争与AI随机创建）、`test:extension-configure` 11项。未重新验收已有的完整收藏菜单与宫格缩略图旧失败，不能据此宣称全项目无问题。（宫格缩略图与收藏菜单原生高度均已于同日修复，见文首两节。）
 
 ## 2026-10-23：扩展默认启用（当前源码未发布）
 
@@ -84,7 +99,7 @@
 
 ## 新增优化待办：通知不占独立布局行
 
-- 记录日期：2026-10-08；状态：待实施，未修改应用代码。对应本轮优化清单第 28 项。
+- 记录日期：2026-10-08；对应本轮优化清单第 28 项。状态更正（2026-10-23）：同日已实施，当前 `ui.css` 中 `.toast` 为控制区顶部的固定浮层，不再占布局行；当时的真实 Electron 验证见 `release/local-toast-layout/验证记录.md`（Git 忽略）。本次只核对源码，未重新做界面验收。
 - 用户要求：错误通知等短时提示不要自己占一格；显示和消失时不能挤压地址栏、侧栏或网页区域。
 - 当前依据：`src/renderer/index.html` 的 `notificationSlots` 包含 `toast`；`src/renderer/ui.css` 将通知放在应用网格的 `auto` 行，`.toast` 使用相对定位并带上下边距。
 - 修改方向：将短时通知改为浮层显示，保留错误信息、原有消失时机和状态提示。更新提醒的独立交互另行核对，不能顺带删掉。

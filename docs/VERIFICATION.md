@@ -1,5 +1,18 @@
 # 验证入口与历史记录
 
+## 2026-10-23：宫格省资源模式缩略图
+
+- 修复前复现：`grid-electron` 在“从未显示过的格子获得缩略图”超时（与 `.local-dev/navigation-regression-artifacts/grid-baseline.json` 记录一致）。诊断脚本 `.local-dev/grid-thumb-probe/` 确认：未显示过的网页 `capturePage` 立即返回 0×0，关闭节流或移到窗口外显示都无效；在本格原位显示约11ms后得到 692×389（553×311 格 × DPR 1.25）首帧，再隐藏并节流仍可截图，像素为页面绿色主体与右下蓝块。
+- 修复后：`grid-electron` 16项、`grid-live-stress-electron` 8项、`grid-transition-electron` 4项、`background-tabs-policy`（3组，`completed:true`）、`minimized-rendering` 7项通过；`check` 345个脚本、`test:control-api` 1项、`git diff --check` 通过。均使用隔离临时数据和本机 HTTP 页面，未接触正式实例、代理或 DNS。
+- 弹窗遮挡保护有反向验证：去掉 `overlay` 判断后新增用例以“no thumbnail while covered”失败。
+- 边界：只修复省资源模式缩略图；原生网页短暂原位显示期间页面会收到一次 `visibilitychange`。未验证公网重页面首帧超过1.5秒的情形（会在10秒后重试）。`browser-tabs` 收藏菜单原生高度超时已在下一节修复。
+
+## 2026-10-23：原生菜单浮层停在首帧
+
+- 复现：诊断脚本 `.local-dev/overlay-height-probe/probe.cjs` 在硬件加速/软件渲染 × 正常/非激活显示下，浮层 View 高 573（第二次打开 407），网页 `innerHeight` 始终 216，rAF 计数停在1；`probe2.cjs` 对照 `invalidate`、重设尺寸、隐藏再显示均无效，只有重新 `setBackgroundThrottling(false)` 恢复（400ms 内 26 帧、视口 407）。
+- 修复后：`test:browser-tabs` 11项、`test:quick-links` 16项、`test:privacy-sites` 7项、`test:extensions-electron` 15项、`test:navigation-background` 6组通过；修复前 `browser-tabs` 在“favorites menu native height”超时。`quick-links` 在 HEAD 上停在“direct quick navigation”，原因是点击坐标在菜单长高前计算，已改为等浮层稳定后再点。
+- 均使用隔离临时数据与本机 HTTP 页面，未接触正式实例、代理或 DNS；正式应用未重启。
+
 ## 2026-10-23：DSH 执行引擎候选构建 v0.2.20
 
 - 修改前检查点：806f21c，保留扩展默认启用及后台标签修复。现有用户进程未重启，正式数据、代理和DNS未被测试改写。
