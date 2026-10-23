@@ -81,9 +81,10 @@ async function close(){
  await wait(()=>child.exitCode!==null,'installed application normal exit',15000);browser=null;ui=null;
 }
 async function verifyPackagedDsh(target){
- let step=0,fixtureError;const sample=path.join(root,'packaged-ai-upload.txt');fs.writeFileSync(sample,'PACKAGED_REAL_UPLOAD');
+ let step=0,fixtureError,askOffered=false,usageRequested=false;const sample=path.join(root,'packaged-ai-upload.txt');fs.writeFileSync(sample,'PACKAGED_REAL_UPLOAD');
  const model=http.createServer(async(req,res)=>{try{
   let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);
+  if(step===0)askOffered=body.tools.some(t=>t.function.name==='ask_user_question');usageRequested||=body.stream_options?.include_usage===true;
   assert(body.tools.every(t=>t.type==='function'&&t.function.parameters?.type==='object'));
   const tool=body.messages.findLast(m=>m.role==='tool');let message;
   if(step===0)message={content:null,tool_calls:[{id:'packaged-manual',type:'function',function:{name:'read_manual',arguments:JSON.stringify({document:'AI-AGENT.md'})}}]};
@@ -106,6 +107,12 @@ async function verifyPackagedDsh(target){
   assert(state.task.entries.some(e=>e.kind==='assistant'&&e.text.includes('PACKAGED_DSH_VERIFIED')));
   assert(state.task.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));
   pass('Packaged ASAR official DSH executes real manual, browser, scripts, Network body and HTTP file upload without approval');
+  // The DSH backend plugins and the Markdown parser are ESM loaded from inside app.asar at run time.
+  assert(askOffered,'DSH ask_user_question is offered to the model');assert(usageRequested,'streamed usage is requested');
+  assert(state.task.context?.used>0&&state.task.context.estimated===true,'token-meter measured the packaged session: '+JSON.stringify(state.task.context));
+  const md=await call('ai-markdown',{texts:['## 标题\n\n**粗体**\n\n| a | b |\n| - | - |\n| 1 | 2 |']}),tree=JSON.stringify(md?.[0]??null);
+  assert(tree.includes('"type":"table"')&&tree.includes('"type":"strong"'),'packaged Markdown parse: '+tree.slice(0,200));
+  pass('Packaged ASAR loads DSH token-meter, ask-user and compaction plugins and the micromark/mdast Markdown parser');
  }finally{model.closeAllConnections();model.close();}
 }
 async function main(){
