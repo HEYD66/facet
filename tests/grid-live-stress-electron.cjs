@@ -88,7 +88,8 @@ app.whenReady().then(async()=>{
   ok('Saver retains thumbnails and background throttling; live restores every native page');
   await ui('(async()=>{while(gridInFlight)await new Promise(requestAnimationFrame);gridInFlight=true;gridSendLayout(true);await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);route("browser",'+JSON.stringify(ids[0])+');if(gridPending!==null)throw Error("Old grid layout retained after leaving");gridInFlight=false;gridFlush();})()');
   await wait(()=>!c.grid&&c.runtimes.get(ids[0]).view.getVisible(),'return to browser');assert.equal(c.gridCanvas,null);assert(!c.runtimes.get(ids[0]).gridParent);
-  assert(ids.every(id=>c.runtimes.get(id).view.webContents.getBackgroundThrottling()));
+  // 普通浏览页默认关闭后台节流（见 docs/NAVIGATION-BACKGROUND.md）；离开宫格不得保留省资源模式的节流。
+  assert(ids.every(id=>!c.runtimes.get(id).view.webContents.getBackgroundThrottling()));
   await ui("route('grid')");await wait(()=>c.gridCanvas&&ids.every(id=>c.runtimes.get(id).gridApplied?.visible),'return to grid');
   ok('Leaving cancels queued old layouts; returning reparents native pages correctly');
  }catch(e){errors.push(e.stack||String(e));console.error(e);}

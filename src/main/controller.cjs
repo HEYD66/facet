@@ -103,7 +103,7 @@ class Controller {
   const viewport=grid.viewport,b=viewport&&{x:Math.round(Number(viewport.x)),y:Math.round(Number(viewport.y)),width:Math.round(Number(viewport.width)),height:Math.round(Number(viewport.height))};
   const valid=b&&Object.values(b).every(Number.isFinite)&&b.x>=0&&b.y>=0&&b.width>0&&b.height>0&&b.width<=10000&&b.height<=10000;
   const scroll=Math.round(Number(grid.scrollTop)),height=Math.round(Number(grid.scrollHeight));
-  this.grid={tiles,revision:Number.isSafeInteger(grid.revision)?grid.revision:null,coordinates:grid.coordinates==='content'?'content':'window',mode:grid.mode==='live'?'live':'saver',base:bw>=320&&bh>=240&&bw<=10000&&bh<=10000?{width:bw,height:bh}:null,viewport:valid?b:null,scrollTop:Number.isFinite(scroll)?Math.max(0,Math.min(100000,scroll)):0,scrollHeight:Number.isFinite(height)?Math.max(1,Math.min(100000,height)):1};this.applyGrid();}
+  this.grid={tiles,revision:Number.isSafeInteger(grid.revision)?grid.revision:null,coordinates:grid.coordinates==='content'?'content':'window',mode:grid.mode==='live'?'live':'saver',overlay:grid.overlay===true,base:bw>=320&&bh>=240&&bw<=10000&&bh<=10000?{width:bw,height:bh}:null,viewport:valid?b:null,scrollTop:Number.isFinite(scroll)?Math.max(0,Math.min(100000,scroll)):0,scrollHeight:Number.isFinite(height)?Math.max(1,Math.min(100000,height)):1};this.applyGrid();}
  // 高频滚动不解析列表、不遍历实例，只更新一个原生画布。过期布局的位置消息拒绝并要求重新同步。
  scrollGrid(message){if(!message||!this.grid||!this.grid.viewport||this.grid.mode!=='live'||this.grid.coordinates!=='content'||!this.gridCanvas||!Number.isSafeInteger(message.revision)||message.revision!==this.grid.revision)return false;
   const top=Number(message.scrollTop);if(!Number.isFinite(top)||top<0||top>100000)return false;
@@ -128,7 +128,8 @@ class Controller {
  // 隐藏的格子仍可截图（capturePage 的 stayHidden 不会让页面变成“可见”）；这里只标记哪些格子需要缩略图。
  holdCapture(r){r.gridCapture=true;}
  releaseCapture(r){r.gridCapture=false;}
- // 缩略图：从未显示过的隐藏视图，绘制画布还是旧尺寸；缩小渲染的网页只画在左上角（格子大小 × DPR），截图后按这个大小裁掉空白再缩放。
+ // 缩略图：缩小渲染的网页只画在左上角（格子大小 × DPR），截图后按这个大小裁掉空白再缩放。从未显示过的网页没有绘制表面，
+ // 在无弹窗、无放大、未滚动时于本格原位短暂显示到首帧再按布局隐藏（见 grid-thumbnails.cjs）。
  // 仅省资源模式轮询；隐藏的格子每次截图，选中的实时格每 10 秒保留一张备用。
  async gridThumbs(){if(!this.grid)return {};if(this.gridThumbWork)return this.gridThumbWork;const grid=this.grid;this.gridThumbWork=require('./grid-thumbnails.cjs').capture(this,grid).finally(()=>{this.gridThumbWork=null;});return this.gridThumbWork;}
  destroyView(r){this.releaseCapture(r);this.extensions.unload(r);for(const w of r.popups||[])if(!w.isDestroyed())w.destroy();r.popups?.clear();this.removeDevToolsView(r,true);require('./browser-tabs.cjs').stopPages(this,r);}
