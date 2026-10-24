@@ -79,3 +79,22 @@ test('generated UA metadata follows current Windows runtime and explicit custom 
  assert.equal(generatedMetadata({...plan,platform:'MacIntel'},{metadata}),null);
  assert.equal(generatedMetadata(plan,{metadata:{...metadata,platform:'Linux'}}),null);
 });
+
+test('a custom or runtime-drifted Chrome UA derives version-matched brands instead of empty UA-CH',()=>{
+ const {customMetadata}=require('../src/main/fingerprint.cjs');
+ // Native runtime is Chrome 152.0.7977.167 with a GREASE brand; the instance pinned .130.
+ const native={metadata:{platform:'Windows',platformVersion:'19.0.0',architecture:'x86',bitness:'64',mobile:false,
+  brands:[{brand:'Not?A_Brand',version:'24'},{brand:'Chromium',version:'152'}],
+  fullVersionList:[{brand:'Not?A_Brand',version:'24.0.0.0'},{brand:'Chromium',version:'152.0.7977.167'}]}};
+ const drift='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.130 Safari/537.36';
+ const cm=customMetadata({userAgent:drift,platform:'Win32'},native);
+ assert.deepEqual(cm.brands,[{brand:'Not?A_Brand',version:'24'},{brand:'Chromium',version:'152'}]);
+ assert.deepEqual(cm.fullVersionList,[{brand:'Not?A_Brand',version:'24.0.0.0'},{brand:'Chromium',version:'152.0.7977.130'}]);
+ assert.equal(cm.fullVersion,'152.0.7977.130');assert.equal(cm.platform,'Windows');assert.equal(cm.architecture,'x86');
+ // An older major version is reflected in the brand version too.
+ assert.equal(customMetadata({userAgent:drift.replace('152.0.7977.130','140.0.1.2'),platform:'Win32'},native).brands.find(b=>b.brand==='Chromium').version,'140');
+ // Non-Chrome, non-Windows, or missing native metadata keep the previous (empty) policy.
+ assert.equal(customMetadata({userAgent:'Mozilla/5.0 (Windows NT 10.0) Gecko/20100101 Firefox/133.0'},native),null);
+ assert.equal(customMetadata({userAgent:drift,platform:'MacIntel'},native),null);
+ assert.equal(customMetadata({userAgent:drift},{metadata:null}),null);
+});

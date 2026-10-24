@@ -38,22 +38,23 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 - 旧版本已保存的大固定视口不自动迁移：可将视口宽、高都改为 0，保存后重新启动实例。无需执行环境重置或清除网站数据。默认原生方案与旧实例不自动迁移。修改源码后，用户正在运行的应用需重启 Electron 主进程才使用新生成器。
 - API `fingerprint-preset` 的 `preset` 可用 `library-v1`；`random` 保留原有浏览尺寸保护。输入/输出继续走环境校验。
 
-当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA 仍沿用清空自定义 UA-CH 的兼容策略，避免套用错误版本信息。关闭参考覆盖后恢复原生方案。
+当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA（如实例保存的 UA 在内核升级后落后于运行版本）时，`customMetadata` 从该 UA 自身的 `Chrome/<版本>` 推导 brands 与 fullVersionList，并复用原生 GREASE 项与 OS 字段，让页面的 UA 串、brands、fullVersionList 自洽；非 Chrome 或非 Windows 的自定义 UA 仍沿用清空 UA-CH 的旧策略。关闭参考覆盖后恢复原生方案。
 
-## 2026-10-24 检测对抗：CPU/显卡配套与 window.chrome（源码修改，未发布）
+## 2026-10-24 检测对抗：CPU/显卡配套、window.chrome 与自定义 UA 的 UA-CH（源码修改，未发布）
 
-起因：在一个检测页上实测伪装实例，读出两处破绽——(1) `navigator.hardwareConcurrency` 报 24 却配 `Intel(R) UHD Graphics 617`（2018 年超低功耗双核集显），24 线程 + UHD 617 是现实中不存在的机器；(2) `window.chrome` 是空对象（真 Chrome 带 `app`/`csi`/`loadTimes`），是常见的非 Chrome / 自动化标志。
+起因：在一个检测页上实测伪装实例，读出三处破绽——(1) `navigator.hardwareConcurrency` 报 24 却配 `Intel(R) UHD Graphics 617`（2018 年超低功耗双核集显），24 线程 + UHD 617 是现实中不存在的机器；(2) `window.chrome` 是空对象（真 Chrome 带 `app`/`csi`/`loadTimes`），是常见的非 Chrome / 自动化标志；(3) 该实例保存的自定义 UA（`Chrome/152.0.7977.130`，比运行内核 `.167` 旧）触发旧策略清空 UA-CH，导致 `navigator.userAgentData.brands` 为空数组——空 brands 本身就是强「被伪造」信号。
 
 - **CPU 与显卡配套**（`fingerprint-catalog.cjs`）：给每个候选显卡按型号判一个粗档 `gpuTier`（low/mid/high，未知归 mid），线程数从该档的池里选（low=[6,8]、mid=[8,12,16,20]、high=[16,20,24,28,32]，三池并集仍是原 8 个线程值）。这样低端/老显卡不会再配 24–32 线程，旗舰不会配 6 线程。显存沿用原逻辑（线程≤8 时 4/8GB，否则 8GB，浏览器本就把 `deviceMemory` 封顶 8）。屏幕与 DPR 这轮未按档位收口，仍从可容纳当前视口的池中等概率选取。
 - **window.chrome 外观**（`fingerprint-inject.js`）：仅在窗口（Worker 没有 window.chrome 不处理）补齐 `chrome.app`、`chrome.csi()`、`chrome.loadTimes()`，取值来自本页 `performance` 计时保持自洽，函数的 `toString` 经 `sources` 表返回原生样式字符串，`name`/`length` 与原生一致。`chrome.runtime` 在普通网页本就缺省，不添加。
-- 验证：`tests/fingerprint.test.cjs` 的 2000 种子用例新增配套断言（每个计划的线程数必须落在所选显卡档位的池内，0 例不合理；8 个线程值仍全部出现）；独立 Electron 探针确认运行时 `window.chrome.{app,csi,loadTimes}` 存在且 `toString` 为原生样式、低端显卡（GT 625）配 6 线程。`fingerprint-contexts` / `fingerprint-electron` 的首阶段通过；其 fresh-process-restart / 第二阶段在本机因自定义 HTTPS 主机连接被拒而超时，去掉本次改动后同样复现，属既有环境问题，与本修改无关。
+- **自定义 UA 的 UA-CH 推导**（`fingerprint.cjs` `customMetadata` + `environment.cjs` 接线）：旧策略对任何自定义 UA 直接清空 UA-CH（空 brands）。改为对 Chrome-on-Windows 的自定义/漂移 UA，从 UA 自身的 `Chrome/<major>.<full>` 推导 brands（Chromium 项取 major）与 fullVersionList（Chromium 项取 full），复用原生 GREASE 项、`platform`/`architecture` 等 OS 字段并置 `platform:'Windows'`、`mobile:false`、`model:''`。这样页面的 UA 串、brands、fullVersionList 自洽；仅 full（patch）版本可能与 Service Worker 原生 UA-CH 相差一个补丁号，远比空 brands 隐蔽。非 Chrome / 非 Windows / 缺原生 metadata 的自定义 UA 保持旧的清空行为。注意：运行中的 `5daf8c3` 版本尚无此逻辑，需重启主进程后生效；对已保存旧 UA 的实例，也可直接清掉自定义 UA/平台改回原生元数据（见验证记录）。
+- 验证：`tests/fingerprint.test.cjs` 的 2000 种子用例新增配套断言（每个计划的线程数必须落在所选显卡档位的池内，0 例不合理；8 个线程值仍全部出现）；新增 `customMetadata` 用例（漂移 UA 推导出版本匹配的非空 brands、更旧 major 反映到 brand 版本、非 Chrome/非 Windows/缺 metadata 返回 null）；独立 Electron 探针确认运行时 `window.chrome.{app,csi,loadTimes}` 存在且 `toString` 为原生样式、低端显卡（GT 625）配 6 线程。`fingerprint-contexts` / `fingerprint-electron` 的首阶段通过；其 fresh-process-restart / 第二阶段在本机因自定义 HTTPS 主机连接被拒而超时，去掉本次改动后同样复现，属既有环境问题，与本修改无关。
 
 ## 已知限制与内核后续
 
 - 字体、媒体设备、语音、WebGPU、完整 WebGL 能力、TLS 均未因导入库而改动。实测发现：宿主已装的 SAPI 语音会按真实系统语言暴露（例如中文 Windows 只有 `Microsoft Huihui/Kangkang/Yaoyao` 中文语音），与伪装的 en-US 出口不一致；伪造一份可用的英文语音列表风险较高（`speechSynthesis.speak` 实际不可用会成为新破绽），留待内核或专项处理。`navigator.languages` 目前只有单个地区码（如 `["en-US"]`），真 Chrome 默认带回退项（`["en-US","en"]`），这轮未改（改动会波及多个 Worker 语言一致性的 Electron 用例）。
 - 主页面、同源 iframe、跨站独立进程 iframe、Dedicated Worker、网站 Service Worker 和受测 SharedWorker 的所测设备字段及 OffscreenCanvas PNG 导出已对齐，见下节。bitmaprenderer 导出和完整 GPU 能力等不完整覆盖，不能宣称所有上下文完全一致。
 - 当前 Electron 44.4.5 的原生对照和库实例在受控 HTTPS 上均未发送 `Sec-CH-UA-*` 请求头；页面 `navigator.userAgentData` 与 UA 版本一致。不能把 JS 元数据验证写成 HTTP Client Hints 已完整支持。[该版本 Electron 源码](https://github.com/electron/electron/blob/v44.4.5/shell/browser/electron_browser_context.cc) 的 `GetClientHintsControllerDelegate` 返回空指针，相关支持需在内核阶段实现。
-- UA 字符串报 `Chrome/<版本>`，但 `navigator.userAgentData` 的 brands / fullVersionList 只有 `Chromium`（加 GREASE 项），缺 `Google Chrome` 品牌，这是「是 Chromium/Electron 不是 Chrome」的直接信号。这轮未补：页面可用 CDP `setUserAgentOverride` 的 `userAgentMetadata` 加上 Google Chrome，但 Service Worker 走的是 preload（不下发 metadata 覆盖），只改页面会造成「页面有 Google Chrome、SW 没有」的跨上下文不一致（项目自有的上下文一致性测试会据此判失败）。要一致需要让每个上下文（含 SW 和 Sec-CH-UA 请求头）都带 Google Chrome，与上一条同属内核阶段。
+- UA 字符串报 `Chrome/<版本>`，但 `navigator.userAgentData` 的 brands / fullVersionList 只有 `Chromium`（加 GREASE 项），缺 `Google Chrome` 品牌，这是「是 Chromium/Electron 不是 Chrome」的直接信号。空 brands 的子问题（自定义/漂移 UA 触发清空）已由上节 `customMetadata` 修复——brands 不再为空，但仍只有 Chromium + GREASE。补 `Google Chrome` 这轮仍未做：页面可用 CDP `setUserAgentOverride` 的 `userAgentMetadata` 加上 Google Chrome，但 Service Worker 走的是 preload（不下发 metadata 覆盖），只改页面会造成「页面有 Google Chrome、SW 没有」的跨上下文不一致（项目自有的上下文一致性测试会据此判失败）。要一致需要让每个上下文（含 SW 和 Sec-CH-UA 请求头）都带 Google Chrome，与上一条同属内核阶段。
 - 第三方采样中的 Canvas/音频数值不通用，沿用千面现有固定种子扰动，不导入其签名或私有算法。
 
 ## 2026-10-21 上下文一致性与 API 行为修复

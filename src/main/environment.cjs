@@ -8,7 +8,8 @@ function environment(value={}){let language='zh-CN';try{language=Intl.getCanonic
 async function shared(promise){try{return await promise;}catch(e){if(!/already in effect/i.test(String(e?.message)))throw e;}}
 async function applyEnvironment(wc,env,native,bounds){
  const custom=!!(env.userAgent||env.platform);
- const metadata=require('./fingerprint.cjs').generatedMetadata(env,native)||(custom?{brands:[],fullVersionList:[],platform:'',platformVersion:'',architecture:'',model:'',mobile:false}:native.metadata);
+ const fp=require('./fingerprint.cjs');
+ const metadata=fp.generatedMetadata(env,native)||fp.customMetadata(env,native)||(custom?{brands:[],fullVersionList:[],platform:'',platformVersion:'',architecture:'',model:'',mobile:false}:native.metadata);
  const userAgent=env.userAgent||sanitizeElectronUserAgent(wc.getUserAgent());
  const source=require('./fingerprint.cjs').script({...env,userAgent,platform:env.platform||native.platform});
  await require('./environment-service-worker.cjs').installServiceWorkerEnvironment(wc,source,JSON.stringify([userAgent,env.platform||native.platform,env.language,env.timezone,env.cpu,metadata]));

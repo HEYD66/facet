@@ -142,9 +142,29 @@ function generatedMetadata(env,native){
  if(!env.fingerprint?.enabled||env.fingerprint.template==='custom'||env.platform!=='Win32'||env.userAgent!==generatedUserAgent()||native?.metadata?.platform!=='Windows')return null;
  return {...native.metadata,platform:'Windows',mobile:false,model:''};
 }
+// A custom UA (user-edited, or a stored generated UA that drifted from a newer
+// runtime after an update) is still a Chrome-on-Windows UA in almost every case.
+// The old policy cleared UA-CH to empty brands for any custom UA, but an empty
+// navigator.userAgentData.brands is itself a strong "spoofed" tell. Instead,
+// derive the brands from the UA's own Chrome version and reuse the native GREASE
+// brand and OS fields, so the page's UA string, brands and fullVersionList all
+// agree. Only the full (patch) version may differ from service workers' native
+// UA-CH — far subtler than an empty brand list. Non-Chrome or non-Windows custom
+// UAs keep the previous empty behaviour.
+function customMetadata(env,native){
+ const parsed=String(env.userAgent||'').match(/Chrome\/(\d+)\.(\d+\.\d+\.\d+)(?:\s|$)/);
+ if(!parsed)return null;
+ if(env.platform&&env.platform!=='Win32')return null;
+ const meta=native?.metadata;
+ if(!meta||meta.platform!=='Windows'||!Array.isArray(meta.brands))return null;
+ const major=parsed[1],full=parsed[1]+'.'+parsed[2];
+ const atVersion=(list,version)=>list.map(b=>b&&b.brand==='Chromium'?{...b,version}:b);
+ const fullList=Array.isArray(meta.fullVersionList)?meta.fullVersionList:meta.brands;
+ return {...meta,platform:'Windows',mobile:false,model:'',brands:atVersion(meta.brands,major),fullVersionList:atVersion(fullList,full),fullVersion:full};
+}
 function script(env){const f=normalize(env.fingerprint);if(!f.enabled)return null;
  const seed=key=>crypto.createHash('sha256').update(f.seed+':'+key).digest().readUInt32LE(0);
  const payload={Hardware:f.hardware,WebGL:f.webgl,Canvas:f.canvas,Audio:f.audio,Rects:f.rects,DeviceMemory:f.memory,MaxTouchPoints:f.touch,ScreenWidth:f.screenWidth,ScreenHeight:f.screenHeight,AvailableScreenHeight:f.availHeight,ColorDepth:f.colorDepth,WebGlVendor:f.vendor,WebGlRenderer:f.renderer,CanvasSeed:seed('canvas'),AudioSeed:seed('audio'),ClientRectsSeed:seed('rects'),WorkerUserAgent:env.userAgent||'',WorkerPlatform:env.platform||'',WorkerLanguage:env.language||'',WorkerCPU:env.cpu||0};
  const source=fs.readFileSync(path.join(__dirname,'fingerprint-inject.js'),'utf8'),slot='/*__FACET_FP_PAYLOAD__*/null';if(source.split(slot).length!==2)throw Error('指纹注入槽位无效');return source.replace(slot,()=>JSON.stringify(payload));
 }
-module.exports={normalize,preset,script,DEVICE_TEMPLATES,generatedMetadata,generatedUserAgent};
+module.exports={normalize,preset,script,DEVICE_TEMPLATES,generatedMetadata,customMetadata,generatedUserAgent};

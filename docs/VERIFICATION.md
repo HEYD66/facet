@@ -1,14 +1,15 @@
 # 验证入口与历史记录
 
-## 2026-10-24：指纹检测对抗（CPU/显卡配套、window.chrome；源码未发布）
+## 2026-10-24：指纹检测对抗（CPU/显卡配套、window.chrome、自定义 UA 的 UA-CH；源码未发布）
 
-- 起因：用控制 API + CDP（只读）在一个检测页上实测伪装实例，读出破绽：`hardwareConcurrency 24` 配 `Intel UHD 617`（不可能的机器）、`window.chrome` 为空对象。
-- 改动：`fingerprint-catalog.cjs` 按显卡档位选线程数；`fingerprint-inject.js` 在窗口补 `chrome.app/csi/loadTimes`（原生样式 toString）。
-- 通过：`check`（355 脚本）、全部单元测试 424 项（423 通过、1 项 POSIX 跳过、0 失败，含 `fingerprint.test.cjs` 新增的 2000 种子配套断言）、`test:control-api`、`git diff --check`。
-- 运行时确认：独立 Electron 探针显示 `window.chrome.{app,csi,loadTimes}` 存在、`toString` 原生、低端显卡（GT 625）配 6 线程、显卡/CPU 配套。
+- 起因：用控制 API + CDP（只读）在一个检测页上实测伪装实例，读出破绽：`hardwareConcurrency 24` 配 `Intel UHD 617`（不可能的机器）、`window.chrome` 为空对象；重启应用载入首轮两处修复（`5daf8c3`）后复测，又读出第三处——该实例保存的自定义 UA（`Chrome/152.0.7977.130`，比运行内核 `.167` 旧）触发旧策略清空 UA-CH，`navigator.userAgentData.brands` 为空数组（空 brands 本身即强「被伪造」信号）。
+- 首轮改动（已提交 `5daf8c3`）：`fingerprint-catalog.cjs` 按显卡档位选线程数；`fingerprint-inject.js` 在窗口补 `chrome.app/csi/loadTimes`（原生样式 toString）。
+- 第二轮改动（本次，待提交）：`fingerprint.cjs` 新增 `customMetadata`，对 Chrome-on-Windows 的自定义/漂移 UA 从 UA 自身 `Chrome/<版本>` 推导非空 brands/fullVersionList，复用原生 GREASE 项与 OS 字段；`environment.cjs` 把它接到 `generatedMetadata` 之后、清空兜底之前。非 Chrome / 非 Windows / 缺原生 metadata 仍清空。
+- 通过：`check`（355 脚本）、全部单元测试 425 项（424 通过、1 项 POSIX 跳过、0 失败，含 `fingerprint.test.cjs` 的 2000 种子配套断言与新增 `customMetadata` 用例）、`test:control-api`、`git diff --check`。
+- 运行时确认（首轮）：独立 Electron 探针显示 `window.chrome.{app,csi,loadTimes}` 存在、`toString` 原生、低端显卡（GT 625）配 6 线程、显卡/CPU 配套。
 - 未通过但与本改动无关：`test:fingerprint-contexts` / `test:fingerprint-electron` 首阶段通过，第二阶段（fresh-process-restart / UI-save）在本机因自定义 HTTPS 主机 `main.alpha.test` 连接被拒而超时；stash 掉本次改动后同样复现，确属既有环境问题（疑与正在运行的生产实例争用端口/CDP 有关）。
-- 未改（见指纹文档已知限制）：`navigator.userAgentData` 缺 Google Chrome 品牌（改页面会与 Service Worker 不一致，属内核阶段）、宿主语音按真实系统语言暴露、`navigator.languages` 单地区码。
-- 未重启生产进程（PID 62632 仍是旧代码），改动需重启主进程后生效；未构建安装包。
+- 未改（见指纹文档已知限制）：`navigator.userAgentData` 仍缺 `Google Chrome` 品牌（空 brands 子问题已由 `customMetadata` 修复，但补 Google Chrome 改页面会与 Service Worker 不一致，属内核阶段）、宿主语音按真实系统语言暴露、`navigator.languages` 单地区码。
+- 运行中的生产进程载入的是 `5daf8c3`（无 `customMetadata`）；第二轮改动需再次重启主进程后生效。对已保存旧 UA 的实例，可另行清掉自定义 UA/平台改回原生元数据使 brands 立即非空（见下条线上修复记录）。未构建安装包。
 
 ## 2026-10-23 22:20：v0.2.20 发布候选构建（未发布）
 
