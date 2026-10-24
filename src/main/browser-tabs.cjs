@@ -94,7 +94,7 @@ async function initialize(c,id,r,x){
  const tab=r.tabs.get(plan.activeId);await loadPage(c,id,r,tab);show(c,id,r,tab);return tab.view.webContents;
 }
 function runtime(c,id){if(c.disposing)throw Error('应用正在退出');if(c.proxyModeSwitching)throw Error(require('./proxy-mode.cjs').busyMessage);if(c.transfer.progress?.running&&c.transfer.progress.ids.includes(id))throw Error('所选实例正在导出，请等待完成');const r=c.runtimes.get(id);if(!r?.view||r.tabsClosing||r.status!=='running')throw Error('请先启动实例');return r;}
-async function create(c,id,{url='about:blank',active=true}={}){
+async function create(c,id,{url=require('./browser-tabs-state.cjs').NEW_TAB_URL,active=true}={}){
  const r=runtime(c,id);if(r.tabs.size>=MAX_TABS)throw Error('每个实例最多打开 32 个网页标签');
  const tab={id:crypto.randomUUID(),url:tabURL(url),title:'',pageState:'准备加载',error:'',view:null};r.tabs.set(tab.id,tab);
  try{await loadPage(c,id,r,tab);if(active)show(c,id,r,tab);else persist(c,id,r);navigatePage(c,id,r,tab);c.emit();return {tabId:tab.id,webContentsId:tab.view.webContents.id};}

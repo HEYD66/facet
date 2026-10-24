@@ -1,5 +1,12 @@
 # 验证入口与历史记录
 
+## 2026-10-24：新建网页标签改为打开必应（源码未发布）
+
+- 改动：`browser-tabs-state.cjs` 新增 `NEW_TAB_URL='https://www.bing.com/'`；标签栏“+”、Ctrl+T、未给 `url` 的 `tab-new`（界面/API/AI）和关闭最后一页后的补开页都打开它，经实例自己的代理加载。显式传 `about:blank` 仍可得到空白页。扩展 `chrome.tabs.create` 未给 url 时仍为 `about:blank`，未改。
+- 通过：`check`（355 脚本）、全部单元测试 426 项（425 通过、1 项 POSIX 跳过、0 失败，含新增默认页用例）、`test:control-api`、`test:browser-tabs`（两阶段真实 Electron 全部 PASS）、`git diff --check`。
+- Electron 用例把默认页替换为本机夹具 `/new-tab`，分别断言“+”、Ctrl+T 和最后一页关闭后都加载了该页，测试不访问外网。真实必应页面在实例中的加载未在测试中验证。
+- 正在运行的应用需重启主进程后生效。
+
 ## 2026-10-24：指纹检测对抗（CPU/显卡配套、window.chrome、自定义 UA 的 UA-CH；源码未发布）
 
 - 起因：用控制 API + CDP（只读）在一个检测页上实测伪装实例，读出破绽：`hardwareConcurrency 24` 配 `Intel UHD 617`（不可能的机器）、`window.chrome` 为空对象；重启应用载入首轮两处修复（`5daf8c3`）后复测，又读出第三处——该实例保存的自定义 UA（`Chrome/152.0.7977.130`，比运行内核 `.167` 旧）触发旧策略清空 UA-CH，`navigator.userAgentData.brands` 为空数组（空 brands 本身即强「被伪造」信号）。

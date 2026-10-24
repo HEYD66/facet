@@ -83,9 +83,9 @@ API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，�
 | action | 参数 | 结果 |
 | --- | --- | --- |
 | `tab-list` | `id` | `activeTabId` 与全部 `tabs`（含未加载的恢复页） |
-| `tab-new` | `id,url?`、`active?`（默认 true） | `tabId,webContentsId`，默认打开 `about:blank` |
+| `tab-new` | `id,url?`、`active?`（默认 true） | `tabId,webContentsId`，未给 `url` 时打开必应 `https://www.bing.com/`（经实例自己的代理）；需要空白页时显式传 `about:blank` |
 | `tab-activate` | `id,tabId` | 切换或按需加载指定页，不重新加载已有页 |
-| `tab-close` | `id,tabId` | 关闭指定页；最后一页关闭时创建空白页，实例保持运行 |
+| `tab-close` | `id,tabId` | 关闭指定页；最后一页关闭时补开一个必应新标签页，实例保持运行 |
 
 `tabId` 是持久化 UUID，不能跨实例使用；它与 Chromium 的数字 `webContentsId`、CDP `targetId` 及扩展 `chrome.tabs` 数字 ID 不同。`GET /v1/targets` 只枚举实际加载的网页，含 `instanceId,tabId,active,webContentsId,targetId`。先激活未加载的恢复页，再重新查询 target。现有 navigate/reload/F12 等操作作用于当前活跃网页。
 

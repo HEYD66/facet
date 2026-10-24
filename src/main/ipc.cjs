@@ -163,7 +163,7 @@ function installIPC(window,controller){
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
     case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
     case 'tab-list':{const x=controller.store.get(id);return {ok:true,value:require('./browser-tabs.cjs').snapshot(x,controller.runtimes.get(id))};}
-    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||'about:blank',active:message.active!==false})};
+    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||undefined,active:message.active!==false})};
     case 'tab-activate':return {ok:true,value:await controller.activateTab(id,message.tabId)};
     case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
     case 'navigate':return {ok:true,value:await controller.navigate(id,message.url)};
