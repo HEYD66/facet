@@ -8,7 +8,7 @@
 
 > AI 或自动化工具接手本项目时，请先阅读根目录 [`AGENTS.md`](AGENTS.md)，再阅读 [`docs/AI-CONTROL-HANDOFF.md`](docs/AI-CONTROL-HANDOFF.md)。
 
-本版变更见 [v0.2.20 更新说明](docs/releases/v0.2.20.md)。扩展支持范围与兼容边界见 [扩展兼容层](docs/EXTENSION-COMPATIBILITY.md)，不代表所有 Chrome 插件完整兼容。环境随机方案与组合规则见 [指纹候选库](docs/FINGERPRINT-CATALOG.md)。
+本版变更见 [v0.2.21 更新说明](docs/releases/v0.2.21.md)。扩展支持范围与兼容边界见 [扩展兼容层](docs/EXTENSION-COMPATIBILITY.md)，不代表所有 Chrome 插件完整兼容。环境随机方案与组合规则见 [指纹候选库](docs/FINGERPRINT-CATALOG.md)。
 
 如果千面对你有帮助，欢迎点一下 **Star**，帮助更多人发现这个项目。
 
