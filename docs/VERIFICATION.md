@@ -4,7 +4,8 @@
 - 探针：`before-mouse-event` 对每个渲染部件（包括跨进程 iframe）都会触发，坐标是该部件自己的坐标，连千面经 CDP 发给 iframe 的输入也会再触发一次，无法据此判断事件属于哪一层，因此没有采用。外层网页收到的、目标为 `<iframe>` 元素且落在其内容区的鼠标事件，正是 Chromium 没送进 iframe 的输入（送对时外层文档根本收不到）。
 - 改动：`tile-input-preload.cjs` 在顶层框架的 isolated world 里、页面脚本之前注册捕获监听；只在小格子里拦下这类事件（页面自己的监听收不到，与送对时一致），报给主进程。`tile-input.cjs` 按 `DOM.getFrameOwner` / `DOM.getBoxModel` 找到对应的跨进程 iframe（外层报告的 `<iframe>` 矩形必须对得上），多层嵌套时逐层用 `DOM.getNodeForLocation` 确认未被遮挡，再用该 iframe 自己的 CDP 会话 `Input.dispatchMouseEvent` 送达（移动、按下、松开、滚轮；按下后拖出 iframe 仍送到原 iframe，离开时结束悬停）。`environment-contexts.cjs` 记录每个子会话的父会话。放大查看、正常浏览不受影响；被遮挡或 `pointer-events:none` 的 iframe 保持外层网页的行为。验证框在小格子里仍会拒绝点击（屏幕坐标是缩放后的），仍需放大后操作。
 - 通过：`check`、全部单元测试（436 项：434 通过、1 项 POSIX 跳过；`node-network.test.cjs` 读取本机网卡超时 1 次，单独重跑 9/9 通过）、`test:control-api`、`git diff --check`；新增 `test:tile-input`（单元 6 项 + 真实 Electron：对照组确认合成输入在小格子里落到外层网页且目标是 `<iframe>`；修复后跨站、嵌套跨站、`transform: scale(0.8)` 容器内的 iframe 收到点击（落点误差 ≤3 CSS 像素，来自整数视图坐标）和 3/3 格滚轮，外层网页收不到也不滚动；悬停离开、拖出后松开；遮挡和 `pointer-events:none` 的 iframe 不转交；外层网页自身点击和滚轮不变；放大查看与正常浏览不转交任何事件）。真实 Electron（退出码 0）：`test:volume`、`test:grid`、`test:grid-transition-electron`、`test:viewport-bookmarks`、`test:browser-tabs`、`test:background-tabs-policy`、`test:minimized-rendering`、`test:fingerprint-contexts`、`test:cdp-workers`、`test:ai-browser`、`test:viewport-screen`（首轮桌面截图被其他窗口遮挡失败，单独重跑通过）。
-- 未验证：用户真实千面里 arena.ai 预览在小格子中的系统真实鼠标复测，需要重启用户正在运行的千面加载新主进程代码。
+- 隔离数据的真实千面（当前源码、2×2 宫格、小格子缩放 0.47）用系统真实鼠标对 7 种 iframe（跨站、sandbox srcdoc、blob、嵌套跨站、scale(0.8) 容器内、Service Worker 提供、右下角固定）各点 1 次、滚 3 格：全部收到 1 次点击和 3 格滚轮，没有重复送达，外层按钮也正常；这一环境里 Chromium 自己把点击和滚轮送对了，只有 6 次移动落到外层由千面转交。放大查看与正常浏览没有转交任何事件（`.local-dev/iframe-input-20261026/probe-tile-real-mouse.cjs`）。
+- 未验证：用户真实千面里 arena.ai 预览在小格子中的系统真实鼠标复测。已按新代码重启用户千面（4 个随应用启动实例都已运行），但重启后各实例的节点连接 arena.ai 时 TLS 握手大多失败（curl 经本机节点端口退出码 35，偶尔成功），网页停在加载失败页，复测待网络恢复后进行。
 
 ## 2026-10-26：AI 约 5% 就压缩的来源核对；音频指纹、窗口尺寸、高端显卡配小屏（源码未发布）
 
