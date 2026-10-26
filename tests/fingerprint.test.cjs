@@ -5,6 +5,10 @@ const {environment,sanitizeElectronUserAgent}=require('../src/main/environment.c
 test('default browser UA removes Electron runtime marker while explicit UA remains unchanged',()=>{
  assert.equal(sanitizeElectronUserAgent('Mozilla/5.0 Chrome/134.0.0.0 Electron/44.4.5 Safari/537.36'),'Mozilla/5.0 Chrome/134.0.0.0 Safari/537.36');
  assert.equal(sanitizeElectronUserAgent('Mozilla/5.0 Chrome/134.0.0.0 Safari/537.36'),'Mozilla/5.0 Chrome/134.0.0.0 Safari/537.36');
+ // The application name Electron inserts before Chrome/ (app.setName('千面 Facet')) is a runtime marker too.
+ const chrome='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.167 Safari/537.36';
+ assert.equal(sanitizeElectronUserAgent(chrome.replace('Chrome/','千面Facet/0.2.21 Chrome/').replace(' Safari',' Electron/44.9.3 Safari')),chrome);
+ assert.equal(sanitizeElectronUserAgent(chrome),chrome);
 });
 test('fingerprint defaults are opt-in and disruptive switches remain disabled',()=>{const f=normalize();assert.equal(f.enabled,false);for(const k of ['canvas','audio','rects','webgl'])assert.equal(f[k],false);assert.equal(script(environment()),null);});
 test('six reference presets validate with coherent screen and viewport',()=>{assert.equal(DEVICE_TEMPLATES.length,6);for(const t of DEVICE_TEMPLATES){const e=environment(preset(t.id,{language:'ja-JP',timezone:'Asia/Tokyo'},'fixed-seed'));assert.equal(e.language,'ja-JP');assert.equal(e.timezone,'Asia/Tokyo');assert(e.width<=e.fingerprint.screenWidth);assert(e.height<=e.fingerprint.screenHeight);assert.equal(e.fingerprint.canvas,false);assert.equal(e.fingerprint.webgl,false);assert.deepEqual(environment(e),e);}});
@@ -43,7 +47,7 @@ test('catalog import strips unknown/private fields, rejects incompatible rendere
 });
 
 test('full catalog plans remain coherent over 2000 seeds without mutating input or applying source UA/timezone',()=>{
- const {ID,GPUS,SCREENS,CPUS,CPU_TIERS}=require('../src/main/fingerprint-catalog.cjs');
+ const {ID,GPUS,SCREENS,CPUS,CPU_TIERS,drivable}=require('../src/main/fingerprint-catalog.cjs');
  const base=environment({language:'ja-JP',timezone:'Asia/Tokyo',geoEnabled:true,latitude:35,longitude:139});
  const original=JSON.stringify(base),seenGPU=new Set(),seenCPU=new Set(),seenScreen=new Set(),seenMemory=new Set();
  for(let i=0;i<2000;i++){
@@ -54,6 +58,8 @@ test('full catalog plans remain coherent over 2000 seeds without mutating input 
   // The thread count must be plausible for the chosen GPU's tier (no UHD 617 + 24 threads).
   assert(CPU_TIERS[gpu.tier].includes(plan.cpu),`incoherent ${plan.cpu}T for ${gpu.model} (${gpu.tier})`);
   assert(SCREENS.some(s=>s.width===f.screenWidth&&s.height===f.screenHeight&&s.dpr===plan.scale));
+  // Without a fixed viewport or display floor, an old/entry GPU never lands on a 4K-class panel.
+  assert(drivable(gpu.tier,{width:f.screenWidth,height:f.screenHeight,dpr:plan.scale}),`${gpu.model} (${gpu.tier}) on ${f.screenWidth}x${f.screenHeight}@${plan.scale}`);
   assert.equal(plan.width,0);assert.equal(plan.height,0);assert(plan.width<=f.screenWidth&&plan.height<=f.availHeight);assert(f.memory!==4||plan.cpu<=8);
   assert.deepEqual(environment(plan),plan);assert.deepEqual(preset(ID,base,'catalog-'+i),preset(ID,base,'catalog-'+i));
   seenGPU.add(f.renderer);seenCPU.add(plan.cpu);seenScreen.add([f.screenWidth,f.screenHeight,plan.scale].join(':'));seenMemory.add(f.memory);

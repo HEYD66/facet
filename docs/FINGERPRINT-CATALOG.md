@@ -40,6 +40,14 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA（如实例保存的 UA 在内核升级后落后于运行版本）时，`customMetadata` 从该 UA 自身的 `Chrome/<版本>` 推导 brands 与 fullVersionList，并复用原生 GREASE 项与 OS 字段，让页面的 UA 串、brands、fullVersionList 自洽；非 Chrome 或非 Windows 的自定义 UA 仍沿用清空 UA-CH 的旧策略。关闭参考覆盖后恢复原生方案。
 
+## 2026-10-26 DPR 精度、原生 UA 应用名与老显卡配套（源码修改，未发布）
+
+- **devicePixelRatio 精度**（`fingerprint-inject.js`）：模拟 DPR 时主页面读到 `1.0000000149011612`、`1.5000000596046448`、`2.0000000298023224`（Chromium 按原生缩放 × 模拟/原生做 float32 运算），而 `resolution` 媒体查询匹配的是精确值；真实 Chrome 在 100% 缩放下报告精确值。现在与配置值相差不到 1e-6 的残差改回配置值，getter 的 `toString` 保持原生样式；其他取值（如页面缩放后）原样返回。只在开启指纹覆盖且设置了 DPR 时生效。
+- **跨站 iframe 的 DPR 仍是原生值**：独立进程 iframe 不接收 `Emulation.setDeviceMetricsOverride`（实测对 iframe 目标返回「Command can only be executed on top-level targets」），DPR 与 `resolution` 媒体查询都按真实显示器（本机 1.25）。这里不改：只改 JS 读数会让 iframe 内的 DPR 与它自己的 CSS 媒体查询矛盾。模拟 DPR 与真实显示器不同的实例，主页面与跨站 iframe 的 DPR 会不同；彻底一致需要内核把模拟屏幕信息传给子框架，或者只使用与真实显示器相同的 DPR。
+- **原生 UA 不再带应用名**（`environment.cjs` `nativeUserAgent`）：Electron 默认 UA 在 `Chrome/` 前插入应用名（`app.setName('千面 Facet')` 得到 `千面Facet/<版本>`，含非 ASCII），旧代码只去掉了 `Electron/<版本>`。未填写 UA 的实例现在报告纯 Chrome UA。原生值取自 `app.userAgentFallback`，不再取会话当前值：会话设过自定义 UA 后，清空 UA 在同一次运行里也能回到原生（旧代码会一直沿用旧的自定义 UA）。当前用户实例都保存了显式 UA，不受应用名问题影响；新建的原生环境实例会受影响。
+- **老显卡配套**（`fingerprint-catalog.cjs`）：low 档线程池加入 4（Intel HD 2000–6000、AMD HD 7xx0G 时代的 i5-3210M、A8-4500M 等多为 4 线程），现为 low=[4,6,8]。low 档屏幕限制为物理分辨率不超过 2560×1600，不再配 3840×2160、1920×1080@2、2560×1440@1.5 或 3440×1440；mid/high 档不受限。选择顺序：先容纳固定视口，再满足显示器下限，最后按档位；后两者冲突时保留显示器下限，避免 1:1 页面四周留白。
+- 验证：`tests/fingerprint.test.cjs` 2000 种子用例新增档位屏幕断言、UA 清理新增应用名用例；Electron 探针确认主页面 DPR 在 1 / 1.25 / 1.5 / 2 下为精确值且与媒体查询一致、跨站 iframe 保持原生；带真实应用名的实例原生 UA 与请求头均无应用名和 Electron 标记，设置自定义 UA 后再清空回到原生 `.167`。
+
 ## 2026-10-24 检测对抗：CPU/显卡配套、window.chrome 与自定义 UA 的 UA-CH（源码修改，未发布）
 
 起因：在一个检测页上实测伪装实例，读出三处破绽——(1) `navigator.hardwareConcurrency` 报 24 却配 `Intel(R) UHD Graphics 617`（2018 年超低功耗双核集显），24 线程 + UHD 617 是现实中不存在的机器；(2) `window.chrome` 是空对象（真 Chrome 带 `app`/`csi`/`loadTimes`），是常见的非 Chrome / 自动化标志；(3) 该实例保存的自定义 UA（`Chrome/152.0.7977.130`，比运行内核 `.167` 旧）触发旧策略清空 UA-CH，导致 `navigator.userAgentData.brands` 为空数组——空 brands 本身就是强「被伪造」信号。

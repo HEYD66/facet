@@ -29,7 +29,14 @@ function gpuTier(brand,model){
 }
 // Thread counts realistic for each tier; overlapping mid-range keeps boundaries soft.
 // The union is the full CPU pool, so every value stays reachable across the catalog.
-const CPU_TIERS=Object.freeze({low:Object.freeze([6,8]),mid:Object.freeze([8,12,16,20]),high:Object.freeze([16,20,24,28,32])});
+// Old integrated graphics (Intel HD 2000–6000, AMD HD 7xx0G APUs) mostly shipped with
+// 4-thread CPUs (i5-3210M, A8-4500M), so the low tier includes 4.
+const CPU_TIERS=Object.freeze({low:Object.freeze([4,6,8]),mid:Object.freeze([8,12,16,20]),high:Object.freeze([16,20,24,28,32])});
+// Physical panel size a tier plausibly drives: an old integrated or entry GPU on a 4K
+// panel (3840x2160, or 1920x1080 at DPR 2 / 2560x1440 at 1.5) or a 3440 ultrawide is a
+// combination detectors can flag. Mid and high tiers drive every library screen.
+const PANEL_LIMITS=Object.freeze({low:Object.freeze({width:2560,height:1600})});
+function drivable(tier,screen){const limit=PANEL_LIMITS[tier];return !limit||screen.width*screen.dpr<=limit.width&&screen.height*screen.dpr<=limit.height;}
 const GPUS=Object.freeze(data.gpus.map(g=>{
  if(!['NVIDIA','AMD','Intel'].includes(g.brand)||typeof g.model!=='string'||g.model.length>120||!/^[\w ().+/-]+$/.test(g.model))throw Error('指纹显卡条目无效');
  return Object.freeze({brand:g.brand,model:g.model,tier:gpuTier(g.brand,g.model),vendor:`Google Inc. (${g.brand})`,renderer:`ANGLE (${g.brand}, ${g.model} Direct3D11 vs_5_0 ps_5_0)`});
@@ -58,12 +65,15 @@ function generate(seed,base={},full=false){
  // Pick the thread count from the GPU's own tier so the pair is a real machine.
  const cpu=pick(seed,'cpu',CPU_TIERS[gpu.tier]),memory=cpu<=8?pick(seed,'memory',[4,8]):8;
  // Keep explicitly fixed viewport dimensions. Choose a screen that can contain them,
- // and when the real display is known, one at least as large as that display.
+ // and when the real display is known, one at least as large as that display; among
+ // those, one the GPU's tier can drive. Containing the viewport comes first, then the
+ // display floor (an undersized screen leaves a margin around the 1:1 page), then the tier.
  const fits=SCREENS.filter(s=>s.width>=(base.width||0)&&s.height>=(base.height||0)),floor=displayFloor();
  const large=floor?fits.filter(s=>s.width>=floor.width&&s.height>=floor.height):fits;
- const screens=large.length?large:fits;
+ const sized=large.length?large:fits,plausible=sized.filter(s=>drivable(gpu.tier,s));
+ const screens=plausible.length?plausible:sized;
  if(full&&!screens.length)throw Error('现有视口超过设备库屏幕范围，请先调整视口');
  const screen=full?pick(seed,'screen',screens):null;
  return {gpu,cpu,memory,screen};
 }
-module.exports={ID,GPUS,SCREENS,CPUS,CPU_TIERS,gpuTier,generate,setDisplayProvider};
+module.exports={ID,GPUS,SCREENS,CPUS,CPU_TIERS,PANEL_LIMITS,gpuTier,drivable,generate,setDisplayProvider};

@@ -130,7 +130,8 @@ app.whenReady().then(async()=>{let error;try{
  for(let i=0;i<ids.length;i++){
   const ses=session.fromPartition('persist:arena-core-'+ids[i]);
   ses.setCertificateVerifyProc((req,cb)=>cb(req.hostname.endsWith('.test')&&req.certificate.data.trim()===cert.trim()?0:-3));
-  controller.store.update(ids[i],{url:mainURL});await controller.start(ids[i]);
+  // A fresh-process phase serves on a new port; saved browser tabs would reopen the previous one.
+  controller.store.update(ids[i],{url:mainURL,browserTabs:{activeId:'fixture',items:[{id:'fixture',url:mainURL}]}});await controller.start(ids[i]);
   const wc=controller.runtimes.get(ids[i]).view.webContents;
   await loaded(wc,mainURL);
   verify(await wc.executeJavaScript('firstSample'),expected[i],i+': main first script');

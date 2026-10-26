@@ -9,7 +9,7 @@ const {Store,safeURL,parseNodes,networkConfig}=require('./store.cjs');
 const {downloadSubscription}=require('./subscription.cjs');
 const {SharedProxyPool}=require('./shared-proxy-pool.cjs');
 const {recoverProcessHosts}=require('./process-host.cjs');
-const {Workspace,redact}=require('./workspace.cjs');const {applyEnvironment,sanitizeElectronUserAgent}=require('./environment.cjs');
+const {Workspace,redact}=require('./workspace.cjs');const {applyEnvironment,nativeUserAgent}=require('./environment.cjs');
 const {Library}=require('./library.cjs');const {Diagnostics}=require('./diagnostics.cjs');
 const deletionJournal=require('./deletion-journal.cjs');
 const {commitDeletionMetadata}=require('./deletion-commit.cjs');
@@ -75,7 +75,7 @@ class Controller {
  s.setPermissionRequestHandler((_wc,permission,cb,details)=>cb(permitted(permission,details)));s.setPermissionCheckHandler((_wc,permission,_origin,details)=>permitted(permission,details));await s.closeAllConnections();
  if(x.network.mode==='mihomo'){const node=this.store.nodes(id).find(n=>n.name===x.network.nodeName);if(!node)throw Error('尚未选择可用节点；可导入节点或明确切换到本机 IP 直连');r.core=require('./proxy-mode.cjs').createCore(this,message=>{if(this.runtimes.get(id)!==r)return;r.status='error';r.error=message;this.destroyView(r);this.log(id,message,'ERROR');},{instanceId:id,kind:'instance'});const {port,version}=await r.core.start(node);r.coreVersion=version;this.log(id,'节点连接：'+r.core.networkSummary.dns+'；'+r.core.networkSummary.route);await s.setProxy({mode:'fixed_servers',proxyRules:`http://127.0.0.1:${port}`,proxyBypassRules:'<-loopback>'});}else await s.setProxy({mode:'direct'});
  if(x.network.mode==='mihomo'&&!r.core?.child)throw Error('代理内核已退出');require('./browser-network-policy.cjs').resumeDictionaries(s);
- await this.transfer.hydrateCookies(id);s.setUserAgent(x.environment.userAgent||sanitizeElectronUserAgent(s.getUserAgent()),x.environment.language);
+ await this.transfer.hydrateCookies(id);s.setUserAgent(x.environment.userAgent||nativeUserAgent(),x.environment.language);
  const wc=await require('./browser-tabs.cjs').initialize(this,id,r,x);
  if(this.extensions.catalog.enabled(id).length)await this.extensions.load(r,id);
  r.status='running';this.transfer.consumeCookies(id);this.choose(this.activeId);this.log(id,x.network.mode==='direct'?'本机 IP 直连 · 已建立独立持久会话':'代理模式 · 连接失败不会回退直连');require('./browser-tabs.cjs').navigatePage(this,id,r,r.tabs.get(r.activeTabId));

@@ -89,6 +89,24 @@
       define(Screen.prototype,'pixelDepth',fp.ColorDepth);
     }
   }
+  /* ---------------- devicePixelRatio 精度 ----------------
+   * 模拟 DPR 在 Chromium 里按“原生缩放 × 模拟/原生”的 float32 计算，页面读到 1.0000000149011612、
+   * 1.5000000596046448 之类的值；真实 Chrome 在 100% 缩放下报告精确值，并与 resolution 媒体查询一致。
+   * 这里只把与配置值相差不到 1e-6 的舍入残差改回配置值；页面缩放等其他取值原样返回。
+   * 跨站 iframe（独立进程）不接收模拟，仍是原生值，与它自己的 CSS 媒体查询一致，不在这里改。 */
+  if (!worker && typeof fp.DevicePixelRatio === 'number' && fp.DevicePixelRatio > 0) try {
+    var dprDescriptor = Object.getOwnPropertyDescriptor(root, 'devicePixelRatio');
+    if (dprDescriptor && typeof dprDescriptor.get === 'function' && dprDescriptor.configurable) {
+      var nativeDpr = dprDescriptor.get, wantedDpr = fp.DevicePixelRatio;
+      Object.defineProperty(root, 'devicePixelRatio', {
+        ...dprDescriptor,
+        get: markNative(function () {
+          var v = apply(nativeDpr, this, []);
+          return typeof v === 'number' && abs(v - wantedDpr) < 1e-6 ? wantedDpr : v;
+        }, nativeDpr),
+      });
+    }
+  } catch (e) {}
   /* ---------------- window.chrome 外观 ----------------
    * 真实 Chrome 的 window.chrome 带 app / csi / loadTimes；Electron 只留一个空对象，
    * 是常见的自动化/非 Chrome 标志。这里在窗口上补齐这三项（Worker 没有 window.chrome 不处理），

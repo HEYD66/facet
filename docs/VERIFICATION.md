@@ -1,5 +1,14 @@
 # 验证入口与历史记录
 
+## 2026-10-26：DPR 精度、原生 UA 应用名、老显卡配套与两项测试修复（源码未发布）
+
+- DPR：模拟 DPR 时主页面 `devicePixelRatio` 为 `1.0000000149011612` 等 float32 残差，`resolution` 媒体查询却是精确值。注入脚本把相差不到 1e-6 的残差改回配置值（`fingerprint-inject.js`）。探针（本机显示器 1.25，`localhost` 跨站 iframe 为独立进程）：配置 1 / 1.25 / 1.5 / 2 时主页面读数精确、与媒体查询一致，getter `toString` 为原生样式。跨站 iframe 仍报原生 1.25（DPR 与媒体查询都是），对 iframe 目标发送 `setDeviceMetricsOverride` 被 Chromium 拒绝，属内核限制，未改。
+- 原生 UA：`app.setName('千面 Facet')` 后 Electron 默认 UA 含 `千面Facet/<版本>`，旧的清理只去掉 `Electron/<版本>`；会话设过自定义 UA 后清空也回不到原生。现在原生 UA 取自 `app.userAgentFallback` 并去掉两段标记（`environment.cjs` `nativeUserAgent`）。探针（带真实应用名）：原生、设为 `.130`、清空三次启动，页面 UA 与请求头依次为纯 `.167`、`.130`、纯 `.167`。用户现有 16 个实例都保存了显式 UA，不受应用名问题影响。
+- 老显卡：low 档线程加入 4，low 档屏幕限制物理分辨率不超过 2560×1600（`fingerprint-catalog.cjs`）；显示器下限优先于档位。
+- 测试修复：`test:viewport-bookmarks` 仍按 #10 之前的缩放适配断言固定视口宽 1760，改为 1:1 呈现后的实际尺寸和角落点击（这项自 `9f95925` 起失败，当时未跑）。`test:fingerprint-electron`、`test:fingerprint-contexts` 第二阶段的 ERR_CONNECTION_REFUSED 不是环境问题：实例启动时恢复保存的网页标签，仍打开上一阶段已关闭的端口；测试改为同时更新保存的标签。`fingerprint-contexts` 第三阶段的外部 CDP 端口在 40000–60000 随机选取，本机部分端口无人监听却 listen 报 EADDRINUSE，改为向系统申请空闲端口。
+- 通过：`check`、全部单元测试、`test:control-api`、`git diff --check`；真实 Electron（退出码 0）：`test:fingerprint-electron`（两阶段）、`test:fingerprint-contexts`（三阶段）、`test:viewport-bookmarks`、`test:viewport-screen`、`test:grid`、`test:fingerprint-offscreen`、`test:devtools-electron`、`test:instance-reset-electron`、`test:browser-tabs`、`fingerprint-tostring-electron.cjs`、`test:cdp-workers`。
+- 未验证：没有在真实检测站复测 DPR 与 UA 改动；跨站 iframe 的 DPR 一致性需要内核改动或只用与真实显示器相同的 DPR。
+
 ## 2026-10-26：AI 会话改为 DSH 持久 Session（源码未发布）
 
 - 起因：上一条用自写的「较早任务精简 + 任务开始前记忆摘要」缓解压缩过频，仍是千面自己拼历史、DSH 只能压缩当前任务。改为参照 DSH 官方宿主（server / session-controller）：每个会话对应一个长期 Session，任务通过 `ctx.agents.resume` 恢复后追加一轮，历史、中断收尾（`interruptedTurnClosers`）、`tool-result-pruner` 和 `compaction-basic` 全部由 DSH 处理，压缩覆盖之前所有任务。

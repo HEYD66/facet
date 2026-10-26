@@ -1,10 +1,10 @@
 {
   "platform": "win32",
-  "electron": "44.4.5",
+  "electron": "44.9.3",
   "passed": 11,
   "results": [
     "Reproduces old fixed viewport clipping: bottom-right control cannot be reached",
-    "Fitted fixed viewport preserves virtual dimensions and right-bottom mouse coordinates",
+    "Fixed viewport larger than the window is presented 1:1 at the window size and its bottom-right control is clickable",
     "Resize across three window sizes keeps the whole fixed viewport interactive",
     "Switching fixed/adaptive instances preserves their layouts and saved configuration",
     "Result favorite toggles visibly and synchronizes every row sharing one IP",
