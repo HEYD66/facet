@@ -3,16 +3,17 @@ const {app,BrowserWindow,nativeImage}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),assert=require('node:assert/strict');
 const root=process.argv.find(x=>x.startsWith('--test-profile='))?.slice(15)||fs.mkdtempSync(path.join(os.tmpdir(),'facet-ai-sessions-'));
 app.setPath('userData',root);app.disableHardwareAcceleration();
-const {Controller}=require('../src/main/controller.cjs'),{ConversationStore}=require('../src/main/ai-conversation.cjs'),{Memory}=require('../src/main/ai-memory.cjs');
+const {Controller}=require('../src/main/controller.cjs'),{ConversationStore}=require('../src/main/ai-conversation.cjs'),{history}=require('../src/main/ai-dsh.cjs');
 const wait=async fn=>{const end=Date.now()+20000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out');};
 let c,win,server,target;const results=[],payloads=[];const timer=setTimeout(()=>app.exit(2),120000);
 app.whenReady().then(async()=>{let error;try{
  win=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{offscreen:true,preload:path.join(__dirname,'../src/main/preload.cjs'),contextIsolation:true,sandbox:true}});
  c=new Controller(win,root,path.join(root,'no-core'));target=c.store.list()[0].id;
+ const png=nativeImage.createFromBitmap(Buffer.from([255,0,0,255]),{width:1,height:1}).toDataURL();
  if(!process.argv.includes('--resume')){
-  const memory=new Memory(),png=nativeImage.createFromBitmap(Buffer.from([255,0,0,255]),{width:1,height:1}).toDataURL();
-  memory.add([target],[{role:'user',content:[{type:'text',text:'LEGACY_CONTEXT'},{type:'image_url',image_url:{url:png}}]},{role:'assistant',content:'LEGACY_REPLY'}]);memory.summary='LEGACY_SUMMARY';memory.summaryScope=[target];memory.compressions=1;
-  new ConversationStore(root).save({memory:memory.export(),task:{id:'legacy-task',scope:[target],busy:false,status:'已完成',entries:[{kind:'user',text:'LEGACY_CONTEXT'},{kind:'assistant',text:'LEGACY_REPLY'}],history:[],partial:''}});
+  // Oldest on-disk format: one conversation with Facet's own turns/summary memory.
+  const memory={turns:[{scope:[target],messages:[{role:'user',content:[{type:'text',text:'LEGACY_CONTEXT'},{type:'image_url',image_url:{url:png}}]},{role:'assistant',content:'LEGACY_REPLY'}]}],summary:'LEGACY_SUMMARY',summaryScope:[target],compressions:1};
+  new ConversationStore(root).save({memory,task:{id:'legacy-task',scope:[target],busy:false,status:'已完成',entries:[{kind:'user',text:'LEGACY_CONTEXT'},{kind:'assistant',text:'LEGACY_REPLY'}],history:[],partial:''}});
  }
  require('../src/main/ipc.cjs').installIPC(win,c);const agent=c.aiAgent;
  await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));const ui=code=>win.webContents.executeJavaScript(code);
@@ -20,17 +21,19 @@ app.whenReady().then(async()=>{let error;try{
  if(process.argv.includes('--resume')){
   const expected=JSON.parse(fs.readFileSync(path.join(root,'expected.json'),'utf8'));
   assert.equal(agent.sessions.selectedId,expected.selected);assert.equal(agent.sessions.rows.length,3);assert(agent.run.entries.some(x=>x.text.includes('B_ONLY')));
-  agent.sessions.select(expected.legacy);assert(agent.memory.summary.includes('LEGACY_SUMMARY'));assert(JSON.stringify(agent.memory.export()).includes('image_url'));
-  agent.sessions.select(expected.running);assert.equal(agent.run.busy,false);assert(agent.memory.context([target]).some(x=>x.content==='RUNNING'));
-  assert(!JSON.stringify(agent.memory.export()).includes('B_ONLY'));
-  results.push('Fresh process restores selected session, three separate histories, legacy image/summary and completed background task');
+  agent.sessions.select(expected.legacy);assert.equal(agent.thread.legacy,null);
+  const migrated=await history(agent.dshDir,agent.thread.sessionId);assert(migrated.some(m=>m.role==='user'&&m.content.startsWith('之前的对话（迁移自旧版本')&&m.content.includes('LEGACY_SUMMARY')&&m.content.includes('LEGACY_REPLY')));assert(migrated.some(m=>m.role==='assistant'&&m.content==='完成 AFTER_MIGRATION'));
+  agent.sessions.select(expected.running);assert.equal(agent.run.busy,false);const running=await history(agent.dshDir,agent.thread.sessionId);
+  assert(running.some(x=>x.role==='user'&&x.content==='RUNNING'));assert(running.some(x=>x.role==='tool'&&x.content.includes('filled')));assert(!JSON.stringify(running).includes('B_ONLY'));
+  results.push('Fresh process restores selected session, three separate DSH sessions (one migrated from the old memory) and completed background task');
+  assert.equal(fs.readdirSync(agent.dshDir).filter(n=>n.endsWith('.log')).length,3);
   for(const row of [...agent.sessions.rows])agent.sessions.remove(row.id,true);
-  assert.equal(agent.sessions.rows.length,1);assert.equal(agent.run,null);assert.equal(agent.memory.turns.length,0);
+  assert.equal(agent.sessions.rows.length,1);assert.equal(agent.run,null);assert.equal(agent.thread.turns,0);assert.deepEqual(fs.readdirSync(agent.dshDir).filter(n=>n.endsWith('.log')),[],'deleted sessions remove their DSH logs');
   const reopened=new (require('../src/main/ai-agent.cjs').AIAgent)(c);assert.equal(reopened.sessions.rows.length,1);assert.equal(reopened.run,null);
   results.push('Deleting the final idle session creates and persists an empty replacement');
  }else{
-  const legacy=agent.sessions.selectedId;assert.equal(agent.sessions.rows[0].title,'原有会话');assert(agent.memory.summary.includes('LEGACY_SUMMARY'));
-  const backup=fs.readFileSync(agent.conversation.file+'.pre-sessions.bak','utf8');assert(!backup.includes('LEGACY_CONTEXT'));
+  const legacy=agent.sessions.selectedId;assert.equal(agent.sessions.rows[0].title,'原有会话');assert(agent.thread.legacy.summary.includes('LEGACY_SUMMARY'));assert.equal(agent.thread.turns,1);
+  for(const suffix of ['.pre-sessions.bak','.pre-dsh.bak']){const backup=fs.readFileSync(agent.conversation.file+suffix,'utf8');assert(!backup.includes('LEGACY_CONTEXT'));}
   server=http.createServer(async(req,res)=>{if(req.url!=='/v1/chat/completions'){res.end('<!doctype html><title>Session test</title><input id="value">');return;}
    let body='';for await(const chunk of req)body+=chunk;const data=JSON.parse(body);payloads.push(data);const last=data.messages.findLastIndex(x=>x.role==='user'),prompt=data.messages[last].content;
    const done=data.messages.slice(last).some(x=>x.role==='tool');const message=prompt==='RUNNING'&&!done?{role:'assistant',content:null,tool_calls:[{id:'fill-once',type:'function',function:{name:'fill',arguments:JSON.stringify({instanceId:target,selector:'#value',text:'ACTUAL_FILL'})}}]}:{role:'assistant',content:'完成 '+prompt};
@@ -38,8 +41,15 @@ app.whenReady().then(async()=>{let error;try{
   });await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
   agent.save({baseURL:base+'/v1',model:'session-protocol'});c.store.update(target,{url:base+'/page'});await c.start(target);await wait(()=>c.runtimes.get(target).view.webContents.getTitle()==='Session test');
   const click=selector=>ui('document.querySelector('+JSON.stringify(selector)+').click()');
+  // The first task of a migrated conversation creates its DSH session and hands the old memory to the model once.
+  agent.begin({prompt:'AFTER_MIGRATION',ids:[target],permission:'read'});await wait(()=>!agent.run.busy);assert.equal(agent.run.status,'已完成');assert.equal(agent.thread.legacy,null);
+  const first=payloads.find(x=>x.messages.at(-1).content==='AFTER_MIGRATION'),carried=first.messages.filter(m=>m.role==='user'&&String(m.content).startsWith('之前的对话（迁移自旧版本'));
+  assert.equal(carried.length,1);assert(carried[0].content.includes('LEGACY_CONTEXT')&&carried[0].content.includes('LEGACY_SUMMARY')&&carried[0].content.includes('[图片未迁移]'));assert(!carried[0].content.includes(png.slice(22)));
+  agent.begin({prompt:'AFTER_MIGRATION_2',ids:[target],permission:'read'});await wait(()=>!agent.run.busy);
+  assert.equal(payloads.at(-1).messages.filter(m=>m.role==='user'&&String(m.content).startsWith('之前的对话（迁移自旧版本')).length,1,'migrated once, then part of the DSH history');
+  results.push('Old-format memory migrates into a new DSH session once (text, summary; images noted), with encrypted pre-DSH backup');
   await click('#aiClear');await wait(()=>agent.sessions.selectedId!==legacy);const running=agent.sessions.selectedId;
-  assert.equal(agent.memory.turns.length,0);assert.equal(agent.sessions.rows.length,2);
+  assert.equal(agent.thread.turns,0);assert.equal(agent.sessions.rows.length,2);
   agent.begin({prompt:'RUNNING',ids:[target],permission:'confirm'});await wait(()=>agent.pending);
   const pending=agent.pending.id;await click('#aiClear');await wait(()=>agent.sessions.selectedId!==running);const b=agent.sessions.selectedId;
   assert(agent.run.busy);assert.equal(agent.sessions.activeId,running);assert.equal(agent.snapshot().task,null);assert.equal(agent.pending.id,pending);

@@ -52,7 +52,11 @@ app.whenReady().then(async()=>{let error;try{
   await wait(()=>ui("document.querySelector('#aiQueue').textContent.includes('RESUME_AFTER_RESTART')&&!!document.querySelector('#aiQueueNext')"));
   reports.push('Fresh process restores encrypted pending text/image and resets permission; no model request or action resumes automatically');
   a.save({baseURL:base+'/v1',model:'dsh-fixture'});await ui("document.querySelector('#aiPermission').value='read';document.querySelector('#aiQueueNext').click()");await wait(()=>requests.length&&a.run&&!a.run.busy);
-  assert.equal(a.run.permission,'read');assert.equal(a.run.queue.length,0);assert(a.memory.context([target]).some(m=>m.role==='assistant'&&m.content.includes('RESUME_AFTER_RESTART')));
+  assert.equal(a.run.permission,'read');assert.equal(a.run.queue.length,0);
+  // The restored conversation continues its own DSH session: the stopped task, the stop note and the new answer are one history.
+  const stored=await require('../src/main/ai-dsh.cjs').history(a.dshDir,a.thread.sessionId),latest=requests.at(-1).messages;
+  assert(stored.some(m=>m.role==='assistant'&&String(m.content).includes('RESUME_AFTER_RESTART')));assert(stored.some(m=>m.role==='user'&&m.content==='HOLD_BOUND'));
+  assert(latest.some(m=>m.role==='user'&&m.content==='HOLD_BOUND'));assert(latest.some(m=>m.role==='user'&&String(m.content).startsWith('上一轮任务被用户停止')));
   reports.push('Real Continue Pending button authorizes the current read-only mode and completes one restored message with its image');
  }else{
   a.save({baseURL:base+'/v1',model:'dsh-fixture'});c.store.update(target,{url:base+'/page'});await c.start(target);await wait(()=>c.runtimes.get(target).view.webContents.getTitle()==='DSH real page');

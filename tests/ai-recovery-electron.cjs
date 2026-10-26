@@ -15,7 +15,7 @@ app.whenReady().then(async()=>{let error;try{
  if(process.argv.includes('--resume')){
   assert.equal(agent.run.busy,false);assert.equal(agent.run.permission,'confirm');assert.equal(agent.run.plan.steps[0].status,'blocked');
   await wait(()=>ui("!document.querySelector('#aiPlan').hidden&&document.querySelector('#aiPlan').textContent.includes('等待页面恢复')"));
-  assert.equal(agent.snapshot().task.retry,null);assert(agent.sessions.rows.length>=2);assert(agent.memory.turns.length>0);
+  assert.equal(agent.snapshot().task.retry,null);assert(agent.sessions.rows.length>=2);assert(agent.thread.turns>0);
   reports.push('Fresh Electron process restores the selected session plan, history and blocked state without resuming actions or retry timers');
  }else{
   server=http.createServer(async(req,res)=>{
@@ -60,7 +60,10 @@ app.whenReady().then(async()=>{let error;try{
   for(const scenario of ['deny','empty']){
    mode=scenario;const before=requests.length;agent.begin({prompt:'检查失败收尾',ids:[target],permission:'full'});await wait(()=>!agent.run.busy);
    assert.equal(agent.run.status,'失败');assert.equal(requests.length-before,1);const answer=agent.run.entries.filter(e=>e.kind==='assistant').at(-1).text;
-   assert(answer.includes('本次任务未完成'));assert(!answer.includes('DO_NOT_ECHO'));assert(agent.memory.context([target]).some(m=>m.role==='assistant'&&m.content===answer));
+   assert(answer.includes('本次任务未完成'));assert(!answer.includes('DO_NOT_ECHO'));
+   // The failure is told to the model once, at the start of the next task of this conversation.
+   assert(agent.thread.note.startsWith('上一轮任务失败'));assert(!agent.thread.note.includes('DO_NOT_ECHO'));
+   if(scenario==='empty')assert(requests.at(-1).body.messages.some(m=>m.role==='user'&&String(m.content).startsWith('上一轮任务失败')));
    await wait(()=>ui("document.querySelector('#aiHistory').textContent.includes('本次任务未完成')"));
   }
   reports.push('HTTP 401 and empty replies produce a visible persisted assistant answer, with no blind retry or service body exposure');

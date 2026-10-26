@@ -19,19 +19,4 @@ class ProgressGuard{
   return '';
  }
 }
-// 长任务的上下文控制：本轮消息过大时，把较早的工具结果替换为摘要占位，保留最近 8 条完整结果。
-// 只改 tool 消息的 content，tool_call_id 配对不变，协议仍然有效。
-const TURN_LIMIT=200000,KEEP_TOOLS=8;
-function compactTurn(messages,start){
- const size=()=>messages.slice(start).reduce((n,m)=>n+(typeof m.content==='string'?m.content.length:JSON.stringify(m.content||'').length)+(m.tool_calls?JSON.stringify(m.tool_calls).length:0),0);
- if(size()<=TURN_LIMIT)return 0;
- const tools=[];for(let i=start;i<messages.length;i++)if(messages[i].role==='tool')tools.push(i);
- let changed=0;
- for(const i of tools.slice(0,Math.max(0,tools.length-KEEP_TOOLS))){
-  const c=String(messages[i].content||'');if(c.length<=400||c.startsWith('{"compacted"'))continue;
-  messages[i]={...messages[i],content:JSON.stringify({compacted:true,note:'较早的工具结果已省略以控制上下文；需要时请重新查询',head:c.slice(0,300)})};changed++;
-  if(size()<=TURN_LIMIT)break;
- }
- return changed;
-}
-module.exports={ProgressGuard,compactTurn};
+module.exports={ProgressGuard};

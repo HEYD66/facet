@@ -185,7 +185,8 @@ app.whenReady().then(async()=>{try{
  assert.equal(agent.run.status,'已完成',JSON.stringify(agent.run.entries.slice(-3)));assert.equal(modelStep,4);
  await wait(()=>logs.filter(x=>x==='trusted:true').length===t0+1);
  const toolNames=payloads.find(p=>p.tools).tools.map(t=>t.function.name);assert(toolNames.includes('observe')&&toolNames.includes('act')&&toolNames.includes('dialog'));assert(!toolNames.includes('read_page')&&!toolNames.includes('click')&&!toolNames.includes('fill'));
- assert(!JSON.stringify(agent.memory.export()).includes('data:image/jpeg'),'screenshots not stored in memory');
+ assert(!JSON.stringify(agent.thread.export()).includes('data:image/jpeg'),'screenshots not stored with the conversation');
+ const stored=await require('../src/main/ai-dsh.cjs').history(agent.dshDir,agent.thread.sessionId);assert(stored.length>0);assert(!JSON.stringify(stored).includes('data:image/jpeg'),'screenshots not stored in the DSH session');
  const saved=fs.readdirSync(root).filter(f=>/^ai-/.test(f)).map(f=>{try{return fs.readFileSync(path.join(root,f),'utf8');}catch{return '';}}).join('');assert(!saved.includes('data:image/jpeg'));
  reports.push('agent loop: observe(screenshot) → act(ref) → observe → answer; one image at a time; legacy tools hidden; images not persisted');
  await ui("document.querySelector('#aiToggle').click()");await wait(()=>ui("!document.querySelector('#aiPanel').hidden"));

@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{let error,report;try{
  a.begin({prompt:'这是隔离本机测试页。请观察当前授权实例的网页，点击“加一”按钮一次且仅一次，再观察并核对页面计数为1。最终回复网页上显示的校验码和计数。不要刷新页面、不要创建实例或访问其他网站。',ids:[target],permission:'full'});
  await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成',a.run.entries.filter(e=>e.kind==='system').map(e=>e.text).join('\n'));assert.equal(hits,1);assert.equal(await wc.executeJavaScript('document.querySelector("#count").textContent'),'1');assert.deepEqual(await wc.executeJavaScript('window.clicks'),[true]);
  assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('act：')));assert(a.run.entries.some(e=>e.kind==='assistant'&&e.text.includes(marker)));
- const restored=new(require('../src/main/ai-agent.cjs').AIAgent)(c);assert(restored.memory.context([target]).some(m=>m.role==='assistant'&&m.content?.includes(marker)));
+ const restored=new(require('../src/main/ai-agent.cjs').AIAgent)(c);assert((await require('../src/main/ai-dsh.cjs').history(restored.dshDir,restored.thread.sessionId)).some(m=>m.role==='assistant'&&String(m.content||'').includes(marker)));
  report={passed:true,model:config.model,engine:a.snapshot().engine,rounds:a.run.round,actualHTTPIncrements:hits,trustedClicks:1,verified:['live configured model','official DSH loop','real observe/act','exactly one trusted click','page plus HTTP counter both 1','real page marker in final answer','encrypted restored memory'],root};
  if(process.argv.includes('--capabilities')){
   const sample=path.join(root,'sample.txt');fs.writeFileSync(sample,'LIVE-'+marker);a.maxRounds=16;
@@ -31,9 +31,10 @@ app.whenReady().then(async()=>{let error,report;try{
  }
  if(process.argv.includes('--history-greeting')){
   const ids=[target];for(let i=0;i<3;i++){const item=c.store.create('隔离问候验收 '+(i+1));c.store.update(item.id,{url:'http://127.0.0.1:'+server.address().port+'/'});await c.start(item.id);ids.push(item.id);}
-  a.memory.add(ids,[{role:'user',content:'旧任务：核对6个实例。'},{role:'assistant',content:'上次有6个实例运行，完成其中1个，其余5个待处理。'}]);
-  a.run.plan={steps:[{id:'old',title:'完成其余5个实例的打开与检测',status:'in_progress'}],explanation:'上次的旧计划',revision:1,updatedAt:'2026-10-21T17:30:13.185Z'};a.run.planTaskId=a.run.id;a.persist();
-  const toolsBefore=a.run.entries.filter(e=>e.kind==='tool').length;
+  // Stale history enters a fresh conversation the way old-format memory migrates into its DSH session.
+  a.clear();a.thread.legacy={turns:[{scope:ids,messages:[{role:'user',content:'旧任务：核对6个实例。'},{role:'assistant',content:'上次有6个实例运行，完成其中1个，其余5个待处理。'}]}],summary:''};
+  a.run={id:'stale-task',busy:false,status:'已完成',scope:ids,entries:[],queue:[],planTaskId:'stale-task',plan:{steps:[{id:'old',title:'完成其余5个实例的打开与检测',status:'in_progress'}],explanation:'上次的旧计划',revision:1,updatedAt:'2026-10-21T17:30:13.185Z'}};a.persist();
+  const toolsBefore=0;
   a.begin({prompt:'hi',ids,permission:'read'});await wait(()=>!a.run.busy);
   assert.equal(a.run.status,'已完成');assert.equal(a.snapshot().task.planCurrent,false);
   const greetingTools=a.run.entries.filter(e=>e.kind==='tool').slice(toolsBefore);assert(greetingTools.every(e=>/^(list_instances|get_context)：/.test(e.text)));

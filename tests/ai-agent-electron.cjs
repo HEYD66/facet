@@ -84,18 +84,16 @@ app.whenReady().then(async()=>{try{
  await ui(`(()=>{const bytes=Uint8Array.from(atob(${JSON.stringify(png.split(',')[1])}),c=>c.charCodeAt(0));const dt=new DataTransfer();dt.items.add(new File([bytes],'test.png',{type:'image/png'}));document.querySelector('#aiPrompt').dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));})()`);
  await wait(()=>ui("document.querySelectorAll('#aiAttachments img').length===1"));
  await ui("document.querySelector('#aiPrompt').value='Remember image task';document.querySelector('#aiSend').click()");await wait(()=>agent.run?.entries.some(x=>x.text.includes('Remember image task'))&&!agent.run.busy);
- assert(payloads.some(p=>p.messages.some(m=>Array.isArray(m.content)&&m.content.some(v=>v.type==='image_url'&&v.image_url.url===png))));assert.equal(agent.memory.turns.length,1);
- agent.begin({prompt:'Continue earlier task',ids:[a.id],permission:'full'});await wait(()=>!agent.run.busy);assert(payloads.at(-1).messages.some(m=>Array.isArray(m.content)&&m.content.some(v=>v.text==='Remember image task')));assert.equal(agent.memory.turns.length,2);
+ assert(payloads.some(p=>p.messages.some(m=>Array.isArray(m.content)&&m.content.some(v=>v.type==='image_url'&&v.image_url.url===png))));assert.equal(agent.thread.turns,1);
+ // The follow-up continues the same DSH session; the earlier user image is resent with its message.
+ agent.begin({prompt:'Continue earlier task',ids:[a.id],permission:'full'});await wait(()=>!agent.run.busy);assert(payloads.at(-1).messages.some(m=>Array.isArray(m.content)&&m.content.some(v=>v.text==='Remember image task')&&m.content.some(v=>v.type==='image_url'&&v.image_url.url===png)));assert.equal(agent.thread.turns,2);
  assert.throws(()=>agent.begin({prompt:'bad image',images:['data:image/png;base64,AAAA'],ids:[a.id]}),/解码/);
- // Threshold fixture exercises actual summary HTTP transport and atomic memory replacement.
- agent.memory.add([a.id],[{role:'user',content:'压缩边界资料'.repeat(10000)},{role:'assistant',content:'已记录'}]);
- agent.begin({prompt:'After compression',ids:[a.id],permission:'full'});await wait(()=>!agent.run.busy);assert.equal(agent.memory.compressions,1);assert(payloads.at(-1).messages.some(m=>typeof m.content==='string'&&m.content.includes('历史资料摘要')));
  const second=agent.save({providerId:'second',name:'第二提供商',baseURL:origin+'/v1',model:'second-model',models:['second-model'],key:secret});assert.equal(second.providers.length,2);assert.equal(new AIAgent(c).settings().providers.length,2);
  agent.select('default','protocol-fixture');assert.equal(agent.settings().model,'protocol-fixture');
  await wait(()=>ui("document.querySelector('#aiModelBadge').textContent==='protocol-fixture'&&!document.querySelector('#aiModelBadge').disabled"));await ui("document.querySelector('#aiModelBadge').click();document.querySelector('#aiModelSearch').value='second';document.querySelector('#aiModelSearch').dispatchEvent(new Event('input'))");await wait(()=>ui("document.querySelectorAll('#aiModelChoices [data-model]').length===1"));await ui("document.querySelector('#aiModelChoices [data-model]').click()");await wait(()=>agent.settings().model==='second-model');
  assert(!fs.readFileSync(agent.file,'utf8').includes(secret));agent.removeProvider('second');assert.equal(agent.settings().providers.length,1);
  await ui("document.querySelector('#aiSettingsButton').click()");await new Promise(r=>setTimeout(r,500));await capture('providers.png');
- agent.clear();assert.equal(agent.memory.turns.length,0);assert.equal(agent.memory.summary,'');
- reports.push('Pasted PNG preview sends real multimodal HTTP payload; follow-up retains prior messages/image; actual summary request compacts history; provider switch/search, encrypted restart persistence, removal and new-task reset verified');
+ const previous=agent.thread.sessionId;agent.clear();assert.equal(agent.thread.turns,0);assert.equal(agent.thread.compactions,0);assert.notEqual(agent.thread.sessionId,previous);assert(!fs.existsSync(path.join(agent.dshDir,previous+'.log')));
+ reports.push('Pasted PNG preview sends real multimodal HTTP payload; follow-up continues the DSH session with prior messages/image; provider switch/search, encrypted restart persistence, removal and new-task reset verified');
  const report={passed:true,modelTest:'local deterministic protocol fixture only',reports};fs.writeFileSync(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({root,...report}));
  }catch(e){console.error(e);process.exitCode=1;}finally{await c?.closeAll();win?.destroy();server?.close();app.exit(process.exitCode||0);}});

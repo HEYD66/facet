@@ -7,6 +7,7 @@ const root=process.argv.find(x=>x.startsWith('--test-profile='))?.slice(15)||fs.
 app.setPath('userData',root);
 const {Controller}=require('../src/main/controller.cjs');
 const {AIAgent}=require('../src/main/ai-agent.cjs');
+const {history}=require('../src/main/ai-dsh.cjs');
 let win,c,server,mode='normal',target,round=0,summaryCount=0,requests=[],summaryStarted=false;
 const results=[];
 const wait=async fn=>{const end=Date.now()+35000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out');};
@@ -18,8 +19,8 @@ app.whenReady().then(async()=>{let error;try{
  if(process.argv.includes('--resume')){
   c.aiAgent=new AIAgent(c);
   assert(c.aiAgent.run.entries.some(x=>x.kind==='assistant'&&x.text.includes('页面连续为空')));
-  assert(JSON.stringify(c.aiAgent.memory.export()).includes('页面连续为空'));
-  assert.equal(c.aiAgent.run.busy,false);results.push('Fresh Electron process restores final answer and memory without resuming execution');
+  assert((await history(c.aiAgent.dshDir,c.aiAgent.thread.sessionId)).some(m=>m.role==='assistant'&&String(m.content).includes('页面连续为空')));
+  assert.equal(c.aiAgent.run.busy,false);results.push('Fresh Electron process restores final answer and its DSH session without resuming execution');
  }else{
   server=http.createServer(async(req,res)=>{if(req.url!=='/v1/chat/completions'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Empty audit page</title><body></body>');return;}
    let body='';for await(const chunk of req)body+=chunk;const payload=JSON.parse(body);requests.push(payload);
@@ -55,7 +56,9 @@ app.whenReady().then(async()=>{let error;try{
     if(['failure','empty','unexpected-tool','timeout'].includes(mode))assert(answer.includes('千面提供的停止说明'));
     else assert(answer.includes(scenario==='unbounded'?'24次':'页面连续为空'));
     const restored=new AIAgent(c);assert(restored.run.entries.some(x=>x.kind==='assistant'&&x.text===answer));
-    assert(restored.memory.turns.some(t=>t.messages.some(m=>m.role==='assistant'&&m.content===answer)));assert.equal(restored.memory.turns.length,1);
+    // The stop explanation is an ordinary turn of the conversation's DSH session.
+    const stored=await history(restored.dshDir,restored.thread.sessionId);assert(stored.some(m=>m.role==='assistant'&&m.content===answer));assert.equal(restored.thread.turns,1);
+    for(const m of stored)for(const t of m.tool_calls||[])assert(stored.some(x=>x.role==='tool'&&x.tool_call_id===t.id));
    }
    assert(!JSON.stringify(requests.at(-1).messages).includes('无进展保护已触发'));
    results.push(scenario+': tools stop, final response/fallback or explicit cancellation, complete tool protocol and persistence verified');

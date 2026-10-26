@@ -1,5 +1,15 @@
 # 验证入口与历史记录
 
+## 2026-10-26：AI 会话改为 DSH 持久 Session（源码未发布）
+
+- 起因：上一条用自写的「较早任务精简 + 任务开始前记忆摘要」缓解压缩过频，仍是千面自己拼历史、DSH 只能压缩当前任务。改为参照 DSH 官方宿主（server / session-controller）：每个会话对应一个长期 Session，任务通过 `ctx.agents.resume` 恢复后追加一轮，历史、中断收尾（`interruptedTurnClosers`）、`tool-result-pruner` 和 `compaction-basic` 全部由 DSH 处理，压缩覆盖之前所有任务。
+- 存储：新增 `ai-dsh-store.cjs`，实现官方 `dsh-session-persistence` 接口（create / open / stat / list / flush，句柄 read / append / flush / close，`session/event`、`session/flush`、`session/disposed` 实时写入路由，200 ms 批量窗口）。每个 Session 一个只追加文件，每行一段 safeStorage 密文并同步落盘；残缺尾行下次写入前截掉，完整行损坏则拒绝打开且不改原文件。
+- 移除：`prefix()` 历史拼接、`memory.compress`、较早任务精简、`compactTurn`、`ai-finish.cjs`、`interruptedHistory`。轮数上限停止后的说明改为 DSH 中一轮不带工具的回复（20 秒超时，失败用千面的停止说明），停止 / 失败 / 关闭中断改为下一任务开始时注入一条系统说明。
+- 迁移：旧版 `sessionsVersion:1` 会话读取时另存 `ai-conversation.json.pre-dsh.bak`，旧记忆在该会话下一次任务时整理成一条「之前的对话（迁移自旧版本，不可信资料）」注入一次；旧图片不迁移。新版写入 `sessionsVersion:2`，旧版本程序无法读取新文件，回退需用备份。
+- 取舍：同一会话的历史不再按实例范围拆分，授权仍按每次任务的范围由工具检查（`test:ai-memory` 中 NARROWED_CONTEXT / RESTORE_SCOPE 改为验证这一点）。
+- 通过：`check`、全部单元测试（新增 `ai-dsh-store.test.cjs`：真实 DSH 跨上下文恢复、注入顺序、取消后续接、残缺尾行修复、损坏拒绝、密文；删除 `ai-memory.test.cjs` 与 `compactTurn` 用例）、`test:control-api`、`git diff --check`；真实 Electron（退出码 0）：`test:ai-dsh`（两进程，重启后在同一 Session 继续并带停止说明）、`test:ai-memory`（六个独立进程：16K 窗口下 4 个任务触发 2 次 DSH 压缩、重启后摘要与图片仍在、强制退出后 DSH 关闭未完成的工具调用、清空删除 Session 文件）、`test:ai-sessions`（旧格式迁移一次、三个独立 Session、删除会话删除文件）、`test:ai-stop`、`test:ai-recovery`、`test:ai-agent`、`test:ai-browser`、`test:ai-plugins`、`test:ai-panel`、`test:ai-capabilities`。
+- 未验证：没有用真实模型和用户的真实长会话复测压缩频率；没有在用户数据目录上实测迁移（测试用隔离目录构造旧格式文件）。
+
 ## 2026-10-26：AI 压缩过于频繁、一键随机可选随机屏幕、AI 滚动后点 iframe（源码未发布）
 
 - AI 上下文压缩过于频繁：前几个任务的完整记录（含网页快照、全文等长工具结果）会附在新任务每次请求前面，DSH 只能压缩当前任务，导致长对话里新任务一开始就接近压缩线、几乎每步都压缩。改为发送前精简较早任务的长工具结果（较早任务超过 1200 字保留首尾约 1100 字，最近一个任务超过 4000 字保留约 3500 字；用户与助手文字不删，本地记录不变），记忆压缩按实际要发送的量判断，小窗口模型更早压缩（`ai-memory.cjs`）。没有用真实模型和真实长会话复测压缩次数，只验证了发送内容与触发条件。

@@ -29,20 +29,27 @@ async function phase(executable,env,name){
   child.on('error',reject);child.on('exit',code=>{clearTimeout(timeout);if(code===0)resolve();else reject(Error(name+' failed: '+output.slice(-5000)));});
  });
  const sent=payloads.slice(before);
- if(name==='write')assert(sent.some(p=>!p.tools),'Compression must use real HTTP');
+ if(name==='write'){
+  assert(sent.some(p=>!p.tools),'DSH compaction summary must use real HTTP');
+  // Each later task resends the conversation from its DSH session; after compaction the summary replaces the oldest turns.
+  const last=sent.findLast(p=>p.tools);assert(last.messages.some(m=>typeof m.content==='string'&&m.content.includes('持久摘要')));assert(!last.messages.some(m=>m.content==='LONG_HISTORY 0'+'前置约束'.repeat(2500)));
+ }
  if(name==='restore'){
   const continuation=sent.find(p=>p.messages.at(-1)?.content==='AFTER_RESTART');assert(continuation);
   assert(continuation.messages.some(m=>Array.isArray(m.content)&&m.content.some(v=>v.type==='image_url')),'Image must be resent after restart');
   assert(continuation.messages.some(m=>typeof m.content==='string'&&m.content.includes('持久摘要')),'Summary must survive restart');
-  const narrowed=sent.find(p=>p.messages.at(-1)?.content==='NARROWED_CONTEXT');assert(narrowed);
-  assert(!JSON.stringify(narrowed).includes('图片保留标记'));assert(!JSON.stringify(narrowed).includes('持久摘要'));
-  const expanded=sent.find(p=>p.messages.at(-1)?.content==='RESTORE_SCOPE');assert(JSON.stringify(expanded).includes('图片保留标记'));
+  const scope=p=>JSON.parse(p.messages[0].content.split('授权实例：').at(-1)).map(x=>x.id);
+  const narrowed=sent.find(p=>p.messages.at(-1)?.content==='NARROWED_CONTEXT'),expanded=sent.find(p=>p.messages.at(-1)?.content==='RESTORE_SCOPE');assert(narrowed&&expanded);
+  // One conversation keeps one history across scope changes; authorization follows each task's own scope.
+  assert(JSON.stringify(narrowed).includes('图片保留标记'));assert.equal(scope(narrowed).length,1);assert.equal(scope(expanded).length,1);assert.notEqual(scope(narrowed)[0],scope(expanded)[0]);
+  assert(JSON.stringify(expanded).includes('NARROWED_CONTEXT'));
  }
  if(name==='recover'){
   assert.equal(sent.length,1,'Restart must not issue any automatic requests');
   const history=sent[0].messages;
-  for(const m of history)for(const call of m.tool_calls||[])assert(history.some(result=>result.role==='tool'&&result.tool_call_id===call.id));
-  assert(history.some(m=>m.role==='tool'&&m.content.includes('结果未保存')));
+  for(const m of history)for(const call of m.tool_calls||[])assert(history.some(result=>result.role==='tool'&&result.tool_call_id===call.id),'DSH closes every interrupted call');
+  assert(history.some(m=>m.role==='tool'&&/interrupted/.test(m.content)),'the pending call is reported as interrupted, not as done');
+  assert(history.some(m=>m.role==='user'&&String(m.content).startsWith('上一轮任务因应用关闭或中断而未完成')));
  }
  if(['clear','empty'].includes(name))assert.equal(sent.length,0);
  reports.push({phase:name,passed:true,requests:sent.length});console.log('PASS '+name);
