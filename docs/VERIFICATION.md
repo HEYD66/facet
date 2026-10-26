@@ -1,4 +1,10 @@
 # 验证入口与历史记录
+## 2026-10-27：显卡读数与真实 Chrome 对齐（WebGPU、渲染器格式、内存、任务栏；源码未发布）
+- 用户选择方案 A：渲染器格式、内存档位和可用高度只用于新生成的方案，已保存实例不变；WebGPU 一致性对所有开启 WebGL 覆盖的实例生效。细节见 [指纹候选库](FINGERPRINT-CATALOG.md) 2026-10-27 条。
+- 探针：Dedicated Worker 在注入时（调试器暂停在开始处）`typeof GPUAdapterInfo` 为 `undefined`、`navigator.gpu` 已存在，第一版只改全局原型的补丁在 Worker 里不生效（页面通过、Worker 仍报 `lovelace`），改为经 `navigator.gpu` 和首个适配器取原型后通过。
+- 通过：`check`、全部单元测试（441 项：440 通过、1 项 POSIX 跳过；新增 `gpu-identity.test.cjs`：Chromium 152 渲染器格式、Dawn 设备 ID → 架构、无 Direct3D 12 的设备 ID、206 款带 ID 型号的名称规则一致性、用户现有实例的 7 个旧格式渲染器）、`test:control-api`、`git diff --check`；新增 `test:fingerprint-gpu`（真实 Electron 实例）：新方案 WebGL 为 `ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU (0x00002520) Direct3D11 vs_5_0 ps_5_0, D3D11)`，页面、Worker、跨站 iframe 的 WebGPU 都是 `nvidia`/`ampere`（本机真实为 `lovelace`），内存 32、可用高度为高度减 48；模拟 GT 430 时三处 `requestAdapter()` 都为 `null`；旧格式渲染器（Iris Xe MAX 100、8 GB、减 40）保持原值，WebGPU 报 `intel`/`gen-12lp`；改过的 getter 和 `requestAdapter` 的 `toString`/`name`/`length` 为原生样式。真实 Electron（退出码 0）：`test:fingerprint-electron`、`test:fingerprint-contexts`、`test:fingerprint-offscreen`、`fingerprint-tostring-electron.cjs`、`test:cdp-workers`、`test:devtools-electron`、`test:instance-reset-electron`、`test:creation-lifecycle`、`test:viewport-screen`、`test:grid`。
+- `test:electron`（electron-smoke）在等待 `[role=tab]` 时超时；在未改动的 `3ccc961` 工作树上同样失败，与本次改动无关（没有运行中的实例时界面不渲染实例标签），未修。
+- 未验证：在真实检测站（CreepJS、browserleaks WebGPU）复测；用户正在运行的千面是改动前的代码，需重启主进程后生效。HTTP `Device-Memory` 客户端提示在本机回环夹具中未发送，外部 HTTPS 站点未验证。触屏媒体查询（`any-pointer: coarse`）未改，见候选库文档。
 ## 2026-10-27：宫格小格子里跨站 iframe 收不到点击和滚轮（源码未发布）
 - 现象（用户反馈 + 实测）：arena.ai 的 HTML 预览在 `ws-*.arena.site` 跨站 iframe 中。用户的实例 2 在宫格小格子（缩放约 0.31）里，系统真实鼠标点击 1 次、滚轮 3 格，预览收到 0 次，全部落到外层网页；同一页面在放大查看（1:1）和正常浏览中预览都能收到。预览页本身 `overflow:hidden`、没有按钮，所以正常浏览里「点了没反应」是页面内容如此，不是输入问题。
 - 探针：`before-mouse-event` 对每个渲染部件（包括跨进程 iframe）都会触发，坐标是该部件自己的坐标，连千面经 CDP 发给 iframe 的输入也会再触发一次，无法据此判断事件属于哪一层，因此没有采用。外层网页收到的、目标为 `<iframe>` 元素且落在其内容区的鼠标事件，正是 Chromium 没送进 iframe 的输入（送对时外层文档根本收不到）。

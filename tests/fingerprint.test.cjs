@@ -38,23 +38,33 @@ test('random preserves explicit layout choice and a later manual opt-out still s
 test('catalog import strips unknown/private fields, rejects incompatible renderers and deduplicates GPU aliases',()=>{
  const {gpuRecord}=require('../scripts/import-fingerprint-catalog.cjs');
  const row={webGLManufacturer:'Google Inc. (NVIDIA)',webGLRender:'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 (0x00002484) Direct3D11 vs_5_0 ps_5_0, driver.dll-1.2)',token:'private',hostIP:'private'};
- assert.deepEqual(gpuRecord(row),{brand:'NVIDIA',model:'NVIDIA GeForce RTX 3070'});
+ // The PCI device ID in the renderer is kept (normalized), the driver suffix and private fields are not.
+ assert.deepEqual(gpuRecord(row),{brand:'NVIDIA',model:'NVIDIA GeForce RTX 3070',id:'0x00002484'});
+ assert.deepEqual(gpuRecord({...row,webGLRender:'ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0)'}),{brand:'NVIDIA',model:'NVIDIA GeForce RTX 3070'});
  for(const renderer of ['ANGLE (AMD, Radeon Direct3D11 vs_5_0 ps_5_0)','ANGLE (NVIDIA, NVIDIA GeForce GTX 560 Direct3D9Ex vs_3_0 ps_3_0)','ANGLE (NVIDIA, <script> Direct3D11 vs_5_0 ps_5_0)'])assert.equal(gpuRecord({...row,webGLRender:renderer}),null);
  const data=require('../src/main/fingerprint-catalog.json');
- assert.deepEqual(Object.keys(data).sort(),['gpus','schemaVersion','sources']);
+ assert.deepEqual(Object.keys(data).sort(),['gpus','schemaVersion','sources']);assert.equal(data.schemaVersion,2);
  assert.equal(new Set(data.gpus.map(g=>g.brand+'|'+g.model.toLowerCase())).size,data.gpus.length);
- for(const gpu of data.gpus)assert.deepEqual(Object.keys(gpu).sort(),['brand','model']);
+ for(const gpu of data.gpus){
+  assert.deepEqual(Object.keys(gpu).filter(k=>k!=='ids').sort(),['brand','model']);
+  if(gpu.ids){assert(gpu.ids.length&&gpu.ids.every(id=>/^0x[0-9A-F]{8}$/.test(id)));assert.deepEqual(gpu.ids,[...new Set(gpu.ids)].sort());}
+ }
+ assert(data.gpus.filter(g=>g.ids).length>=200,'device IDs for at least 200 models');
 });
 
 test('full catalog plans remain coherent over 2000 seeds without mutating input or applying source UA/timezone',()=>{
- const {ID,GPUS,SCREENS,CPUS,CPU_TIERS,drivable}=require('../src/main/fingerprint-catalog.cjs');
+ const {ID,GPUS,SCREENS,CPUS,CPU_TIERS,MEMORY,MEMORY_TIERS,drivable}=require('../src/main/fingerprint-catalog.cjs'),identity=require('../src/main/gpu-identity.cjs');
  const base=environment({language:'ja-JP',timezone:'Asia/Tokyo',geoEnabled:true,latitude:35,longitude:139});
  const original=JSON.stringify(base),seenGPU=new Set(),seenCPU=new Set(),seenScreen=new Set(),seenMemory=new Set();
  for(let i=0;i<2000;i++){
   const plan=environment(preset(ID,base,'catalog-'+i)),f=plan.fingerprint;
   assert.equal(plan.language,base.language);assert.equal(plan.timezone,base.timezone);assert.equal(plan.longitude,139);
-  assert.equal(f.hardware,true);assert.equal(f.touch,0);assert.equal(f.colorDepth,24);assert([4,8].includes(f.memory));
-  const gpu=GPUS.find(g=>g.vendor===f.vendor&&g.renderer===f.renderer);assert(gpu);assert(CPUS.includes(plan.cpu));
+  assert.equal(f.hardware,true);assert.equal(f.touch,0);assert.equal(f.colorDepth,24);
+  // Chrome's full renderer format, with a device ID the catalog has seen for that model.
+  assert.match(f.renderer,/^ANGLE \((NVIDIA|AMD|Intel), .+ \(0x[0-9A-F]{8}\) Direct3D11 vs_5_0 ps_5_0, D3D11\)$/);
+  const parsed=identity.parseRenderer(f.renderer),gpu=GPUS.find(g=>g.vendor===f.vendor&&g.brand===parsed.brand&&g.model===parsed.model);
+  assert(gpu&&gpu.ids.includes(parsed.id),f.renderer);assert(CPUS.includes(plan.cpu));
+  assert(MEMORY_TIERS[gpu.tier].includes(f.memory),`${f.memory} GB for ${gpu.model} (${gpu.tier})`);
   // The thread count must be plausible for the chosen GPU's tier (no UHD 617 + 24 threads).
   assert(CPU_TIERS[gpu.tier].includes(plan.cpu),`incoherent ${plan.cpu}T for ${gpu.model} (${gpu.tier})`);
   assert(SCREENS.some(s=>s.width===f.screenWidth&&s.height===f.screenHeight&&s.dpr===plan.scale));
@@ -64,7 +74,9 @@ test('full catalog plans remain coherent over 2000 seeds without mutating input 
   assert.deepEqual(environment(plan),plan);assert.deepEqual(preset(ID,base,'catalog-'+i),preset(ID,base,'catalog-'+i));
   seenGPU.add(f.renderer);seenCPU.add(plan.cpu);seenScreen.add([f.screenWidth,f.screenHeight,plan.scale].join(':'));seenMemory.add(f.memory);
  }
- assert(seenGPU.size>400);assert.equal(seenCPU.size,CPUS.length);assert.equal(seenScreen.size,SCREENS.length);assert.equal(seenMemory.size,2);
+ assert(seenGPU.size>200,'renderers seen: '+seenGPU.size);assert.equal(seenCPU.size,CPUS.length);assert.equal(seenScreen.size,SCREENS.length);assert.deepEqual([...seenMemory].sort((a,b)=>a-b),MEMORY);
+ // Available height leaves the Windows 11 taskbar.
+ for(const s of SCREENS)assert.equal(s.height-s.availHeight,48);
  assert.equal(JSON.stringify(base),original);
 });
 

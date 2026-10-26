@@ -11,7 +11,8 @@
 | GPU 字符串 | 482 条：NVIDIA 188、AMD 228、Intel 66；是规范化候选，不保证等于 482 种独立物理 GPU |
 | 屏幕与 DPR 组合 | 13 套，11 种逻辑分辨率；DPR 1 / 1.25 / 1.5 / 2 |
 | CPU 线程 | 6 / 8 / 12 / 16 / 20 / 24 / 28 / 32 |
-| 内存报告 | 4 / 8 GB，按千面当前校验范围生成 |
+| 内存报告 | 4 / 8 / 16 / 32 GB，按显卡档位生成（2026-10-27 起；之前 4 / 8） |
+| 设备 ID | 206 款型号带来源中的 PCI 设备 ID（共 309 个）；新方案只从这些型号中选 |
 | 桌面触摸、色深 | 0 个触点、24 位；不为增加差异而强制轮换 |
 
 保留六个旧设备预设及其 ID。库位于 `src/main/fingerprint-catalog.json`，规则位于 `src/main/fingerprint-catalog.cjs`。源文件名称、行数和 SHA256 用于核对来源，不保留个人绝对路径、账号、代理、订阅、计算机名、MAC、签名或云端加密字段，也不复制第三方生成器代码。
@@ -20,9 +21,9 @@
 
 ## 取长补短
 
-1. GPU 厂商与型号作为一个条目选取；不独立拼接。只覆盖 WebGL 厂商/渲染器字符串，不宣称参数上限、扩展及 WebGPU 已对应。
+1. GPU 厂商与型号作为一个条目选取；不独立拼接。覆盖 WebGL 厂商/渲染器字符串和 WebGPU 适配器的 vendor / architecture（2026-10-27 起），不宣称参数上限、扩展、WebGPU limits 已对应。
 2. 屏幕、DPR、任务栏可用高度作为一组。抽取屏幕不会自动把浏览视口设成屏幕宽高；未手动固定时保持 0×0 自适应。显式固定视口保留，筛选可容纳它的屏幕。
-3. CPU 与内存按千面的桌面策略组合：6/8 线程可报 4/8 GB，其他档位报 8 GB。这是候选策略，不是物理硬件定律。
+3. CPU 与内存按显卡档位组合：低端 4/8 GB，中端 8/16/32 GB，高端 16/32 GB，4 GB 只配 ≤8 线程（2026-10-27 起；之前 6/8 线程报 4/8 GB、其他报 8 GB）。这是候选策略，不是物理硬件定律。
 4. 不照搬“Intel 不能接 4K”等样本分组。所有厂商都可选择屏幕池；颜色偏好等使用独立的种子标签，避免序号轮转造成字段绑定。
 5. 不复制来源的 Chrome 154、语言、上海时区和触摸点 10。UA 使用当前 Electron 所带 Chromium 版本；语言、时区、固定定位沿用表单或由现有出口同步流程设置。
 6. 同一固定种子与同一库版本可复现生成；实际字段完整写入实例。启动只读取保存值，不重新抽取；更换库也不自动改变已保存实例。种子、配置不同不代表检测站不可关联或无法检测。
@@ -39,6 +40,17 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 - API `fingerprint-preset` 的 `preset` 可用 `library-v1`；`random` 保留原有浏览尺寸保护，额外传 `randomScreen:true` 时同时随机屏幕和像素比。输入/输出继续走环境校验。
 
 当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA（如实例保存的 UA 在内核升级后落后于运行版本）时，`customMetadata` 从该 UA 自身的 `Chrome/<版本>` 推导 brands 与 fullVersionList，并复用原生 GREASE 项与 OS 字段，让页面的 UA 串、brands、fullVersionList 自洽；非 Chrome 或非 Windows 的自定义 UA 仍沿用清空 UA-CH 的旧策略。关闭参考覆盖后恢复原生方案。
+
+## 2026-10-27 显卡读数与真实 Chrome 对齐：WebGPU、渲染器格式、内存上限、任务栏（源码修改，未发布）
+
+起因：核对万花资料时发现四处与真实 Chrome 152 不一致。用户选择方案 A：渲染器格式、内存和可用高度只用于之后新生成的方案（新建、批量、重置、一键随机、选用预设），已保存的实例保持原值；WebGPU 一致性对所有开启 WebGL 覆盖的实例生效。
+
+- **WebGPU 适配器信息**（`gpu-identity.cjs` + `fingerprint-inject.js`）：之前 WebGL 报模拟显卡，`navigator.gpu` 的 `GPUAdapterInfo` 却是本机真实显卡（实测 WebGL「GT 630」、WebGPU `nvidia` / `lovelace`）。现在 `vendor` / `architecture` 按 WebGL 渲染器给出：有设备 ID 时按 Dawn `gpu_info.json`（google/dawn main，最后改动 2026-05-05）的设备 ID → 架构表，名称规则与 Dawn 相同（如 `gen-12lp`、`rdna-2`）；旧格式（无设备 ID）的已保存渲染器先用候选库里同型号的设备 ID（按实例种子固定选一个），没有时按型号名称推断，推断不出时架构为空（Chrome 对未收录的设备 ID 也报空）。模拟显卡没有 Direct3D 12（NVIDIA Tesla/Fermi、AMD TeraScale、Intel Sandy/Ivy Bridge）时 `requestAdapter()` 结果为 `null`，与真实 Chrome 一致。页面、Dedicated Worker、跨站 iframe 都覆盖；Worker 在注入时还没有 `GPU`/`GPUAdapterInfo` 全局，经 `navigator.gpu` 和首个适配器取原型。`device`、`description` 原生为空，不改。
+- **未覆盖**：WebGPU 的 limits、features、子组大小仍是本机显卡的值；HTTP 的 `Device-Memory` 客户端提示在本机回环夹具里没有发送（请求 `Accept-CH` 后再请求，头为空），没有在外部 HTTPS 站点验证。
+- **渲染器格式**（`fingerprint-catalog.json` schemaVersion 2 + `scripts/import-fingerprint-catalog.cjs`）：真实 Chrome 报 `ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028A0) Direct3D11 vs_5_0 ps_5_0, D3D11)`，旧生成器缺设备 ID 和 `, D3D11`。导入脚本改为保留来源里的设备 ID（同样两份来源，SHA256 不变，482 款型号不变），206 款有设备 ID（共 309 个）。新方案只从这 206 款里选，并按种子选其中一个设备 ID；六个预设也改为带设备 ID 的格式。用 Dawn 的设备 ID → 架构核对型号名称：除 APU 集显（R2–R7 Graphics 跨代复用名称）和一个山寨卡名（GTX 2060 6GB）外一致。
+- **内存**：Chrome 桌面端现在最高报 32（blink-dev「Update Device Memory API limits」，本机原生 32）。新方案按显卡档位：低端 4/8，中端 8/16/32（16 居多），高端 16/32；4 GB 只配 ≤8 线程。校验允许 1/2/4/8/16/32。
+- **可用高度**：屏幕池的可用高度改为高度减 48（Windows 11 任务栏，本机实测 1152→1104），与实例报告的 UA-CH `platformVersion`（原生 19.0.0，即 Windows 11）一致；之前按 Windows 10 的 40。
+- **触屏**：本机有触摸屏时，实例 `maxTouchPoints` 报 0，但 CSS `any-pointer: coarse` 仍为真。这个媒体查询由 Chromium 按系统数字化仪判断（`ui/base/pointer/pointer_device_win.cc`），CDP 和 Electron 都没有覆盖入口，只改 JS 的 `matchMedia` 会与样式表里的媒体查询矛盾，本轮未改，需用户决定处理方式。
 
 ## 2026-10-26（二）多账号审计反馈：音频、窗口尺寸、高端显卡配小屏（源码修改，未发布）
 

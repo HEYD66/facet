@@ -353,6 +353,44 @@
   };
   if (fp.WebGL) {patchWebGl(root.WebGLRenderingContext);patchWebGl(root.WebGL2RenderingContext);}
 
+  /* ---------------- WebGPU 适配器信息 ----------------
+   * 与 WebGL 渲染器对应的 GPUAdapterInfo（adapter.info / device.adapterInfo 共用同一原型）：
+   * vendor / architecture 换成模拟显卡的值，device、description 原生本就为空，不改。
+   * 模拟的显卡没有 Direct3D 12（NVIDIA Fermi 及更早、AMD TeraScale、Intel Sandy/Ivy Bridge）时，
+   * 真实 Chrome 拿不到适配器：requestAdapter() 先走原生（保留接收者和参数校验），结果改为 null。
+   * limits、features 和子组大小仍是本机显卡的值。 */
+  // In a Dedicated Worker paused at start (where this runs) navigator.gpu exists but the GPU and
+  // GPUAdapterInfo globals are not installed yet (measured), so the prototypes are reached through
+  // navigator.gpu and the first adapter instead.
+  if (fp.WebGpu && typeof fp.WebGpu === 'object') try {
+    var getProto = Object.getPrototypeOf, ownDescriptor = Object.getOwnPropertyDescriptor;
+    var patchedInfo = new WeakSet();
+    var patchInfo = function (proto) {
+      if (!fp.WebGpu.Supported || !proto || apply(setHas, patchedInfo, [proto])) return;
+      apply(setAdd, patchedInfo, [proto]);
+      define(proto, 'vendor', NativeString(fp.WebGpu.Vendor || ''));
+      define(proto, 'architecture', NativeString(fp.WebGpu.Architecture || ''));
+    };
+    if (root.GPUAdapterInfo) patchInfo(GPUAdapterInfo.prototype);
+    var gpuObject = root.navigator && root.navigator.gpu;
+    var gpuProto = root.GPU ? GPU.prototype : gpuObject ? getProto(gpuObject) : null;
+    if (gpuProto && typeof gpuProto.requestAdapter === 'function') {
+      var nativeRequestAdapter = gpuProto.requestAdapter, adapterThen = Promise.prototype.then;
+      gpuProto.requestAdapter = markNative(function () {
+        var pending = apply(nativeRequestAdapter, this, arguments);
+        return apply(adapterThen, pending, [function (adapter) {
+          if (!fp.WebGpu.Supported) return null;
+          if (adapter) try {
+            var infoDescriptor = ownDescriptor(getProto(adapter), 'info');
+            var info = infoDescriptor && infoDescriptor.get ? apply(infoDescriptor.get, adapter, []) : null;
+            if (info) patchInfo(getProto(info));
+          } catch (e) {}
+          return adapter;
+        }]);
+      }, nativeRequestAdapter);
+    }
+  } catch (e) {}
+
   /* ---------------- Audio 指纹 ----------------
    * 只处理离线渲染产物；读取用户 AudioBuffer 不得修改其底层数据，
    * getChannelData 与 copyFromChannel 保留原生引用、写回和错误语义。 */
