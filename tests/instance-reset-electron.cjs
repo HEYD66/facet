@@ -71,7 +71,7 @@ app.whenReady().then(async()=>{try{
  const vp=require('../src/main/viewport.cjs');
  // Wait for the enlarged host to reach the controller (the resize is asynchronous), then for the 1:1 view inside it.
  await wait(()=>{const host=controller.bounds;if(!restarted.view.getVisible()||!host||host.width<=fp.screenWidth||host.height<=fp.screenHeight)return false;const b=restarted.view.getBounds(),expected=vp.presentedBounds(after.environment,host);return b.width===expected.width&&b.height===expected.height&&b.x===expected.x&&b.y===expected.y;},'reset view presented 1:1 within its screen in a larger host');
- const vb=restarted.view.getBounds();assert.equal(vb.width,fp.screenWidth,'a wider host must not stretch the page beyond its screen');assert.equal(vb.height,fp.screenHeight);
+ const vb=restarted.view.getBounds();assert.equal(vb.width,fp.screenWidth,'a wider host must not stretch the page beyond its screen');assert.equal(vb.height,fp.availHeight-vp.BROWSER_CHROME_HEIGHT,'the page leaves room for a browser toolbar inside the screen');
  assert(vb.x>controller.bounds.x&&vb.y>controller.bounds.y,'the 1:1 view is centred in the larger host');
  await restarted.viewportWork;await new Promise(resolve=>setTimeout(resolve,350));
  const rwc=restarted.view.webContents,image=await rwc.capturePage(),size=image.getSize(),pixels=image.toBitmap();

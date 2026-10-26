@@ -88,6 +88,25 @@
       define(Screen.prototype,'colorDepth',fp.ColorDepth);
       define(Screen.prototype,'pixelDepth',fp.ColorDepth);
     }
+    // window.outerWidth/outerHeight are the real Facet window. On a simulated screen smaller
+    // than that window they exceeded screen.width/availHeight, which no real machine reports.
+    // Clamp them to the available area (a maximized window); smaller windows stay native, so
+    // they keep following resizes. The page view is sized to fit inside (viewport.cjs).
+    if (!worker) {
+      var clampWindow = function (key, limit) {
+        try {
+          var d = Object.getOwnPropertyDescriptor(root, key);
+          if (!d || typeof d.get !== 'function' || !d.configurable || !(limit > 0)) return;
+          var nativeGet = d.get;
+          Object.defineProperty(root, key, { ...d, get: markNative(function () {
+            var v = apply(nativeGet, this, []);
+            return typeof v === 'number' && v > limit ? limit : v;
+          }, nativeGet) });
+        } catch (e) {}
+      };
+      clampWindow('outerWidth', fp.ScreenWidth);
+      clampWindow('outerHeight', fp.AvailableScreenHeight);
+    }
   }
   /* ---------------- devicePixelRatio 精度 ----------------
    * 模拟 DPR 在 Chromium 里按“原生缩放 × 模拟/原生”的 float32 计算，页面读到 1.0000000149011612、
@@ -341,18 +360,18 @@
     if (root.OfflineAudioContext && root.AudioBuffer) {
       var originalAudio = AudioBuffer.prototype.getChannelData;
       var rendered = new WeakSet();
+      // One fixed gain per seed on every rendered sample, 1e-6–1e-5 relative. A single nudged
+      // sample (the old approach) never reached the window audio fingerprints sum (samples
+      // 4500–5000), so every instance reported the same 124.04347… value. The gain moves that
+      // sum from the 4th–5th decimal, is stable across renders, keeps silence at zero and is
+      // far below audibility.
+      var audioGain = 1 + ((abs(fp.AudioSeed) % 2 ? 1 : -1) * (1 + (abs(fp.AudioSeed) >>> 1) % 9000 / 1000) * 1e-6);
       var noiseAudio = function (buffer) {
         if (!buffer || apply(setHas, rendered, [buffer])) return buffer;
         apply(setAdd, rendered, [buffer]);
         for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
           var data = apply(originalAudio, buffer, [channel]);
-          // Do not create a signal in silence or change manually written buffers.
-          for (var i = abs(fp.AudioSeed) % 97; i < data.length; i += 97) {
-            if (data[i] !== 0) {
-              data[i] += (((abs(fp.AudioSeed) % 11) + 1) * 1e-8);
-              break;
-            }
-          }
+          for (var i = 0; i < data.length; i++) if (data[i] !== 0) data[i] *= audioGain;
         }
         return buffer;
       };

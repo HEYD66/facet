@@ -29,7 +29,8 @@ app.whenReady().then(async()=>{
   wc.on('console-message',(_event,level,message)=>console.log('PAGE',level,message));
   const env={width:0,height:0,scale:1.25,fingerprint:{enabled:true,hardware:true,screenWidth:1280,screenHeight:720}};
   assert.deepEqual(viewport.presentedBounds(env,{x:0,y:0,width:1600,height:600}),{x:160,y:0,width:1280,height:600});
-  assert.deepEqual(viewport.presentedBounds(env,{x:0,y:0,width:800,height:900}),{x:0,y:90,width:800,height:720});
+  // Height leaves room for a browser toolbar inside the screen: 720 - 80 (no availHeight given).
+  assert.deepEqual(viewport.presentedBounds(env,{x:0,y:0,width:800,height:900}),{x:0,y:130,width:800,height:640});
   assert.equal(viewport.deviceMetrics(env,{width:1600,height:600}).scale,1);
   results.push({name:'adaptive viewport is limited to the configured screen and centred; metrics never scale'});
   const identity=await wc.executeJavaScript('window.identity');

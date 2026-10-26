@@ -40,6 +40,16 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 
 当前版本生成的 Windows UA 与运行内核一致时，保留原生 Windows UA-CH 数据；显式编辑 UA/平台或旧版本 UA（如实例保存的 UA 在内核升级后落后于运行版本）时，`customMetadata` 从该 UA 自身的 `Chrome/<版本>` 推导 brands 与 fullVersionList，并复用原生 GREASE 项与 OS 字段，让页面的 UA 串、brands、fullVersionList 自洽；非 Chrome 或非 Windows 的自定义 UA 仍沿用清空 UA-CH 的旧策略。关闭参考覆盖后恢复原生方案。
 
+## 2026-10-26（二）多账号审计反馈：音频、窗口尺寸、高端显卡配小屏（源码修改，未发布）
+
+起因：用户转来一份 6 个账号的对比审计，指出音频指纹 6 个完全相同、`outerWidth/outerHeight` 全部 1454×969 且大于部分账号的屏幕、RTX 5060 Laptop 配 1366×768，以及字体列表 6 个相同。
+
+- **音频指纹**（`fingerprint-inject.js`）：旧噪声每个声道只改动一个采样（位置在前 97 个采样内），而常见音频指纹取第 4500–5000 个采样的绝对值之和，所以所有实例都报同一个 `124.04347…`。现在按种子给离线渲染结果的每个非零采样乘一个固定增益（相对 1e-6～1e-5），这个和从小数点后第 4～5 位开始因实例而异；同一实例重复渲染结果不变，静音仍为 0，`getChannelData`/`copyFromChannel`/事件与 Promise 读到同一份数据。实测两个种子分别为 `124.04280434999964`、`124.04240644474339`，各自两次渲染一致。
+- **窗口尺寸**（`fingerprint-inject.js` + `viewport.cjs`）：`window.outerWidth/outerHeight` 是千面主窗口的真实尺寸，模拟屏幕小于主窗口时会大于 `screen.width`/`availHeight`。开启硬件覆盖时，这两个值不超过模拟屏幕的可用区域（相当于最大化窗口），窗口更小时仍按真实尺寸跟随缩放；跨站 iframe 读到的值相同。网页显示区域的高度同时限制为可用高度减 80（浏览器标签栏与工具栏的位置），保证 `innerHeight < outerHeight`。实测模拟 1366×768（可用 728）、主窗口 1454×969 时：outer 1366×728、inner 1226×648；模拟 2560×1440 时 outer 保持真实 1456×972。`screenX/screenY` 和鼠标事件坐标不改，避免主页面与跨站 iframe 的屏幕坐标不一致（#10 的人机验证问题）。
+- **高端显卡配小屏**（`fingerprint-catalog.cjs`）：high 档屏幕物理分辨率至少 1920×1080，不再配 1280×720、1366×768、1440×900、1600×900。
+- **未解决：字体**。字体列表来自宿主机，按测量文字宽度检测，网页 JS 无法在不破坏排版的情况下隐藏已安装字体；中文系统上的 SimHei、KaiTi 等会出现在所有实例里。需要内核层的字体过滤，记入已知限制。
+- **未解决：同一主窗口里的实例窗口尺寸相同**。屏幕大于主窗口的实例，outer/inner 都等于主窗口及其浏览区域的尺寸，各实例相同。需要区分时可给实例设置不同的固定视口。
+
 ## 2026-10-26 DPR 精度、原生 UA 应用名与老显卡配套（源码修改，未发布）
 
 - **devicePixelRatio 精度**（`fingerprint-inject.js`）：模拟 DPR 时主页面读到 `1.0000000149011612`、`1.5000000596046448`、`2.0000000298023224`（Chromium 按原生缩放 × 模拟/原生做 float32 运算），而 `resolution` 媒体查询匹配的是精确值；真实 Chrome 在 100% 缩放下报告精确值。现在与配置值相差不到 1e-6 的残差改回配置值，getter 的 `toString` 保持原生样式；其他取值（如页面缩放后）原样返回。只在开启指纹覆盖且设置了 DPR 时生效。
@@ -64,6 +74,7 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 - 当前 Electron 44.4.5 的原生对照和库实例在受控 HTTPS 上均未发送 `Sec-CH-UA-*` 请求头；页面 `navigator.userAgentData` 与 UA 版本一致。不能把 JS 元数据验证写成 HTTP Client Hints 已完整支持。[该版本 Electron 源码](https://github.com/electron/electron/blob/v44.4.5/shell/browser/electron_browser_context.cc) 的 `GetClientHintsControllerDelegate` 返回空指针，相关支持需在内核阶段实现。
 - UA 字符串报 `Chrome/<版本>`，但 `navigator.userAgentData` 的 brands / fullVersionList 只有 `Chromium`（加 GREASE 项），缺 `Google Chrome` 品牌，这是「是 Chromium/Electron 不是 Chrome」的直接信号。空 brands 的子问题（自定义/漂移 UA 触发清空）已由上节 `customMetadata` 修复——brands 不再为空，但仍只有 Chromium + GREASE。补 `Google Chrome` 这轮仍未做：页面可用 CDP `setUserAgentOverride` 的 `userAgentMetadata` 加上 Google Chrome，但 Service Worker 走的是 preload（不下发 metadata 覆盖），只改页面会造成「页面有 Google Chrome、SW 没有」的跨上下文不一致（项目自有的上下文一致性测试会据此判失败）。要一致需要让每个上下文（含 SW 和 Sec-CH-UA 请求头）都带 Google Chrome，与上一条同属内核阶段。
 - 第三方采样中的 Canvas/音频数值不通用，沿用千面现有固定种子扰动，不导入其签名或私有算法。
+- 字体：已安装字体按文字宽度可测，所有实例共用宿主机字体（中文 Windows 上含 SimHei、KaiTi、FangSong、MS Gothic 等），与美国等地区的账号不符，也会把同一台机器上的账号关联起来。网页层无法隐藏，需要内核层按实例过滤字体。
 
 ## 2026-10-21 上下文一致性与 API 行为修复
 

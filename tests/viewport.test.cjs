@@ -10,12 +10,17 @@ test('normal browsing is never scaled: the view is limited to the configured scr
  for(const host of [{x:10,y:20,width:1600,height:600},{x:0,y:0,width:800,height:900},{x:5,y:5,width:3000,height:2000},{x:0,y:0,width:800,height:600}]){
   const m=viewport.deviceMetrics(env,host),b=viewport.presentedBounds(env,host);
   assert.deepEqual([m.width,m.height,m.scale,m.deviceScaleFactor,m.screenWidth,m.screenHeight,m.dontSetVisibleSize],[b.width,b.height,1,1.25,1280,720,true]);
-  assert.equal(b.width,Math.min(host.width,1280));assert.equal(b.height,Math.min(host.height,720));
+  // The height leaves a browser toolbar's room inside the screen (720 - 80; no availHeight given), so innerHeight < outerHeight.
+  assert.equal(b.width,Math.min(host.width,1280));assert.equal(b.height,Math.min(host.height,640));
   assert(b.x>=host.x&&b.y>=host.y&&b.x+b.width<=host.x+host.width&&b.y+b.height<=host.y+host.height);
   assert(Math.abs((b.x-host.x)-(host.x+host.width-b.x-b.width))<=1,'horizontally centred');
   assert(Math.abs((b.y-host.y)-(host.y+host.height-b.y-b.height))<=1,'vertically centred');
  }
  assert.deepEqual(env,original);
+ // With availHeight the room is taken from the available area; a fixed viewport is held to the same limit.
+ const avail={...env,fingerprint:{...env.fingerprint,screenWidth:1366,screenHeight:768,availHeight:728}};
+ assert.equal(viewport.presentedBounds(avail,{x:0,y:0,width:1454,height:900}).height,648);
+ assert.equal(viewport.presentedBounds({...avail,width:1366,height:768},{x:0,y:0,width:1454,height:900}).height,648);
 });
 
 test('fixed viewports show at their size and follow a smaller area instead of shrinking the page',()=>{

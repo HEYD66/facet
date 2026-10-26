@@ -34,9 +34,14 @@ function gpuTier(brand,model){
 const CPU_TIERS=Object.freeze({low:Object.freeze([4,6,8]),mid:Object.freeze([8,12,16,20]),high:Object.freeze([16,20,24,28,32])});
 // Physical panel size a tier plausibly drives: an old integrated or entry GPU on a 4K
 // panel (3840x2160, or 1920x1080 at DPR 2 / 2560x1440 at 1.5) or a 3440 ultrawide is a
-// combination detectors can flag. Mid and high tiers drive every library screen.
-const PANEL_LIMITS=Object.freeze({low:Object.freeze({width:2560,height:1600})});
-function drivable(tier,screen){const limit=PANEL_LIMITS[tier];return !limit||screen.width*screen.dpr<=limit.width&&screen.height*screen.dpr<=limit.height;}
+// combination detectors can flag; so is a current high-end GPU (an RTX 5060 Laptop) on a
+// 1366x768 or 1440x900 panel. Mid-tier GPUs drive every library screen.
+const PANEL_LIMITS=Object.freeze({low:Object.freeze({max:Object.freeze({width:2560,height:1600})}),high:Object.freeze({min:Object.freeze({width:1920,height:1080})})});
+function drivable(tier,screen){
+ const limit=PANEL_LIMITS[tier];if(!limit)return true;
+ const width=screen.width*screen.dpr,height=screen.height*screen.dpr;
+ return !(limit.max&&(width>limit.max.width||height>limit.max.height))&&!(limit.min&&(width<limit.min.width||height<limit.min.height));
+}
 const GPUS=Object.freeze(data.gpus.map(g=>{
  if(!['NVIDIA','AMD','Intel'].includes(g.brand)||typeof g.model!=='string'||g.model.length>120||!/^[\w ().+/-]+$/.test(g.model))throw Error('指纹显卡条目无效');
  return Object.freeze({brand:g.brand,model:g.model,tier:gpuTier(g.brand,g.model),vendor:`Google Inc. (${g.brand})`,renderer:`ANGLE (${g.brand}, ${g.model} Direct3D11 vs_5_0 ps_5_0)`});

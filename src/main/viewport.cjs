@@ -16,10 +16,18 @@
 // - fixed viewport: at most the configured width/height, and simply smaller
 //   (following the browsing area) when the area is smaller.
 function hardware(env){return !!(env?.fingerprint?.enabled&&env.fingerprint.hardware);}
+// With a simulated screen the page reports window.outerWidth/outerHeight no larger than the
+// screen's available area (fingerprint-inject.js). The page itself must then leave room for a
+// browser's tab strip and toolbar (about 80 px in Chrome at 100%), or innerHeight would exceed
+// outerHeight - both are impossible on a real machine.
+const BROWSER_CHROME_HEIGHT=80;
 function limits(env){
- if(Number(env?.width)&&Number(env?.height))return {width:Number(env.width),height:Number(env.height)};
- if(hardware(env))return {width:Number(env.fingerprint.screenWidth)||Infinity,height:Number(env.fingerprint.screenHeight)||Infinity};
- return {width:Infinity,height:Infinity};
+ const fixed=Number(env?.width)&&Number(env?.height)?{width:Number(env.width),height:Number(env.height)}:null;
+ if(hardware(env)){
+  const f=env.fingerprint,width=Number(f.screenWidth)||Infinity,avail=Number(f.availHeight)||Number(f.screenHeight)||Infinity,height=Math.max(240,avail-BROWSER_CHROME_HEIGHT);
+  return fixed?{width:Math.min(fixed.width,width),height:Math.min(fixed.height,height)}:{width,height};
+ }
+ return fixed||{width:Infinity,height:Infinity};
 }
 // Native page view bounds inside `host`, in the same coordinate space as `host`.
 function presentedBounds(env,host={}){
@@ -50,4 +58,4 @@ function tileMetrics(env,tile,base,screen={}){
  const {width,height}=presentedBounds(env,{width:Math.max(320,Number(base?.width)||1280),height:Math.max(240,Number(base?.height)||800)});
  const scale=Math.max(0.05,Math.min(1,(Number(tile.width)||1)/width,(Number(tile.height)||1)/height));
  return {width,height,deviceScaleFactor:env.scale||0,mobile:false,scale:Math.round(scale*10000)/10000,dontSetVisibleSize:true,...(hardware(env)||env.width?screenMetrics(env):screen.width?{screenWidth:screen.width,screenHeight:screen.height}:{})};}
-module.exports={deviceMetrics,presentedBounds,applyViewport,tileMetrics};
+module.exports={deviceMetrics,presentedBounds,applyViewport,tileMetrics,BROWSER_CHROME_HEIGHT};

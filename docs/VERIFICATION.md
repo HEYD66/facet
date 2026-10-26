@@ -1,5 +1,14 @@
 # 验证入口与历史记录
 
+## 2026-10-26：AI 约 5% 就压缩的来源核对；音频指纹、窗口尺寸、高端显卡配小屏（源码未发布）
+
+- AI 压缩：v0.2.21 在每个任务开始前由千面自己压缩记忆，条件是要附上的历史超过 48000 字符且至少 3 轮，和上下文窗口无关；`deepseek-flash` 自动按 1M 窗口计算，48000 字符约占 2%～5%。同一探针（隔离数据、本机协议夹具、模型名 `deepseek-flash`、每个任务读取一次长网页，共 8 个任务）对比：v0.2.21 工作树在第 5、7 个任务各发一次压缩请求，当时圆环 1.7%～2.2%；当前源码（`a28aff2` 起由 DSH 管理会话历史）8 个任务没有压缩，圆环随对话增长到 3.8%，DSH 在约 80% 时才压缩。本机用户数据最后一次使用 AI 是 10-23，未运行过新代码；修复需要随下个版本发布。
+- 音频指纹：旧噪声只改每个声道前 97 个采样中的一个，常见指纹（第 4500–5000 个采样绝对值之和）不受影响，所有实例都是 `124.04347…`。改为按种子对所有非零采样乘固定增益（相对 1e-6～1e-5）。探针：两个种子 `124.04280434999964`、`124.04240644474339`，各自重复渲染一致。
+- 窗口尺寸：开启硬件覆盖时 `outerWidth/outerHeight` 不超过模拟屏幕的可用区域，网页高度限制为可用高度减 80。探针（主窗口 1454×969）：模拟 1366×768 时 outer 1366×728、inner 1226×648，跨站 iframe 相同；模拟 2560×1440 时 outer 保持真实 1456×972。getter `toString` 为原生样式。
+- 生成器：high 档显卡屏幕物理分辨率至少 1920×1080。
+- 未解决：字体列表来自宿主机，网页层无法隐藏（需内核）；屏幕大于主窗口的实例 outer/inner 仍与主窗口一致。
+- 通过：`check`、全部单元测试（430 项，429 通过、1 项 POSIX 跳过）、`test:control-api`、`git diff --check`；真实 Electron（退出码 0）：`test:viewport-screen`、`test:instance-reset-electron`、`test:grid`、`test:viewport-bookmarks`、`test:fingerprint-electron`、`test:fingerprint-contexts`、`test:fingerprint-offscreen`、`test:browser-tabs`、`fingerprint-tostring-electron.cjs`、`random-viewport-electron.cjs`。`viewport.test.cjs`、`viewport-screen-electron.cjs`、`instance-reset-electron.cjs` 的高度断言按新的工具栏余量更新。
+
 ## 2026-10-26：DPR 精度、原生 UA 应用名、老显卡配套与两项测试修复（源码未发布）
 
 - DPR：模拟 DPR 时主页面 `devicePixelRatio` 为 `1.0000000149011612` 等 float32 残差，`resolution` 媒体查询却是精确值。注入脚本把相差不到 1e-6 的残差改回配置值（`fingerprint-inject.js`）。探针（本机显示器 1.25，`localhost` 跨站 iframe 为独立进程）：配置 1 / 1.25 / 1.5 / 2 时主页面读数精确、与媒体查询一致，getter `toString` 为原生样式。跨站 iframe 仍报原生 1.25（DPR 与媒体查询都是），对 iframe 目标发送 `setDeviceMetricsOverride` 被 Chromium 拒绝，属内核限制，未改。
