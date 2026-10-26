@@ -20,7 +20,8 @@ function targetCommand(wc,method,params,sessionId){
 
 async function installContextEnvironment(wc,{source,applyNative}){
  if(states.has(wc))throw Error('实例环境已安装，不能重复注册目标监听');
- const debug=wc.debugger,children=new Map(),targetIds=new Map(),pending=new Set(),errors=[];
+ // parents: child session -> the session it was attached through ('' for the page itself).
+ const debug=wc.debugger,children=new Map(),targetIds=new Map(),parents=new Map(),pending=new Set(),errors=[];
  let disposed=false;
  const send=(method,params,sessionId)=>targetCommand(wc,method,params,sessionId);
  const autoAttach={autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter:filters};
@@ -57,19 +58,20 @@ async function installContextEnvironment(wc,{source,applyNative}){
    finish();
   }
  }
- function onMessage(_event,method,params){
+ function onMessage(_event,method,params,sessionId){
   if(disposed)return;
   if(method==='Target.attachedToTarget'){
+   parents.set(params.sessionId,sessionId||'');
    const job=configure(params);pending.add(job);job.finally(()=>pending.delete(job)).catch(report);
-  }else if(method==='Target.detachedFromTarget'){children.delete(params.sessionId);forgetTarget(targetIds.get(params.sessionId));targetIds.delete(params.sessionId);}
+  }else if(method==='Target.detachedFromTarget'){children.delete(params.sessionId);forgetTarget(targetIds.get(params.sessionId));targetIds.delete(params.sessionId);parents.delete(params.sessionId);}
  }
  function dispose(){
   if(disposed)return;
   disposed=true;debug.removeListener('message',onMessage);
   debug.removeListener('detach',dispose);wc.removeListener('destroyed',dispose);
-  for(const id of targetIds.values())forgetTarget(id);targetIds.clear();children.clear();states.delete(wc);
+  for(const id of targetIds.values())forgetTarget(id);targetIds.clear();children.clear();parents.clear();states.delete(wc);
  }
- const state={children,pending,errors,dispose};
+ const state={children,targetIds,parents,pending,errors,dispose};
  states.set(wc,state);debug.on('message',onMessage);debug.once('detach',dispose);wc.once('destroyed',dispose);
  try{await send('Target.setAutoAttach',autoAttach);}catch(error){dispose();throw error;}
  return state;

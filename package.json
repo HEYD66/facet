@@ -86,6 +86,7 @@
     "test:devtools-electron": "node scripts/launch-electron.cjs tests/devtools-electron.cjs",
     "test:instance-reset-electron": "node scripts/launch-electron.cjs tests/instance-reset-electron.cjs",
     "test:grid": "node scripts/launch-electron.cjs tests/grid-electron.cjs && node scripts/launch-electron.cjs tests/grid-live-stress-electron.cjs",
+    "test:tile-input": "node --test tests/tile-input.test.cjs && node scripts/launch-electron.cjs tests/tile-input-electron.cjs",
     "test:grid-transition-electron": "node scripts/launch-electron.cjs tests/grid-transition-electron.cjs",
     "test:fingerprint-electron": "node tests/fingerprint-catalog-runner.cjs",
     "test:fingerprint-contexts": "node tests/fingerprint-contexts-runner.cjs",

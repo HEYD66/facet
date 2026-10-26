@@ -68,6 +68,8 @@ async function loadPage(c,id,r,tab){
   await wc.loadFile(path.join(__dirname,'../renderer/seed.html'));
   const native=await wc.executeJavaScript(`(async()=>({platform:navigator.platform,metadata:navigator.userAgentData?await navigator.userAgentData.getHighEntropyValues(['architecture','bitness','model','platformVersion','fullVersionList','wow64']):null}))()`);tab.native=native;
   wc.debugger.attach('1.3');await require('./environment.cjs').applyEnvironment(wc,r.environment,native,{width:initial.width,height:initial.height});
+  // Clicks and wheel over cross-site iframes while this tab is a scaled grid tile.
+  require('./tile-input.cjs').attach(c,r,wc);
   // Windows can report a zero native viewport for a widget first created while
   // minimized. Temporarily size adaptive tabs using the last browser layout.
   // Fixed/hardware viewports already have their own environment metrics.
@@ -84,6 +86,7 @@ async function loadPage(c,id,r,tab){
 function show(c,id,r,tab){
  const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);require('./background-rendering.cjs').resume(old.webContents);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
  r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);
+ if(old&&old!==tab.view)require('./tile-input.cjs').changed(r,old.webContents);
  require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  if(r.extensionHost?.compat?.tabs){const compat=r.extensionHost.compat;compat.tabs.focusedId=tab.view.webContents.id;if(changed)compat.broadcast('tabs.onActivated',[{tabId:tab.view.webContents.id,windowId:compat.tabs.primaryWindowId}]);}
  if(c.grid)c.applyGrid();else if(c.activeId===id&&c.bounds){c.setDevToolsLayout(r,c.bounds);tab.view.setVisible(r.status==='running');if(r.status==='running')tab.view.webContents.focus();}
