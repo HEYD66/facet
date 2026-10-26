@@ -45,14 +45,25 @@ const CPUS=Object.freeze([...new Set([...CPU_TIERS.low,...CPU_TIERS.mid,...CPU_T
 const BRANDS=Object.freeze(['NVIDIA','AMD','Intel'].filter(brand=>GPUS.some(g=>g.brand===brand)));
 function index(seed,key,length){if(!/^[a-zA-Z0-9_-]{1,64}$/.test(seed))throw Error('固定种子格式无效');if(!length)throw Error('指纹候选池为空');return crypto.createHash('sha256').update(ID+':'+seed+':'+key).digest().readUInt32LE(0)%length;}
 function pick(seed,key,pool){return pool[index(seed,key,pool.length)];}
+// The display Facet runs on (DIP). Pages are presented 1:1 and never scaled
+// (viewport.cjs), so a simulated screen smaller than this display leaves an empty
+// margin once the window is maximized or full screen — e.g. 1280x720 on a
+// 2048x1152 desktop. The application registers a provider; tests and other
+// callers without one keep the full pool.
+let displaySize=()=>null;
+function setDisplayProvider(fn){displaySize=typeof fn==='function'?fn:()=>null;}
+function displayFloor(){try{const s=displaySize();const width=Math.round(Number(s?.width)||0),height=Math.round(Number(s?.height)||0);return width>0&&height>0?{width,height}:null;}catch{return null;}}
 function generate(seed,base={},full=false){
  const brand=pick(seed,'brand',BRANDS),gpu=pick(seed,'gpu',GPUS.filter(g=>g.brand===brand));
  // Pick the thread count from the GPU's own tier so the pair is a real machine.
  const cpu=pick(seed,'cpu',CPU_TIERS[gpu.tier]),memory=cpu<=8?pick(seed,'memory',[4,8]):8;
- // Keep explicitly fixed viewport dimensions. Choose a screen that can contain them.
- const screens=SCREENS.filter(s=>s.width>=(base.width||0)&&s.height>=(base.height||0));
+ // Keep explicitly fixed viewport dimensions. Choose a screen that can contain them,
+ // and when the real display is known, one at least as large as that display.
+ const fits=SCREENS.filter(s=>s.width>=(base.width||0)&&s.height>=(base.height||0)),floor=displayFloor();
+ const large=floor?fits.filter(s=>s.width>=floor.width&&s.height>=floor.height):fits;
+ const screens=large.length?large:fits;
  if(full&&!screens.length)throw Error('现有视口超过设备库屏幕范围，请先调整视口');
  const screen=full?pick(seed,'screen',screens):null;
  return {gpu,cpu,memory,screen};
 }
-module.exports={ID,GPUS,SCREENS,CPUS,CPU_TIERS,gpuTier,generate};
+module.exports={ID,GPUS,SCREENS,CPUS,CPU_TIERS,gpuTier,generate,setDisplayProvider};

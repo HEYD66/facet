@@ -98,3 +98,18 @@ test('a custom or runtime-drifted Chrome UA derives version-matched brands inste
  assert.equal(customMetadata({userAgent:drift,platform:'MacIntel'},native),null);
  assert.equal(customMetadata({userAgent:drift},{metadata:null}),null);
 });
+
+test('library screens are at least as large as the display when the app reports one',()=>{
+ const catalog=require('../src/main/fingerprint-catalog.cjs');
+ try{
+  // A 1280x720 screen on a 2048x1152 desktop leaves a margin around the 1:1 page once maximized.
+  catalog.setDisplayProvider(()=>({width:2048,height:1152}));
+  for(let i=0;i<300;i++){const {screen}=catalog.generate('floor-'+i,{},true);assert(screen.width>=2048&&screen.height>=1152,`${screen.width}x${screen.height}`);}
+  // Fixed viewports still need a screen that contains them.
+  for(let i=0;i<50;i++){const {screen}=catalog.generate('floor-fixed-'+i,{width:3000,height:1400},true);assert(screen.width>=3000&&screen.height>=1400);}
+  // A display larger than every library screen, or one that cannot be read, keeps the full pool.
+  catalog.setDisplayProvider(()=>({width:5120,height:2880}));
+  const seen=new Set();for(let i=0;i<300;i++)seen.add(catalog.generate('floor-'+i,{},true).screen.width);assert(seen.size>3);
+  catalog.setDisplayProvider(()=>{throw Error('no display');});assert(catalog.generate('floor-x',{},true).screen);
+ }finally{catalog.setDisplayProvider(null);}
+});

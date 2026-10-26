@@ -1,5 +1,16 @@
 # 验证入口与历史记录
 
+## 2026-10-26：网页 1:1 显示，修复缩放后点不了人机验证（issue #10；源码未发布）
+
+- 现象：issue #10（最大化后页面放大约 10%，验证框和网页预览点不了），以及用户反馈的「宫格放大后点不了验证框」「固定比例要全屏或最大化才能点」「重置环境后像是 1280×720」。
+- 根因（实测）：窗口比模拟屏幕大时页面被 `Emulation.setDeviceMetricsOverride` 的 `scale` 放大，固定视口比浏览区域大或宫格放大时被缩小。缩放不为 1 时，主页面点击的 `screenX` 变化是 `clientX` 的 1.14 倍（真实浏览器恒为 1），跨站 iframe 报出的屏幕位置与页面位置差 15–45 像素；缩放为 1 时完全一致。可见性检测（IntersectionObserver v2）和点击落点在各缩放下都正常，已排除。
+- 修复前，`ip.net.coffee/cloudflare` 的 Cloudflare 托管验证，系统真实鼠标点击：缩放 1 通过；最大化（1.145）不通过；还原（1）通过；固定视口 1266×626（0.829）不通过；最后再测缩放 1 仍通过，排除 IP 被逐步拉黑。
+- 修复后同一流程：小窗、最大化（网页区域限制为 1600 宽、居中）、还原、固定视口、再测，5 次全部点击后通过；宫格放大查看通过；宫格小格子（0.95 缩放预览）仍不通过，属已知限制，需放大后操作。
+- 改动：`viewport.cjs` 正常浏览与宫格放大始终 `scale:1`，网页视图限制在模拟屏幕或固定视口内并居中，布局尺寸按视图显式下发；`controller.cjs` 按呈现边界摆放视图，宫格放大格子 1:1；`grid.js` 标记放大格子；`fingerprint-catalog.cjs` 整套随机只选不小于本机显示器的模拟屏幕（`main.cjs` 提供显示器尺寸）；界面说明文字同步。
+- 通过：`check`（355 脚本）、全部单元测试 427 项（426 通过、1 项 POSIX 跳过、0 失败）、`test:control-api`、`git diff --check`；真实 Electron（退出码 0）：`test:viewport-screen`、`test:instance-reset-electron`、`test:ai-browser`、`test:grid`、`test:grid-transition-electron`、`test:browser-tabs`、`test:background-tabs-policy`、`test:minimized-rendering`、`tests/random-viewport-electron.cjs`。用例按新行为改写：视图限制在屏幕内并居中、布局视口等于视图、缩放恒为 1、固定视口跟随较小的视图、宫格放大 1:1、跨站 iframe 收到真实点击。
+- 已知限制：模拟 DPR 与显示器不同时，主页面 `devicePixelRatio` 带浮点误差（如 `1.0000000149011612`），跨站 iframe 里是显示器真实 DPR，与缩放无关，未改。旧实例的模拟屏幕若比显示器小，最大化后会看到边距，可重新随机。复测使用本机代理出口，结果受出口 IP 影响，不代表所有网站和网络都能通过。
+- 正在运行的应用需重启主进程后生效。原始日志和截图在 Git 忽略的 `.local-dev/issue10-20261026/`。
+
 ## 2026-10-25：v0.2.21 发布准备与打包验收（未推送、未发布）
 
 - 内容：纳入 `5daf8c3`、`c02c49a`、`21c2ff4` 的显卡档位/CPU 组合、网页 `window.chrome` 接口、自定义 Chrome UA 的 UA-CH 修复及必应新标签页；应用与锁文件版本升至 0.2.21。未继续修改已记录的老核显组合及会话 UA 回退问题，也未改写已有实例。

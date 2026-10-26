@@ -24,7 +24,9 @@ async function loadPage(c,id,r,tab){
  // Background tabs also need native bounds before their first document. Without
  // these, clearing the minimized-window override restores a 0x0 native viewport.
  const [windowWidth,windowHeight]=c.window.getContentSize(),initialBounds=c.bounds||c.lastPageSize||{width:windowWidth,height:windowHeight};
- view.setBounds({x:0,y:0,width:Math.max(1,Math.round(initialBounds.width)),height:Math.max(1,Math.round(initialBounds.height))});
+ // Same 1:1 size the tab will be presented at, so a background tab never lays out larger than its screen.
+ const initial=require('./viewport.cjs').presentedBounds(r.environment,{width:initialBounds.width,height:initialBounds.height});
+ view.setBounds({x:0,y:0,width:initial.width,height:initial.height});
  require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  const alive=()=>!wc.isDestroyed()&&c.runtimes.get(id)===r&&r.tabs?.get(tab.id)===tab;
  // Each committed document can replace its native rendering widget. Reapply
@@ -65,7 +67,7 @@ async function loadPage(c,id,r,tab){
  try{
   await wc.loadFile(path.join(__dirname,'../renderer/seed.html'));
   const native=await wc.executeJavaScript(`(async()=>({platform:navigator.platform,metadata:navigator.userAgentData?await navigator.userAgentData.getHighEntropyValues(['architecture','bitness','model','platformVersion','fullVersionList','wow64']):null}))()`);tab.native=native;
-  wc.debugger.attach('1.3');await require('./environment.cjs').applyEnvironment(wc,r.environment,native,c.bounds||{width:c.window.getContentSize()[0],height:c.window.getContentSize()[1]});
+  wc.debugger.attach('1.3');await require('./environment.cjs').applyEnvironment(wc,r.environment,native,{width:initial.width,height:initial.height});
   // Windows can report a zero native viewport for a widget first created while
   // minimized. Temporarily size adaptive tabs using the last browser layout.
   // Fixed/hardware viewports already have their own environment metrics.

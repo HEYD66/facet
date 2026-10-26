@@ -67,15 +67,21 @@ app.whenReady().then(async()=>{try{
  // Genuine randomized reset environment, with a host larger than its new screen.
  await ui(`route('browser',${JSON.stringify(instance.id)})`);
  const fp=after.environment.fingerprint;win.setContentSize(fp.screenWidth+500,fp.screenHeight+350);
- await wait(()=>restarted.view.getVisible()&&restarted.view.getBounds().width>fp.screenWidth&&restarted.view.getBounds().height>fp.screenHeight,'reset large view');
+ // Host larger than the new screen: the page is presented 1:1 and the view is limited to the screen (issue #10).
+ const vp=require('../src/main/viewport.cjs');
+ // Wait for the enlarged host to reach the controller (the resize is asynchronous), then for the 1:1 view inside it.
+ await wait(()=>{const host=controller.bounds;if(!restarted.view.getVisible()||!host||host.width<=fp.screenWidth||host.height<=fp.screenHeight)return false;const b=restarted.view.getBounds(),expected=vp.presentedBounds(after.environment,host);return b.width===expected.width&&b.height===expected.height&&b.x===expected.x&&b.y===expected.y;},'reset view presented 1:1 within its screen in a larger host');
+ const vb=restarted.view.getBounds();assert.equal(vb.width,fp.screenWidth,'a wider host must not stretch the page beyond its screen');assert.equal(vb.height,fp.screenHeight);
+ assert(vb.x>controller.bounds.x&&vb.y>controller.bounds.y,'the 1:1 view is centred in the larger host');
  await restarted.viewportWork;await new Promise(resolve=>setTimeout(resolve,350));
  const rwc=restarted.view.webContents,image=await rwc.capturePage(),size=image.getSize(),pixels=image.toBitmap();
  const at=((size.height-8)*size.width+size.width-8)*4;
  assert([pixels[at+2],pixels[at+1],pixels[at]].every((v,i)=>Math.abs(v-[200,51,68][i])<=8),'reset adaptive view must paint native bottom-right corner');
- fs.writeFileSync(path.join(root,'reset-adaptive-filled.png'),image.toPNG());
+ fs.writeFileSync(path.join(root,'reset-adaptive-1to1.png'),image.toPNG());
  const dimensions=await rwc.executeJavaScript('({width:innerWidth,height:innerHeight})'),metrics=JSON.parse(restarted.viewportKey);
- assert(dimensions.width<=fp.screenWidth&&dimensions.height<=fp.screenHeight);assert(metrics.scale>1);assert.equal(rwc.getZoomFactor(),1);
- const point={x:Math.round((dimensions.width-50)*metrics.scale),y:Math.round((dimensions.height-25)*metrics.scale)};
+ assert(dimensions.width<=fp.screenWidth&&dimensions.height<=fp.screenHeight);assert.equal(metrics.scale,1);assert.equal(rwc.getZoomFactor(),1);
+ assert(Math.abs(dimensions.width-vb.width)<=1&&Math.abs(dimensions.height-vb.height)<=1,'layout viewport equals the native view: '+JSON.stringify({dimensions,vb,metrics,screen:[fp.screenWidth,fp.screenHeight],host:controller.bounds}));
+ const point={x:dimensions.width-50,y:dimensions.height-25};
  rwc.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...point});rwc.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...point});
  await wait(()=>rwc.executeJavaScript('window.cornerClicked===true'),'reset corner native input');
  assert.deepEqual(controller.store.get(instance.id).environment,after.environment,'display fitting must not rewrite reset environment');
