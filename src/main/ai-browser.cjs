@@ -137,6 +137,8 @@ function pageAgent(KEY){
   checked(id){const e=get(id);return e.checked===true||e.getAttribute('aria-checked')==='true';},
   scrollState(){return {vw:innerWidth,sx:Math.round(scrollX),sy:Math.round(scrollY),sh:Math.round(document.documentElement.scrollHeight),vh:innerHeight};},
   quiet(){return Date.now()-lastMutation;},
+  // Resolve after n animation frames (or after ms when frames are not produced, e.g. hidden/throttled).
+  frames(n=2,ms=400){return new Promise(resolve=>{let k=0;const t=setTimeout(()=>resolve(false),ms);const f=()=>{if(++k>=n){clearTimeout(t);resolve(true);}else requestAnimationFrame(f);};requestAnimationFrame(f);});},
   jsClick(id){get(id).click();return true;}
  };
 }
@@ -270,7 +272,16 @@ async function locate(wc,ent,frame){
  const chain=ent.chain;
  if(chain===null)return {script:true};
  for(const step of chain)await exec(wc,step.parent,call('frame',step.index,true));
- const p=await exec(wc,frame,call('point',ent.id,true));if(p.error)return p;
+ let p=await exec(wc,frame,call('point',ent.id,true));
+ if(chain.length&&!p.error){
+  // The browser routes input to a cross-process iframe by the last presented frame's hit-test
+  // data. Right after the scrolls above that data still shows the old layout, so a click sent
+  // immediately lands in the parent page. Wait for new frames to be presented, then re-measure.
+  await exec(wc,wc.mainFrame,call('frames',2)).catch(()=>{});
+  await exec(wc,frame,call('frames',1)).catch(()=>{});
+  p=await exec(wc,frame,call('point',ent.id,false));
+ }
+ if(p.error)return p;
  let x=p.x,y=p.y;
  for(let i=chain.length-1;i>=0;i--){
   const step=chain[i],box=await exec(wc,step.parent,call('frame',step.index,false));if(!box)return {error:'框架已变化，请重新 observe'};

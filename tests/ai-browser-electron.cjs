@@ -106,7 +106,12 @@ app.whenReady().then(async()=>{try{
  obs=await tool('observe',{});assert.notEqual(ref('Frame button'),oldFrameRef);
  await assert.rejects(tool('act',{ref:oldFrameRef,action:'click'}),/失效/);
  r=await tool('act',{ref:ref('Far away'),action:'click'});await logged('far:true');
- reports.push('act sends trusted clicks/typing to main frame, shadow DOM, custom checkbox, native select, OOPIF and offscreen element; occluded element refused');
+ // Regression: the cross-site iframe is now scrolled far out of view. The click must still
+ // reach the iframe (not the parent page) after it is scrolled back into view.
+ {const f1=logs.filter(x=>x==='frame:true').length,m1=logs.filter(x=>x.startsWith('md:')).length;
+  r=await tool('act',{ref:ref('Frame button'),action:'click'});await wait(()=>logs.filter(x=>x==='frame:true').length===f1+1,6000);
+  assert(!r.done.note,'frame click after a far scroll uses the real mouse');assert.equal(logs.filter(x=>x.startsWith('md:')).length,m1,'no stray click in the parent page');}
+ reports.push('act sends trusted clicks/typing to main frame, shadow DOM, custom checkbox, native select, OOPIF (also right after a far scroll) and offscreen element; occluded element refused');
  r=await tool('act',{action:'scroll',direction:'up',amount:20000});assert(/^0\//.test(r.scroll));
  r=await tool('act',{action:'scroll',direction:'down',amount:700});assert(Number(r.scroll.split('/')[0])>0,'wheel scrolled page');
  const pw=await tool('act',{ref:ref('Password'),action:'type',text:'local-fixture-password'});assert.equal(await wc().executeJavaScript("document.querySelector('#pw').value"),'local-fixture-password');assert(!JSON.stringify(pw).includes('local-fixture-password'));
@@ -154,9 +159,9 @@ app.whenReady().then(async()=>{try{
  await wait(async()=>Math.abs(await bwc.executeJavaScript('innerWidth')-bvb.width)<=1);
  agent.run.scope=[a.id,b.id];reports.push('fixed 2400x1600 instance in a '+bvb.width+'x'+bvb.height+' view: viewportKey scale='+JSON.parse(br.viewportKey).scale);
  const bobs=await agent.tool('observe',{instanceId:b.id});const n0=logs.filter(x=>x==='far:true').length,f0=logs.filter(x=>x==='frame:true').length;
+ await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Far away'),action:'click'});await wait(()=>logs.filter(x=>x==='far:true').length===n0+1);
  const fr=await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Frame button'),action:'click'});await wait(()=>logs.filter(x=>x==='frame:true').length===f0+1);assert(!fr.done.note,'1:1 frame click uses the real mouse');
  await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Frame input'),action:'type',text:'scaled'});await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Send frame'),action:'click'});await logged('finput:scaled');
- await agent.tool('act',{instanceId:b.id,ref:refOf(bobs.elements,'Far away'),action:'click'});await wait(()=>logs.filter(x=>x==='far:true').length===n0+1);
  reports.push('fixed viewport larger than the view is shown 1:1: trusted clicks land in main frame and cross-site iframe; typing works');
  // Adaptive viewport with a configured screen smaller than the host: the view is limited to the screen, still 1:1.
  const up=c.store.create('Adaptive capped'),upEnv=structuredClone(c.store.get(up.id).environment);

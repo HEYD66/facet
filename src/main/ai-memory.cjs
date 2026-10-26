@@ -10,6 +10,16 @@ function images(input=[]){
   return value;
  });
 }
+// Earlier tasks are resent in front of every request of the next task. DSH can compact only the
+// current task, so long tool results kept there (page snapshots, full text, JSON) left a long
+// conversation near its compaction threshold and the next task compacted again after almost
+// every step. Long tool results of earlier tasks are sent as head + tail; the latest task keeps
+// more. Stored memory is not changed, so memory compression still sees the full text.
+const PRIOR_TOOL={latest:[4000,2600,900],older:[1200,800,300]};
+function slimTool(m,[limit,head,tail]){
+ if(m.role!=='tool'||typeof m.content!=='string'||m.content.length<=limit)return m;
+ const c=m.content;return {...m,content:c.slice(0,head)+`\n…（较早任务的工具结果已精简：原 ${c.length} 字，保留开头和结尾）…\n`+c.slice(-tail)};
+}
 class Memory{
  constructor(){this.clear();}
  clear(){this.turns=[];this.summary='';this.summaryScope=[];this.compressions=0;}
@@ -20,12 +30,15 @@ class Memory{
   this.turns=data.turns;this.summary=data.summary;this.summaryScope=data.summaryScope;this.compressions=data.compressions;
  }
  summaryFor(scope){return this.summaryScope.every(id=>scope.includes(id))?this.summary:'';}
- context(scope){return this.turns.filter(t=>t.scope.every(id=>scope.includes(id))).flatMap(t=>t.messages);}
+ context(scope){const turns=this.turns.filter(t=>t.scope.every(id=>scope.includes(id)));return turns.flatMap((t,i)=>t.messages.map(m=>slimTool(m,i===turns.length-1?PRIOR_TOOL.latest:PRIOR_TOOL.older)));}
  async compress(agent,scope){
   // Changing scope only filters what is sent; it must not erase another instance's memory.
   const eligible=this.turns.filter(t=>t.scope.every(id=>scope.includes(id)));
   if(this.summary&&!this.summaryScope.every(id=>scope.includes(id)))return;
-  if(JSON.stringify(eligible).length<48000||eligible.length<3)return;
+  // Compress when what would actually be resent passes 48K characters, or earlier for a small
+  // context window (about a quarter of the window, at a conservative 2 characters per token).
+  const window=typeof agent.contextWindow==='function'?agent.contextWindow():0,limit=window?Math.min(48000,Math.max(12000,Math.floor(window*0.5))):48000;
+  if(JSON.stringify(this.context(scope)).length<limit||eligible.length<3)return;
   const old=eligible.slice(0,-2);
   const text=old.map(t=>t.messages.map(m=>({role:m.role,content:Array.isArray(m.content)?m.content.filter(p=>p.type==='text').map(p=>p.text).join('\n')+' [历史图片省略]':m.content}))).flat();
   agent.run.status='正在压缩记忆';

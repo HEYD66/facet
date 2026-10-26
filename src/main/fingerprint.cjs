@@ -114,16 +114,19 @@ function normalize(value={}){
  if(f.enabled&&f.webgl&&(!f.vendor||!f.renderer))throw Error('启用WebGL覆盖需要厂商和渲染器');
  return f;
 }
-function preset(id,base={},seed=crypto.randomBytes(16).toString('hex')){
+function preset(id,base={},seed=crypto.randomBytes(16).toString('hex'),options={}){
  if(id==='random'||id===catalog.ID){
-  const full=id===catalog.ID,current=normalize(base.fingerprint),plan=catalog.generate(seed,base,full);
+  // One-click random keeps the screen and DPR unless the caller asks to randomize them too
+  // (options.screen); the full library plan always picks a screen. Either way the browsing
+  // viewport (width/height) is kept.
+  const full=id===catalog.ID,current=normalize(base.fingerprint),withScreen=full||options.screen===true,plan=catalog.generate(seed,base,withScreen);
   const choice=key=>crypto.createHash('sha256').update(seed+':'+key).digest().readUInt32LE(0);
   const screen=plan.screen;
   return {...base,colorScheme:['system','light','dark'][choice('color-scheme')%3],reducedMotion:choice('reduced-motion')%2?'reduce':'no-preference',
    userAgent:generatedUserAgent(),platform:'Win32',cpu:plan.cpu,
-   width:base.width||0,height:base.height||0,scale:full?screen.dpr:(base.scale||0),
-   fingerprint:normalize({...current,enabled:true,hardware:full||!!(base.fingerprint?.enabled&&current.hardware),webgl:true,canvas:true,audio:true,seed,template:catalog.ID,
-    screenWidth:full?screen.width:current.screenWidth,screenHeight:full?screen.height:current.screenHeight,availHeight:full?screen.availHeight:current.availHeight,
+   width:base.width||0,height:base.height||0,scale:withScreen?screen.dpr:(base.scale||0),
+   fingerprint:normalize({...current,enabled:true,hardware:withScreen||!!(base.fingerprint?.enabled&&current.hardware),webgl:true,canvas:true,audio:true,seed,template:catalog.ID,
+    screenWidth:withScreen?screen.width:current.screenWidth,screenHeight:withScreen?screen.height:current.screenHeight,availHeight:withScreen?screen.availHeight:current.availHeight,
     memory:plan.memory,touch:0,colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.gpu.renderer})};
  }
  const t=DEVICE_TEMPLATES.find(x=>x.id===id);if(!t)throw Error('未知设备预设');

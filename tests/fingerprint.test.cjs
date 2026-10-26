@@ -113,3 +113,22 @@ test('library screens are at least as large as the display when the app reports 
   catalog.setDisplayProvider(()=>{throw Error('no display');});assert(catalog.generate('floor-x',{},true).screen);
  }finally{catalog.setDisplayProvider(null);}
 });
+
+test('one-click random can also randomize the screen and DPR on request, keeping the viewport',()=>{
+ const {SCREENS}=require('../src/main/fingerprint-catalog.cjs');
+ for(const patch of [{width:0,height:0,scale:1.25},{width:1760,height:920,scale:1}]){
+  const base=environment({...patch,fingerprint:{enabled:true,hardware:false,screenWidth:1920,screenHeight:1080,availHeight:1040}});const seen=new Set();
+  for(let i=0;i<60;i++){
+   const next=environment(preset('random',base,'screen-'+i,{screen:true})),f=next.fingerprint;
+   assert.equal(next.width,base.width);assert.equal(next.height,base.height);
+   assert(SCREENS.some(s=>s.width===f.screenWidth&&s.height===f.screenHeight&&s.availHeight===f.availHeight&&s.dpr===next.scale),`${f.screenWidth}x${f.screenHeight}@${next.scale}`);
+   assert(f.screenWidth>=base.width&&f.screenHeight>=base.height,'screen still contains a fixed viewport');
+   assert.equal(f.hardware,true,'a randomized screen is only reported with the hardware override on');
+   seen.add(f.screenWidth+'x'+f.screenHeight+'@'+next.scale);
+  }
+  assert(seen.size>3,'screens actually vary: '+[...seen].join(','));
+ }
+ // Without the option the existing behaviour is unchanged (covered above): screen and DPR are kept.
+ const base=environment({scale:1.25,fingerprint:{screenWidth:1920,screenHeight:1080,availHeight:1040}}),kept=environment(preset('random',base,'keep'));
+ assert.deepEqual([kept.scale,kept.fingerprint.screenWidth,kept.fingerprint.screenHeight],[1.25,1920,1080]);
+});
