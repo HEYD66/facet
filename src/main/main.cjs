@@ -30,8 +30,9 @@ app.whenReady().then(async()=>{
  window=new BrowserWindow({width:1440,height:960,minWidth:960,minHeight:700,title:'千面 Facet',icon:appIcon,backgroundColor:'#f5f8f7',autoHideMenuBar:true,...(customFrame?{titleBarStyle:'hidden',titleBarOverlay:{color:'#e9eaee',symbolColor:'#171a21',height:32}}:{}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),sandbox:true,nodeIntegration:false,contextIsolation:true,webSecurity:true,webviewTag:false,backgroundThrottling:false,partition:'persist:arena-core-controls'}});
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));window.webContents.on('will-navigate',event=>event.preventDefault());
  window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));window.webContents.session.setPermissionCheckHandler(()=>false);
- // New random environments pick a simulated screen no smaller than the display the window is on.
- require('./fingerprint-catalog.cjs').setDisplayProvider(()=>{const {screen}=require('electron');return (window&&!window.isDestroyed()?screen.getDisplayMatching(window.getBounds()):screen.getPrimaryDisplay()).size;});
+ // New random environments pick a simulated screen no smaller than the display the window is on,
+ // at that display's DPR (cross-site iframes always report the machine's DPR).
+ require('./fingerprint-catalog.cjs').setDisplayProvider(()=>{const {screen}=require('electron');const d=window&&!window.isDestroyed()?screen.getDisplayMatching(window.getBounds()):screen.getPrimaryDisplay();return {...d.size,scaleFactor:d.scaleFactor};});
  // New plans report this machine's touch points (read from the control window once it loads), so
  // they agree with the any-pointer media query Chromium derives from the system digitizer.
  let hostTouch=0;require('./fingerprint-catalog.cjs').setTouchProvider(()=>hostTouch);

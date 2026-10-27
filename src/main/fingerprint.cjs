@@ -133,8 +133,10 @@ function preset(id,base={},seed=crypto.randomBytes(16).toString('hex'),options={
     memory:plan.memory,touch:catalog.hostTouchPoints(),colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.renderer})};
  }
  const t=DEVICE_TEMPLATES.find(x=>x.id===id);if(!t)throw Error('未知设备预设');
- return {...base,userAgent:generatedUserAgent(),platform:'Win32',width:0,height:0,scale:t.deviceScaleFactor,cpu:t.hardwareConcurrency,
- fingerprint:normalize({...base.fingerprint,enabled:true,hardware:true,seed,template:t.id,screenWidth:t.screenWidth,screenHeight:t.screenHeight,availHeight:t.availableScreenHeight,memory:t.deviceMemory,touch:catalog.hostTouchPoints(),colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
+ // 同一块物理屏幕换算到本机 DPR（跨站 iframe 只会报告本机 DPR，见 fingerprint-catalog.cjs PANELS）。
+ const s=catalog.templateScreen(t.screenWidth,t.screenHeight,t.deviceScaleFactor);
+ return {...base,userAgent:generatedUserAgent(),platform:'Win32',width:0,height:0,scale:s.dpr,cpu:t.hardwareConcurrency,
+ fingerprint:normalize({...base.fingerprint,enabled:true,hardware:true,seed,template:t.id,screenWidth:s.width,screenHeight:s.height,availHeight:s.availHeight,memory:t.deviceMemory,touch:catalog.hostTouchPoints(),colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
 }
 function generatedUserAgent(){return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome||'0.0.0.0'} Safari/537.36`;}
 // Only a generated UA matching this runtime can reuse native UA-CH metadata.

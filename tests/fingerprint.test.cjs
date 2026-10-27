@@ -132,6 +132,54 @@ test('library screens are at least as large as the display when the app reports 
  }finally{catalog.setDisplayProvider(null);}
 });
 
+test('with the display DPR known, new plans use it so cross-site iframes agree with the page',()=>{
+ const catalog=require('../src/main/fingerprint-catalog.cjs');
+ const fp=plan=>[plan.scale,plan.fingerprint.screenWidth,plan.fingerprint.screenHeight,plan.fingerprint.availHeight];
+ try{
+  // This machine: a 2560x1440 panel at 125% (2048x1152 DIP). Cross-site iframes report 1.25 whatever the plan says.
+  catalog.setDisplayProvider(()=>({width:2048,height:1152,scaleFactor:1.25}));
+  const seen=new Set();
+  for(let i=0;i<500;i++){
+   const plan=environment(preset('library-v1',{},'dpr-'+i)),f=plan.fingerprint;
+   assert.equal(plan.scale,1.25);
+   assert(catalog.PANELS.some(p=>p.width===f.screenWidth*1.25&&p.height===f.screenHeight*1.25),`${f.screenWidth}x${f.screenHeight} is a real panel at 125%`);
+   assert(f.screenWidth>=2048&&f.screenHeight>=1152);assert.equal(f.screenHeight-f.availHeight,48);
+   seen.add(f.screenWidth+'x'+f.screenHeight);
+  }
+  assert.deepEqual([...seen].sort(),['2048x1152','2752x1152','3072x1728']);
+  // One-click random with screens and the fixed device templates follow it too (same physical panel).
+  for(let i=0;i<60;i++)assert.equal(environment(preset('random',{},'dpr-r-'+i,{screen:true})).scale,1.25);
+  assert.deepEqual(fp(environment(preset('win-nvidia-qhd',{},'t'))),[1.25,2048,1152,1104]);
+  assert.deepEqual(fp(environment(preset('win-intel-fhd',{},'t'))),[1.25,1536,864,816]);
+  assert.deepEqual(fp(environment(preset('win-intel-iris',{},'t'))),[1.25,1536,864,816]);
+  // Without the option one-click random still keeps the stored screen and DPR (old instances are not changed).
+  const old=environment({scale:1,fingerprint:{enabled:true,hardware:true,screenWidth:2560,screenHeight:1080,availHeight:1032}});
+  assert.deepEqual(fp(environment(preset('random',old,'keep'))),[1,2560,1080,1032]);
+
+  // 150%: panels that do not divide exactly (2560x1440 -> 1706.67) are left out; the display itself is kept.
+  catalog.setDisplayProvider(()=>({width:1707,height:960,scaleFactor:1.5}));
+  assert.deepEqual(catalog.screenPool().map(s=>s.width+'x'+s.height+'@'+s.dpr),['960x600@1.5','1280x720@1.5','1280x800@1.5','2560x1440@1.5','1707x960@1.5']);
+  const at150=new Set();for(let i=0;i<200;i++){const plan=environment(preset('library-v1',{},'dpr150-'+i));assert.equal(plan.scale,1.5);at150.add(plan.fingerprint.screenWidth+'x'+plan.fingerprint.screenHeight);}
+  assert.deepEqual([...at150].sort(),['1707x960','2560x1440']);
+  // A template panel is sized like Chromium sizes the display (rounded up): 2560x1440 at 150% is 1707x960.
+  assert.deepEqual(fp(environment(preset('win-nvidia-qhd',{},'t'))),[1.5,1707,960,912]);
+
+  // 110%: Chromium reports 1.100000023841858; the plan keeps that exact value so the emulated DPR equals the native one.
+  catalog.setDisplayProvider(()=>({width:1746,height:982,scaleFactor:1.100000023841858}));
+  const at110=environment(preset('library-v1',{},'dpr110'));assert.deepEqual(fp(at110),[1.100000023841858,1746,982,934]);
+
+  // A template the environment cannot store at that DPR (1920x1080 at 300% is 640x360) falls back to the display.
+  catalog.setDisplayProvider(()=>({width:1280,height:720,scaleFactor:3}));
+  assert.deepEqual(fp(environment(preset('win-intel-fhd',{},'t'))),[3,1280,720,672]);
+
+  // Unknown or unsupported DPR keeps the fallback table.
+  for(const display of [{width:2048,height:1152},{width:2048,height:1152,scaleFactor:3.5},{width:2048,height:1152,scaleFactor:0.5}]){
+   catalog.setDisplayProvider(()=>display);assert.equal(catalog.screenPool(),catalog.SCREENS);
+   assert.deepEqual(fp(environment(preset('win-nvidia-qhd',{},'t'))),[1,2560,1440,1392]);
+  }
+ }finally{catalog.setDisplayProvider(null);}
+});
+
 test('new plans report the touch points of the machine Facet runs on',()=>{
  const catalog=require('../src/main/fingerprint-catalog.cjs');
  try{

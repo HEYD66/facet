@@ -45,7 +45,10 @@ document.addEventListener('click',async event=>{const button=event.target.closes
 document.addEventListener('change',event=>{if(event.target.id==='runtimeOutputChannel'){runtimeOutputChannel=event.target.value;runtimeOutputRows();}});
 document.addEventListener('input',event=>{if(event.target.id==='runtimeOutputSearch'){runtimeOutputSearch=event.target.value;runtimeOutputRows();}});
 
-function environmentWarnings(){const root=$('#environmentWarnings');if(!root)return;const ua=$('#envUserAgent').value,p=$('#envPlatform').value,warnings=[];if(ua&&p&&(/Windows/i.test(ua)&&p!=='Win32'||/Macintosh|Mac OS X/i.test(ua)&&p!=='MacIntel'||/Linux/i.test(ua)&&p!=='Linux x86_64'))warnings.push('UA与platform标识可能矛盾，请核对。');if(p&&!ua)warnings.push('已修改platform但UA仍为原生，可能暴露不同平台信息。');if($('#envGeoEnabled').checked)warnings.push('固定定位不会同步修改出口IP所在地或时区，请自行保持一致。');root.textContent=warnings.join(' ');}
+function environmentWarnings(){const root=$('#environmentWarnings');if(!root)return;const ua=$('#envUserAgent').value,p=$('#envPlatform').value,warnings=[];if(ua&&p&&(/Windows/i.test(ua)&&p!=='Win32'||/Macintosh|Mac OS X/i.test(ua)&&p!=='MacIntel'||/Linux/i.test(ua)&&p!=='Linux x86_64'))warnings.push('UA与platform标识可能矛盾，请核对。');if(p&&!ua)warnings.push('已修改platform但UA仍为原生，可能暴露不同平台信息。');if($('#envGeoEnabled').checked)warnings.push('固定定位不会同步修改出口IP所在地或时区，请自行保持一致。');
+ // 跨站 iframe（人机验证框等）不接受像素比模拟，只报告本机显示器的值；控制窗口的 devicePixelRatio 就是本机值。
+ const scale=Number($('#envScale')?.value)||0,host=window.devicePixelRatio||1;if(scale&&Math.abs(scale-host)>1e-3){const shown=Math.round(host*100)/100;warnings.push(`像素比 ${scale} 与本机显示器（${shown}）不同：跨站 iframe（如人机验证框）里仍是 ${shown}，与主页面不一致。勾选「同时随机屏幕」后一键随机，会按本机像素比重新抽取屏幕。`);}
+ root.textContent=warnings.join(' ');}
 document.addEventListener('input',event=>{if(event.target.id.startsWith('env'))environmentWarnings();});document.addEventListener('change',event=>{if(event.target.id.startsWith('env'))environmentWarnings();});
 
 function readableTask(id){const events=state.events||[],e=events.find(e=>e.taskId===id&&e.text.startsWith('开始'))||events.find(e=>e.taskId===id);return e?new Date(e.time).toLocaleTimeString()+' · '+e.text.replace('latency','连通性').replace('speed','测速').replace('ip检测','IP检测'):id;}

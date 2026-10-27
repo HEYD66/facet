@@ -1,4 +1,19 @@
 # 验证入口与历史记录
+## 2026-10-27：新方案的 DPR 跟随本机显示器，跨站 iframe 与主页面一致（源码未发布）
+- 探针（`.local-dev/oopif-dpr-20261027/probe.cjs`，本机显示器 1.25，`localhost` 跨站 iframe 为独立进程）：
+  - CDP 模拟 1 / 1.5 / 2 时，iframe 的 `devicePixelRatio`、`matchMedia` 和样式表 `@media` 都是 1.25。
+  - 页面缩放（倍数 = 目标 ÷ 本机）时两边都报精确值，但网页按倍数变大或变小，且缩放按主机名保存，换主机名后回到 1。
+  - 加 `disable-site-isolation-trials` 后 iframe 不再是独立进程，跟随模拟值。
+  - 用户选择让新方案直接使用本机 DPR（细节见 [指纹候选库](FINGERPRINT-CATALOG.md) 2026-10-27（二））。用户现有 16 个实例中有 14 个与本机不同，按选择不改。
+- 通过：
+  - `check`（363 脚本）、`test:control-api`、`git diff --check`。
+  - 全部单元测试 443 项（442 通过、1 项 POSIX 跳过）。新增用例覆盖：本机 125% 时整套随机只出 2048×1152、2752×1152、3072×1728 且 DPR 1.25；预设按同一物理屏幕换算；150% 时不能整除的面板被剔除，2560×1440 预设为 1707×960；110% 保留 1.100000023841858；300% 下无法保存的预设回退到显示器；读不到或超范围的 DPR 用旧表；不随机屏幕的一键随机保持旧值。
+- 真实 Electron（`.local-dev/oopif-dpr-20261027/verify-host-dpr.cjs`，与 `main.cjs` 相同的显示器提供者）：
+  - 两个整套随机方案（2048×1152、2752×1152）和 RTX 3070 · 2K 预设（2048×1152）在主页面与跨站 iframe 的 DPR（精确 1.25）、`matchMedia`、`@media`、`screen` 一致。
+  - 对照的 DPR 1 旧式方案仍然主页面 1、iframe 1.25。
+  - 环境页只对旧式方案显示像素比提示。
+- 真实 Electron 回归无失败：`test:fingerprint-electron`、`test:fingerprint-contexts`、`test:instance-reset-electron`、`instance-batch-electron.cjs`、`test:viewport-screen`。
+- 未验证：用户正在运行的千面尚未重启，新生成器还没在其中生效；没有在 150%、110% 等其他缩放的真实显示器上运行。
 ## 2026-10-27：显卡读数与真实 Chrome 对齐（WebGPU、渲染器格式、内存、任务栏；源码未发布）
 - 用户选择方案 A：渲染器格式、内存档位和可用高度只用于新生成的方案，已保存实例不变；WebGPU 一致性对所有开启 WebGL 覆盖的实例生效。细节见 [指纹候选库](FINGERPRINT-CATALOG.md) 2026-10-27 条。
 - 探针：Dedicated Worker 在注入时（调试器暂停在开始处）`typeof GPUAdapterInfo` 为 `undefined`、`navigator.gpu` 已存在，第一版只改全局原型的补丁在 Worker 里不生效（页面通过、Worker 仍报 `lovelace`），改为经 `navigator.gpu` 和首个适配器取原型后通过。
