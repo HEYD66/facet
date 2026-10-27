@@ -32,6 +32,10 @@ app.whenReady().then(async()=>{
  window.webContents.session.setPermissionRequestHandler((_wc,_permission,cb)=>cb(false));window.webContents.session.setPermissionCheckHandler(()=>false);
  // New random environments pick a simulated screen no smaller than the display the window is on.
  require('./fingerprint-catalog.cjs').setDisplayProvider(()=>{const {screen}=require('electron');return (window&&!window.isDestroyed()?screen.getDisplayMatching(window.getBounds()):screen.getPrimaryDisplay()).size;});
+ // New plans report this machine's touch points (read from the control window once it loads), so
+ // they agree with the any-pointer media query Chromium derives from the system digitizer.
+ let hostTouch=0;require('./fingerprint-catalog.cjs').setTouchProvider(()=>hostTouch);
+ window.webContents.once('did-finish-load',()=>{window.webContents.executeJavaScript('navigator.maxTouchPoints').then(n=>{hostTouch=Number(n)||0;}).catch(()=>{});});
  const binary=resourcePath(app,'mihomo',process.platform==='win32'?'mihomo.exe':'mihomo');
  controller=new Controller(window,app.getPath('userData'),binary);
  if(environmentChannel.gatewayError)controller.workspace.log('application',environmentChannel.gatewayError,'WARN');

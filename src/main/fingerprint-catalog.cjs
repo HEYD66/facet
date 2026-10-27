@@ -79,6 +79,15 @@ function pick(seed,key,pool){return pool[index(seed,key,pool.length)];}
 // callers without one keep the full pool.
 let displaySize=()=>null;
 function setDisplayProvider(fn){displaySize=typeof fn==='function'?fn:()=>null;}
+// Touch points of the machine Facet runs on. With a touchscreen, Chromium derives
+// any-pointer: coarse from the system digitizer (ui/base/pointer/pointer_device_win.cc) and
+// neither CDP (Emulation.setEmulatedMedia ignores pointer/hover, measured) nor Electron can
+// override it, so a plan reporting 0 touch points beside it contradicts itself. New plans report
+// the machine's own count (Chrome on this machine: 10); without a provider (tests) or a
+// touchscreen they report 0. Saved instances keep their stored value.
+let touchPoints=()=>0;
+function setTouchProvider(fn){touchPoints=typeof fn==='function'?fn:()=>0;}
+function hostTouchPoints(){try{const n=Number(touchPoints());return Number.isInteger(n)&&n>0&&n<=10?n:0;}catch{return 0;}}
 function displayFloor(){try{const s=displaySize();const width=Math.round(Number(s?.width)||0),height=Math.round(Number(s?.height)||0);return width>0&&height>0?{width,height}:null;}catch{return null;}}
 function generate(seed,base={},full=false){
  const brand=pick(seed,'brand',BRANDS),gpu=pick(seed,'gpu',PLAN_GPUS.filter(g=>g.brand===brand));
@@ -99,4 +108,4 @@ function generate(seed,base={},full=false){
 }
 // A device ID for a saved renderer that carries none, stable per instance seed.
 function pickId(seed,ids){return ids.length?ids[index(seed||'none','gpu-id',ids.length)]:null;}
-module.exports={ID,GPUS,PLAN_GPUS,SCREENS,CPUS,CPU_TIERS,MEMORY,MEMORY_TIERS,TASKBAR,PANEL_LIMITS,gpuTier,drivable,generate,setDisplayProvider,idsFor,pickId};
+module.exports={ID,GPUS,PLAN_GPUS,SCREENS,CPUS,CPU_TIERS,MEMORY,MEMORY_TIERS,TASKBAR,PANEL_LIMITS,gpuTier,drivable,generate,setDisplayProvider,setTouchProvider,hostTouchPoints,idsFor,pickId};

@@ -50,7 +50,7 @@ GPU 厂商先按等概率选择，再在厂商池中选条目；屏幕/CPU 候�
 - **渲染器格式**（`fingerprint-catalog.json` schemaVersion 2 + `scripts/import-fingerprint-catalog.cjs`）：真实 Chrome 报 `ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028A0) Direct3D11 vs_5_0 ps_5_0, D3D11)`，旧生成器缺设备 ID 和 `, D3D11`。导入脚本改为保留来源里的设备 ID（同样两份来源，SHA256 不变，482 款型号不变），206 款有设备 ID（共 309 个）。新方案只从这 206 款里选，并按种子选其中一个设备 ID；六个预设也改为带设备 ID 的格式。用 Dawn 的设备 ID → 架构核对型号名称：除 APU 集显（R2–R7 Graphics 跨代复用名称）和一个山寨卡名（GTX 2060 6GB）外一致。
 - **内存**：Chrome 桌面端现在最高报 32（blink-dev「Update Device Memory API limits」，本机原生 32）。新方案按显卡档位：低端 4/8，中端 8/16/32（16 居多），高端 16/32；4 GB 只配 ≤8 线程。校验允许 1/2/4/8/16/32。
 - **可用高度**：屏幕池的可用高度改为高度减 48（Windows 11 任务栏，本机实测 1152→1104），与实例报告的 UA-CH `platformVersion`（原生 19.0.0，即 Windows 11）一致；之前按 Windows 10 的 40。
-- **触屏**：本机有触摸屏时，实例 `maxTouchPoints` 报 0，但 CSS `any-pointer: coarse` 仍为真。这个媒体查询由 Chromium 按系统数字化仪判断（`ui/base/pointer/pointer_device_win.cc`），CDP 和 Electron 都没有覆盖入口，只改 JS 的 `matchMedia` 会与样式表里的媒体查询矛盾，本轮未改，需用户决定处理方式。
+- **触屏**（`fingerprint-catalog.cjs` `setTouchProvider` + `main.cjs`）：本机有触摸屏时，实例 `maxTouchPoints` 报 0，但 CSS `any-pointer: coarse` 仍为真（CreepJS 同时显示 `touch device: true` 与 `touch: 0`）。这个媒体查询由 Chromium 按系统数字化仪判断（`ui/base/pointer/pointer_device_win.cc`），没有覆盖入口：`Emulation.setEmulatedMedia` 接受 `pointer`/`any-pointer`/`hover`/`any-hover` 但不生效（页面与跨站 iframe 实测），Electron 也没有对应选项；只改 JS 的 `matchMedia` 会与样式表里的媒体查询矛盾。因此新方案的触摸点改为本机的值（主窗口加载后读 `navigator.maxTouchPoints`，本机 10；没有触摸屏的电脑仍为 0），与媒体查询一致，相当于一台带触摸屏的电脑。已保存的实例保持原值（按方案 A），需要时可在环境配置的「最大触摸点」里改为 10。
 
 ## 2026-10-26（二）多账号审计反馈：音频、窗口尺寸、高端显卡配小屏（源码修改，未发布）
 

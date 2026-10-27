@@ -130,11 +130,11 @@ function preset(id,base={},seed=crypto.randomBytes(16).toString('hex'),options={
    width:base.width||0,height:base.height||0,scale:withScreen?screen.dpr:(base.scale||0),
    fingerprint:normalize({...current,enabled:true,hardware:withScreen||!!(base.fingerprint?.enabled&&current.hardware),webgl:true,canvas:true,audio:true,seed,template:catalog.ID,
     screenWidth:withScreen?screen.width:current.screenWidth,screenHeight:withScreen?screen.height:current.screenHeight,availHeight:withScreen?screen.availHeight:current.availHeight,
-    memory:plan.memory,touch:0,colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.renderer})};
+    memory:plan.memory,touch:catalog.hostTouchPoints(),colorDepth:24,vendor:plan.gpu.vendor,renderer:plan.renderer})};
  }
  const t=DEVICE_TEMPLATES.find(x=>x.id===id);if(!t)throw Error('未知设备预设');
  return {...base,userAgent:generatedUserAgent(),platform:'Win32',width:0,height:0,scale:t.deviceScaleFactor,cpu:t.hardwareConcurrency,
- fingerprint:normalize({...base.fingerprint,enabled:true,hardware:true,seed,template:t.id,screenWidth:t.screenWidth,screenHeight:t.screenHeight,availHeight:t.availableScreenHeight,memory:t.deviceMemory,touch:0,colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
+ fingerprint:normalize({...base.fingerprint,enabled:true,hardware:true,seed,template:t.id,screenWidth:t.screenWidth,screenHeight:t.screenHeight,availHeight:t.availableScreenHeight,memory:t.deviceMemory,touch:catalog.hostTouchPoints(),colorDepth:24,vendor:t.webGlVendor,renderer:t.webGlRenderer})};
 }
 function generatedUserAgent(){return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${process.versions.chrome||'0.0.0.0'} Safari/537.36`;}
 // Only a generated UA matching this runtime can reuse native UA-CH metadata.

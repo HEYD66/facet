@@ -132,6 +132,17 @@ test('library screens are at least as large as the display when the app reports 
  }finally{catalog.setDisplayProvider(null);}
 });
 
+test('new plans report the touch points of the machine Facet runs on',()=>{
+ const catalog=require('../src/main/fingerprint-catalog.cjs');
+ try{
+  // A touchscreen makes Chromium report any-pointer: coarse, which no override can hide; 0 touch points would contradict it.
+  catalog.setTouchProvider(()=>10);
+  for(const id of ['library-v1','random','win-intel-iris'])assert.equal(environment(preset(id,{},'touch-seed')).fingerprint.touch,10,id);
+  for(const bad of [()=>0,()=>-1,()=>11,()=>'x',()=>{throw Error('no window');}]){catalog.setTouchProvider(bad);assert.equal(environment(preset('library-v1',{},'touch-seed')).fingerprint.touch,0);}
+ }finally{catalog.setTouchProvider(null);}
+ assert.equal(environment(preset('library-v1',{},'touch-seed')).fingerprint.touch,0,'no provider: 0');
+});
+
 test('one-click random can also randomize the screen and DPR on request, keeping the viewport',()=>{
  const {SCREENS}=require('../src/main/fingerprint-catalog.cjs');
  for(const patch of [{width:0,height:0,scale:1.25},{width:1760,height:920,scale:1}]){
