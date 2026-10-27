@@ -12,6 +12,8 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'facet-installed-中文-'));
 const results=[],errors=[];let server,proxy,child,browser,ui,inspectorUrl,proxyHits=0,geoHits=0,aiUpload='';
 const sockets=new Set(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const pass=name=>{results.push(name);console.log('PASS '+name);};
+// New plans report the touch points of the machine (read by the main process from the control window), 0 without a touchscreen.
+const hostTouch=()=>ui.evaluate(()=>{const n=navigator.maxTouchPoints;return Number.isInteger(n)&&n>0&&n<=10?n:0;});
 async function wait(fn,label,timeout=30000){const end=Date.now()+timeout;while(Date.now()<end){if(await fn())return;await sleep(50);}throw Error('Timeout: '+label);}
 async function launch(){
  const portFile=path.join(root,'DevToolsActivePort');fs.rmSync(portFile,{force:true});
@@ -138,7 +140,7 @@ async function main(){
  assert.equal((await call('snapshot')).versions.app,require('../package.json').version);
  const beforeCatalogEnvironment=(await call('snapshot')).instances.find(x=>x.id===a.id).environment;
  const plan=await call('fingerprint-preset',{preset:'library-v1',environment:{language:'ja-JP',timezone:'Asia/Tokyo'}});
- assert.equal(plan.width,0);assert.equal(plan.height,0);assert.equal(plan.fingerprint.template,'library-v1');assert.equal(plan.fingerprint.touch,0);assert(plan.fingerprint.renderer&&plan.fingerprint.vendor);assert.equal(plan.language,'ja-JP');assert.equal(plan.timezone,'Asia/Tokyo');
+ assert.equal(plan.width,0);assert.equal(plan.height,0);assert.equal(plan.fingerprint.template,'library-v1');assert.equal(plan.fingerprint.touch,await hostTouch());assert(plan.fingerprint.renderer&&plan.fingerprint.vendor);assert.equal(plan.language,'ja-JP');assert.equal(plan.timezone,'Asia/Tokyo');
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,beforeCatalogEnvironment);
  pass('Packaged fingerprint catalog generates coherent desktop plans without changing saved instances');
  await ui.locator('#sidebar .nav[data-view="settings"]').click();await ui.waitForFunction(()=>view==='settings'&&!!document.querySelector('#nodeNetworkCard'));
@@ -177,11 +179,12 @@ async function main(){
   wc.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...point});wc.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...point});
   return {bounds,metrics:m,actual,zoom:wc.getZoomFactor(),pixel:[pixels[at+2],pixels[at+1],pixels[at]]};
  })()`);
- assert(fill.metrics.scale>1);assert(fill.actual.width<=800&&fill.actual.height<=600);assert(Math.abs(fill.actual.dpr-1)<1e-5);assert.equal(fill.zoom,1);
+ // Pages are presented 1:1 (issue #10): the native view is limited to the simulated screen (height minus the browser toolbar) and lays out at its own size.
+ assert.equal(fill.metrics.scale,1);assert(fill.bounds.width<=800&&fill.bounds.height<=560-80,JSON.stringify(fill.bounds));assert.deepEqual([fill.actual.width,fill.actual.height],[fill.bounds.width,fill.bounds.height]);assert(Math.abs(fill.actual.dpr-1)<1e-5);assert.equal(fill.zoom,1);
  assert(fill.pixel.every((v,i)=>Math.abs(v-[200,51,68][i])<=8),'packaged adaptive view paints its native bottom-right edge');await adaptivePage.waitForFunction(()=>window.cornerClicked===true);
  fs.writeFileSync(path.join(root,'adaptive-fill.json'),JSON.stringify(fill,null,2));await ui.screenshot({path:path.join(root,'adaptive-fill.png')});
  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===a.id).environment,adaptive);
- pass('Packaged small-screen adaptive viewport fills its native view with unchanged DPR/configuration and a working native corner click');
+ pass('Packaged small-screen adaptive viewport is presented 1:1 within the simulated screen with unchanged DPR/configuration and a working native corner click');
  assert.deepEqual(await ui.evaluate(()=>state.quickLinks.map(x=>x.name)),['Arena']);
  assert.equal(await ui.locator('[data-browser-menu="favorites"]').count(),1);
  await ui.locator('[data-browser-menu="favorites"]').click();let favorites;
@@ -256,12 +259,12 @@ async function main(){
  const oldId=b.id;await ui.waitForFunction(id=>!modal&&current().id!==id&&current().status==='stopped'&&!environmentChanged(),oldId);b.id=await ui.evaluate(()=>current().id);assert(!(await call('snapshot')).instances.some(x=>x.id===oldId));
  const savedReset=JSON.parse(fs.readFileSync(path.join(root,'instances.json'),'utf8')).instances.find(x=>x.id===b.id);
  assert.equal(savedReset.environment.width,0);assert.equal(savedReset.environment.height,0);assert.equal(savedReset.environment.fingerprint.template,'library-v1');
- assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,0);
+ assert.deepEqual(savedReset.network,beforeReset.network);assert.notEqual(savedReset.environment.fingerprint.seed,beforeReset.environment.fingerprint.seed);assert.equal(savedReset.environment.fingerprint.touch,await hostTouch());
  assert(geoHits>beforeGeoHits,'reset must query exit through the real diagnostic path');assert.equal(savedReset.environment.language,'ja-JP');assert.equal(savedReset.environment.timezone,'Asia/Tokyo');
  assert.deepEqual(await ui.evaluate(()=>environmentFormValue().environment.fingerprint),savedReset.environment.fingerprint);
  await call('start',{id:b.id});await call('navigate',{id:b.id,url});await wait(async()=>(await call('snapshot')).instances.find(x=>x.id===b.id).title==='Installed live fixture','reset instance restarted');
  const resetPageAfter=await instancePage(b.id);assert.notEqual(resetPageAfter,resetPage);
- const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,0);
+ const resetValue=await resetPageAfter.evaluate(()=>({storage:localStorage.getItem('reset-marker'),cookie:document.cookie,touch:navigator.maxTouchPoints}));assert.equal(resetValue.storage,null);assert(!resetValue.cookie.includes('reset-cookie'));assert.equal(resetValue.touch,savedReset.environment.fingerprint.touch);
  const diskCatalog=new ExtensionCatalog(root);assert.deepEqual(diskCatalog.enabled(b.id),[extension.id]);assert.equal(savedReset.resetPending??null,null);const freshPanel=await extensionPage(b.id,extension.id);assert.equal(await freshPanel.evaluate(async()=> (await chrome.storage.local.get('resetPackageProbe')).resetPackageProbe),undefined);pass('Packaged reset queries controlled exit through the real proxy, aligns locale, creates clean storage and preserves proxy and extension bindings while clearing extension data');
  await ui.locator('#aiToggle').click();await ui.waitForFunction(()=>!document.querySelector('#aiPanel').hidden);const originalSession=(await call('ai-state')).sessions.selectedId;await ui.locator('#aiClear').click();await wait(async()=>(await call('ai-state')).sessions.selectedId!==originalSession,'packaged new session');const sessionId=(await call('ai-state')).sessions.selectedId;await call('ai-session-rename',{sessionId,title:'Packaged session persistence'});await call('ai-session-select',{sessionId:originalSession});await call('ai-session-select',{sessionId});pass('Packaged AI panel creates, selects and renames independently persisted sessions');await verifyPackagedDsh(b.id);await close();await launch();const restoredAI=await call('ai-state');assert.equal(restoredAI.sessions.selectedId,sessionId);assert(restoredAI.sessions.items.some(x=>x.title==='Packaged session persistence'));assert(restoredAI.task.entries.some(e=>e.kind==='assistant'&&e.text.includes('PACKAGED_DSH_VERIFIED')));pass('Packaged AI sessions and completed DSH tool history restore after complete process restart');
  const control=await call('control-status');await call('control-save',{enabled:false});await assert.rejects(()=>fetch('http://127.0.0.1:'+control.apiPort+'/v1/status'));pass('Disabling external control closes the packaged API listener');await close();

@@ -1,4 +1,12 @@
 # 验证入口与历史记录
+## 2026-10-27：v0.2.22 发布准备与打包验收
+- 内容：v0.2.21 之后的 `9f95925` 至 `a6b23c8`（1:1 呈现与 #10、宫格小格子 iframe 输入、AI 会话交给 DSH、音频/窗口尺寸/WebGPU/渲染器/内存/任务栏/触摸点/DPR 等环境读数）；应用与锁文件版本升至 0.2.22，说明见 [v0.2.22](releases/v0.2.22.md)。
+- 门禁：`check`、`test:control-api`、`git diff --check` 通过；全部单元测试 443 项中 441 通过、1 项 POSIX 跳过，`node-network.test.cjs` 读取本机网卡超时 1 次，单独重跑 9/9 通过。
+- 构建：与 v0.2.21 相同，复用已提交并校验过的 Electron、Mihomo、进程保护和环境管道组件，执行 `node scripts/build-installer.cjs`（第一次误用 `npm.cmd run build:installer`，环境管道被重新编译、二进制哈希变化；已还原已提交版本并重新构建，以下数据均为重建后的安装包）。安装包 `Facet-Setup-0.2.22-x64.exe`，131,115,952 字节，SHA256 `6c0f6617d1da7269e37a1649a12b3fb925a31935bae7244e8155484f6649b706`；安装包、blockmap、latest.yml、.sha256 齐全，校验一致；Authenticode `NotSigned`。
+- 包内核验：169 个源码文件中除不随包的 `subscription-proxy.cjs` 外 168 个与 asar 内一致；38 个生产依赖都在；内置 23 份文档与白名单一致；其他资源与许可证一致；asar 内没有 `.local-dev`、`.git` 或验收记录；本版新增内容的高置信凭据模式扫描无命中。
+- 真实打包程序：解包目录复制到没有低完整性标签的临时目录（Facet.exe、app.asar 哈希与构建输出相同），`test:installed` **27/27 通过，退出码 0**，未改动正式用户数据，结束后没有残留进程。
+- `verify-installed.cjs` 有两处断言按已提交的行为更新：新方案触摸点为本机值（本机 10，原断言 0，`8e959b7` 起）；自适应小屏实例按 1:1 呈现、视图不超过模拟屏幕（原断言放大铺满 scale>1，`9f95925` 起）。两项在 v0.2.21 之后没有跑过安装版验收，所以此前未发现。
+- 未验证：没有运行安装器的安装/卸载向导；没有在其他缩放比例的真实显示器上运行。
 ## 2026-10-27：新方案的 DPR 跟随本机显示器，跨站 iframe 与主页面一致（源码未发布）
 - 探针（`.local-dev/oopif-dpr-20261027/probe.cjs`，本机显示器 1.25，`localhost` 跨站 iframe 为独立进程）：
   - CDP 模拟 1 / 1.5 / 2 时，iframe 的 `devicePixelRatio`、`matchMedia` 和样式表 `@media` 都是 1.25。
