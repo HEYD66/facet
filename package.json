@@ -79,6 +79,7 @@
     "test:browser-tabs": "node --test tests/browser-tabs-state.test.cjs && node tests/browser-tabs-runner.cjs",
     "test:control-api": "node --test tests/control-api.test.cjs",
     "test:page-clipboard": "node scripts/launch-electron.cjs tests/page-clipboard-electron.cjs",
+    "test:page-tools": "node scripts/launch-electron.cjs tests/page-tools-electron.cjs",
     "test:ai-panel": "node --test tests/ai-markdown.test.cjs tests/ai-tool-display.test.cjs && node scripts/launch-electron.cjs tests/ai-panel-electron.cjs",
     "test:ai-plugins": "node --test tests/ai-dsh-plugins.test.cjs tests/ai-stream.test.cjs tests/ai-request.test.cjs && node scripts/launch-electron.cjs tests/ai-dsh-plugins-electron.cjs",
     "test:ai-browser": "node --test tests/ai-browser.test.cjs && node scripts/launch-electron.cjs tests/ai-browser-electron.cjs",

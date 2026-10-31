@@ -168,6 +168,9 @@ function installIPC(window,controller){
     case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
     case 'navigate':return {ok:true,value:await controller.navigate(id,message.url)};
     case 'toggle-devtools':return {ok:true,value:await controller.toggleDevTools(id)};
+    case 'page-find-open':return {ok:true,value:await require('./page-tools.cjs').open(controller,id)};
+    case 'page-find':return {ok:true,value:require('./page-tools.cjs').search(controller,id,message.query,{forward:message.forward!==false,next:message.next===true})};
+    case 'page-find-close':return {ok:true,value:require('./page-tools.cjs').close(controller,id,'keepSelection',{focusPage:message.focusPage===true})};
     case 'back':case 'forward':case 'reload':await controller.action(id,action);break;
     case 'settings':return {ok:true,value:await controller.settings(id,message.patch||{})};
     case 'import-subscription':return {ok:true,value:await controller.importSubscription(id,message.url,false)};

@@ -956,6 +956,19 @@ html[data-frame="custom"] .toast{top:80px}
 .browser-shell .address-row{background:var(--panel);gap:6px;flex-wrap:nowrap}
 .browser-shell .address-input{min-width:100px}
 .browser-shell .devtools-button{flex:none;min-width:42px;padding:0 9px;white-space:nowrap}
+/* 网页内查找栏（Ctrl+F）：在地址栏下方占一行，网页区域相应变矮，不盖住原生网页视图。 */
+.page-find{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;height:38px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel)}
+.page-find-input{display:flex;align-items:center;gap:6px;width:min(320px,48%);height:28px;padding:0 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--panel);color:var(--muted)}
+.page-find-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
+.page-find-input svg{width:14px;height:14px}
+#pageFindInput{flex:1;min-width:0;height:26px;padding:0;border:0;background:transparent;box-shadow:none;color:var(--text);font-size:13px}
+#pageFindInput:focus-visible{outline:none}
+.page-find-count{min-width:64px;padding:0 8px;color:var(--muted);font-size:12px;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+.page-find.empty .page-find-input{border-color:color-mix(in srgb,var(--red) 55%,var(--line2))}
+.page-find.empty .page-find-count{color:var(--red)}
+.page-find .icon-btn{width:28px;height:28px}
+.page-find .icon-btn svg{width:15px;height:15px}
+.page-find-next svg{transform:rotate(180deg)}
 .browser-shell .privacy-sites-trigger{flex:none;height:30px;margin:0;white-space:nowrap}
 .browser-collection{padding:6px;color:var(--text);background:var(--panel);font-size:13px}
 .browser-collection header{display:flex;justify-content:space-between;gap:10px;padding:8px 8px 12px;border-bottom:1px solid var(--line)}

@@ -45,7 +45,9 @@ async function loadPage(c,id,r,tab){
   else if(/^[1-9]$/.test(key)&&!input.shift){event.preventDefault();const list=[...r.tabs.keys()];c.activateTab(id,list[key==='9'?list.length-1:Math.min(Number(key)-1,list.length-1)]).catch(()=>{});}
   else if(key==='n'&&input.shift){event.preventDefault();c.window.webContents.send('core:new-instance');}
   else if(key==='l'&&!input.shift){event.preventDefault();c.window.webContents.send('core:focus-address',{id});}
+  else if(key==='f'&&!input.shift){event.preventDefault();if(current(r,tab))try{require('./page-tools.cjs').open(c,id);}catch(error){c.log(id,error.message,'WARN');}}
  });
+ require('./page-tools.cjs').attach(c,id,r,tab,wc);
  wc.setWindowOpenHandler(({url,disposition})=>{
   const popup=disposition==='new-window'&&c.popupAllowed(id,r);let checked;try{checked=tabURL(url);}catch{return popup&&url==='about:blank'?c.popupOptions(x):{action:'deny'};}
   if(popup)return c.popupOptions(x);
@@ -85,7 +87,7 @@ async function loadPage(c,id,r,tab){
 }
 function show(c,id,r,tab){
  const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);require('./background-rendering.cjs').resume(old.webContents);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
- r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);
+ r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);if(changed)require('./page-tools.cjs').changed(c,id,r);
  if(old&&old!==tab.view)require('./tile-input.cjs').changed(r,old.webContents);
  require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  if(r.extensionHost?.compat?.tabs){const compat=r.extensionHost.compat;compat.tabs.focusedId=tab.view.webContents.id;if(changed)compat.broadcast('tabs.onActivated',[{tabId:tab.view.webContents.id,windowId:compat.tabs.primaryWindowId}]);}
@@ -114,7 +116,7 @@ async function close(c,id,tabId){
  persist(c,id,r);c.emit();return {closed:tabId};
 }
 function stopPages(c,r){
- r.tabsClosing=true;
+ r.tabsClosing=true;r.find=null;r.pageMenu?.closePopup();r.pageMenu=null;
  const pages=r.tabs?[...r.tabs.values()]:r.view?[{view:r.view}]:[];r.closingViews=[];
  for(const tab of pages){clearTimeout(tab.backgroundViewportTimer);const view=tab.view;if(!view)continue;const wc=view.webContents;try{(view===r.view&&r.gridParent?r.gridParent:c.window.contentView).removeChildView(view);}catch{}if(!wc.isDestroyed()){r.closingViews.push(wc);wc.stop();wc.close({waitForBeforeUnload:false});}tab.view=null;}
  r.closingView=r.closingViews[0]||null;r.view=null;r.gridParent=null;r.gridBounds=null;

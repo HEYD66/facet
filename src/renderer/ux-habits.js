@@ -69,7 +69,7 @@ function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){las
 // After a successful save the page is rebuilt; move focus to the save status instead of losing it.
 if(typeof saveEnvironment==='function'){const baseSaveEnvironment=saveEnvironment;saveEnvironment=async function(...args){const ok=await baseSaveEnvironment(...args);if(ok&&focusLost()){const info=$('#environmentSaveInfo');if(info){info.tabIndex=-1;info.focus({preventScroll:true});}}return ok;};}
 
-const uiShortcuts=[['Ctrl + L','定位到当前实例的地址栏'],['Ctrl + Enter','在「环境配置」页保存配置'],['Ctrl + Tab / Ctrl + Shift + Tab','切换当前实例的下一个 / 上一个网页标签'],['Ctrl + 1 … 9','切换到第 N 个标签（9 为最后一个）'],['Ctrl + T','新建网页标签'],['Ctrl + W','关闭当前网页标签'],['Ctrl + Shift + N','新建实例'],['← / →、Home / End','在网页标签栏内移动焦点'],['Esc','关闭当前对话框']];
+const uiShortcuts=[['Ctrl + L','定位到当前实例的地址栏'],['Ctrl + F','在当前网页中查找（Enter / Shift + Enter 下一个 / 上一个）'],['Ctrl + Enter','在「环境配置」页保存配置'],['Ctrl + Tab / Ctrl + Shift + Tab','切换当前实例的下一个 / 上一个网页标签'],['Ctrl + 1 … 9','切换到第 N 个标签（9 为最后一个）'],['Ctrl + T','新建网页标签'],['Ctrl + W','关闭当前网页标签'],['Ctrl + Shift + N','新建实例'],['← / →、Home / End','在网页标签栏内移动焦点'],['Esc','关闭当前对话框']];
 function shortcutListHTML(){return `<section class="settings-card full"><h3>键盘快捷键</h3><div class="inner"><dl class="shortcut-list">${uiShortcuts.map(([k,d])=>`<div><dt><kbd>${esc(k)}</kbd></dt><dd>${esc(d)}</dd></div>`).join('')}</dl><p class="actions-note">关闭网页标签不会停止实例。停止实例请使用左侧的停止按钮。</p></div></section>`;}
 function uiOpenTabs(){return [...document.querySelectorAll('.browser-tab-select')];}
 async function uiGoToTab(index){const tabs=current()?.tabs||[];if(!tabs.length)return;const target=tabs[(index+tabs.length)%tabs.length];await browserTabAction('tab-activate',target.id);}
@@ -85,6 +85,7 @@ document.addEventListener('keydown',async e=>{
  if(e.shiftKey&&key==='n'){e.preventDefault();openModal('new');return;}if(e.shiftKey)return;
  if(/^[1-9]$/.test(key)){e.preventDefault();const count=current()?.tabs?.length||0;await uiGoToTab(key==='9'?count-1:Math.min(Number(key)-1,count-1));return;}
  if(key==='l'){e.preventDefault();await uiFocusAddress();return;}
+ if(key==='f'&&view==='browser'&&current()){e.preventDefault();await pageFindOpen();return;}
  if(key==='t'){e.preventDefault();await browserTabAction('tab-new');return;}if(key==='w'){e.preventDefault();await browserTabAction('tab-close',current()?.activeTabId);return;}
  if(key==='Enter'&&view==='environment'){const save=$('[data-ux="save-environment"]');if(!save)return;e.preventDefault();if(save.disabled)toast(savingEnvironments.has(activeId)?'正在保存，请稍候':'没有需要保存的修改');else save.click();}
 });

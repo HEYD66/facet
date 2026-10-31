@@ -68,8 +68,8 @@ class ExtensionHost{
 
   this.compat=new (require('./extension-compat.cjs').ExtensionCompat)(this);for(const tab of runtime.tabs?.values()||[{view:runtime.view}])if(tab.view)this.bindPage(tab.view.webContents);
  }
- bindPage(wc){if(this.closed||this.pages.has(wc))return;const message=(...args)=>{if(this.debuggerWebContents===wc)this.onDebuggerMessage(...args);},detach=(...args)=>{if(this.debuggerWebContents===wc)this.onDebuggerDetach(...args);},context=(_event,params)=>{const menu=this.buildMenu(params,wc);if(menu){this.lastMenu=menu;menu.popup({window:this.controller.window,callback:()=>{if(this.lastMenu===menu)this.lastMenu=null;}});}},destroyed=()=>this.unbindPage(wc);this.pages.set(wc,{message,detach,context,destroyed});wc.debugger.on('message',message);wc.debugger.on('detach',detach);wc.on('context-menu',context);wc.once('destroyed',destroyed);this.compat?.bindPage(wc);}
- unbindPage(wc){const p=this.pages.get(wc);if(!p)return;this.pages.delete(wc);wc.removeListener('context-menu',p.context);wc.removeListener('destroyed',p.destroyed);wc.debugger.removeListener('message',p.message);wc.debugger.removeListener('detach',p.detach);if(this.debuggerWebContents===wc){if(this.debuggerNetwork&&!wc.isDestroyed())require('./network-capture.cjs').releaseNetwork(wc).catch(()=>{});this.onDebuggerDetach(null,'target_closed');this.debuggerWebContents=null;}this.compat?.unbindPage(wc);}
+ bindPage(wc){if(this.closed||this.pages.has(wc))return;const message=(...args)=>{if(this.debuggerWebContents===wc)this.onDebuggerMessage(...args);},detach=(...args)=>{if(this.debuggerWebContents===wc)this.onDebuggerDetach(...args);},destroyed=()=>this.unbindPage(wc);this.pages.set(wc,{message,detach,destroyed});wc.debugger.on('message',message);wc.debugger.on('detach',detach);wc.once('destroyed',destroyed);this.compat?.bindPage(wc);}
+ unbindPage(wc){const p=this.pages.get(wc);if(!p)return;this.pages.delete(wc);wc.removeListener('destroyed',p.destroyed);wc.debugger.removeListener('message',p.message);wc.debugger.removeListener('detach',p.detach);if(this.debuggerWebContents===wc){if(this.debuggerNetwork&&!wc.isDestroyed())require('./network-capture.cjs').releaseNetwork(wc).catch(()=>{});this.onDebuggerDetach(null,'target_closed');this.debuggerWebContents=null;}this.compat?.unbindPage(wc);}
  debuggerTarget(target){
   if(!target||typeof target!=='object'||![...this.pages.keys()].some(wc=>!wc.isDestroyed()&&wc.id===target.tabId))throw Error('调试器目标不是当前实例页面');
   return [...this.pages.keys()].find(wc=>wc.id===target.tabId).debugger;
@@ -99,11 +99,16 @@ class ExtensionHost{
   if(method==='Network.disable'){this.debuggerNetwork=false;return require('./network-capture.cjs').releaseNetwork(wc);}
   const result=await wc.debugger.sendCommand(method,params);if(method==='Network.enable')this.debuggerNetwork=true;return result;
  }
- buildMenu(params,wc=this.runtime.view.webContents){
+ // 只返回扩展菜单项；网页右键菜单由 page-tools.cjs 统一弹出，扩展项接在浏览器常用项后面。
+ menuItems(params,wc=this.runtime.view.webContents){
   const template=[];
   for(const [id,entry]of this.menus){const rows=[...entry.items.values()];const children=parent=>rows.filter(row=>parent===undefined?row.parentId===undefined:String(row.parentId)===String(parent)).filter(row=>row.parentId===undefined?applies(row,params):row.visible!==false).map(row=>{
    const submenu=children(row.id),item={id:id+':'+row.id,type:row.type||'normal',label:(row.title||'').replace(/%s/g,(params.selectionText||'').slice(0,80)),enabled:row.enabled!==false,checked:!!row.checked};if(submenu.length)item.submenu=submenu;else if(item.type!=='separator')item.click=clicked=>this.click(id,row.id,params,clicked,wc);return item;
   });template.push(...children(undefined));}
+  return template;
+ }
+ buildMenu(params,wc=this.runtime.view.webContents){
+  const template=this.menuItems(params,wc);
   if(!template.length)return null;template.push({type:'separator'},{role:'copy'},{role:'paste'},{role:'selectAll'});return Menu.buildFromTemplate(template);
  }
  async click(id,menuItemId,params,clicked,wc=this.runtime.view.webContents){
