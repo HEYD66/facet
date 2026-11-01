@@ -110,6 +110,9 @@ function libraryPage() {
   $("#content").scrollTop = scroll;
 }
 let proxyModePending = null;
+// 代理运行方式是很少改的全局设置：平时收成一行，点「更改」展开两张卡片。只是界面状态，不写配置，重绘后保持。
+// 有待确认的切换或正在切换时始终展开，确认条必须可见。
+let proxyModeExpanded = false;
 function renderNodePorts() {
   const service = $("#nodePortService");
   if (!service) return;
@@ -121,13 +124,17 @@ function renderNodePorts() {
     ["instance", "独立代理", "每个实例单独运行", "每个代理实例一个内核，进程和内存开销较多。"],
     ["node", "共享代理", "每个节点分配端口", "节点共用内核，本机其他软件也能连接节点端口。"],
   ];
-  service.innerHTML = `<div class="proxy-mode-heading"><strong>代理运行方式</strong><span class="actions-note">二选一 · 对全部代理实例生效</span></div>
+  const forced = !!proxyModePending || !!status.switching, expanded = proxyModeExpanded || forced;
+  const statusText = status.switching ? "正在切换并恢复实例…" : status.busy ? "同步中…" : nodeMode ? `${status.listeners || 0} 个端口 · ${status.processes || 0} 个共享内核` : "每个代理实例独立运行内核";
+  service.innerHTML = `<div class="proxy-mode-heading"><strong>代理运行方式</strong><span class="proxy-mode-current">${modes.find(([mode])=>mode===currentMode)[1]}</span>
+      <span class="proxy-mode-status"><span class="actions-note" role="status">${statusText}</span>${nodeMode ? `<button class="btn tiny" data-lib="ports-sync" ${status.busy ? "disabled" : ""}>同步 / 重试</button><button class="btn tiny" data-lib="copy-all-node-ports" ${!status.listeners || status.busy ? "disabled" : ""}>复制全部地址</button><span class="actions-note">仅本机 HTTP / SOCKS5 · 重启尽量保留端口</span>` : ""}</span>
+      <button type="button" class="btn tiny subtle proxy-mode-toggle" data-lib="ports-mode-toggle" aria-expanded="${expanded}" aria-controls="proxyModeDetails" ${forced ? "disabled" : ""}>${expanded ? "收起" : "更改"}</button></div>
+    <div class="proxy-mode-details" id="proxyModeDetails" ${expanded ? "" : "hidden"}><p class="actions-note proxy-mode-hint">二选一 · 对全部代理实例生效</p>
     <div class="proxy-mode-options" role="group" aria-label="代理运行方式">${modes.map(([mode,label,subtitle,description])=>{
       const active = currentMode === mode, pending = proxyModePending === mode;
       return `<button type="button" class="proxy-mode-card${pending ? " is-pending" : ""}" data-lib="ports-mode" data-mode="${mode}" aria-pressed="${active}" ${status.busy ? "disabled" : ""}><span class="proxy-mode-card-heading"><span class="proxy-mode-card-title"><span class="proxy-mode-indicator" aria-hidden="true"></span>${label}<span class="proxy-mode-subtitle">${subtitle}</span></span><span class="proxy-mode-badge">${active ? "✓ 使用中" : pending ? "待确认" : "点击切换"}</span></span><span class="proxy-mode-description">${description}</span></button>`;
     }).join("")}</div>
-    <div class="proxy-mode-status"><span class="actions-note" role="status">${status.switching ? "正在切换并恢复实例…" : status.busy ? "同步中…" : nodeMode ? `${status.listeners || 0} 个端口 · ${status.processes || 0} 个共享内核` : "当前：每个代理实例独立运行内核"}</span>${nodeMode ? `<button class="btn tiny" data-lib="ports-sync" ${status.busy ? "disabled" : ""}>同步 / 重试</button><button class="btn tiny" data-lib="copy-all-node-ports" ${!status.listeners || status.busy ? "disabled" : ""}>复制全部地址</button><span class="actions-note">仅本机 HTTP / SOCKS5 · 重启尽量保留端口</span>` : ""}</div>
-    ${nodeMode ? `<p class="proxy-mode-isolation actions-note">仅共享代理进程，Cookie 和网站数据仍按实例隔离。</p>` : ""}
+    ${nodeMode ? `<p class="proxy-mode-isolation actions-note">仅共享代理进程，Cookie 和网站数据仍按实例隔离。</p>` : ""}</div>
     ${nodeMode && failures.length ? `<details class="node-port-failures"><summary>${failures.length} 个启动失败</summary><ul>${failures.slice(0,50).map(row=>`<li>${esc(row.name)}：${esc(row.error)}</li>`).join("")}</ul></details>` : ""}
     ${proxyModePending ? `<div class="proxy-mode-confirm" role="alert"><span>即将切换为${proxyModePending === "node" ? "共享代理" : "独立代理"}。切换会取消检测、重启代理实例，未保存的网页输入可能丢失；切回独立模式会关闭供外部软件使用的节点端口。</span><button class="btn tiny primary" data-lib="ports-mode-confirm" ${status.busy ? "disabled" : ""}>确认切换</button><button class="btn tiny" data-lib="ports-mode-cancel" ${status.busy ? "disabled" : ""}>取消</button></div>` : ""}`;
   for (const cell of service.closest(".library-nodes").querySelectorAll("[data-port-node]")) {
@@ -247,6 +254,7 @@ document.addEventListener("click", async (event) => {
     sourceId = button.dataset.source || rowSource(button),
     source = state.library?.find((s) => s.id === sourceId);
   try {
+    if (action === "ports-mode-toggle") { proxyModeExpanded = !proxyModeExpanded; renderNodePorts(); $('[data-lib="ports-mode-toggle"]')?.focus(); return; }
     if (action === "ports-mode-cancel") { proxyModePending = null; renderNodePorts(); return; }
     if (action === "ports-mode") {
       if (button.dataset.mode === (state.nodePorts?.enabled ? "node" : "instance")) return;

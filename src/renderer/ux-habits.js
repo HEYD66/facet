@@ -57,12 +57,13 @@ function rememberScroll(key){if(!key)return;const record={};for(const selector o
 function restoreScroll(key){const record=uiScrollMemory.get(uiScrollKey(key))||{'#content':0};const apply=()=>{for(const [selector,top] of Object.entries(record)){const el=uiScrollElement(selector);if(el)el.scrollTop=top;}};apply();requestAnimationFrame(apply);}
 
 // Keep keyboard focus when render() rebuilds the tab strip, sidebar or workspace header.
-const uiFocusAttributes=['data-tab','data-close','data-view','data-action','data-ux','data-filter'];
+const uiFocusAttributes=['data-tab','data-close','data-browser-tab','data-browser-close','data-view','data-action','data-ux','data-filter'];
 function focusInfo(el){if(!el||el===document.body||!el.isConnected||!el.getAttribute)return null;const scope=el.closest('#tabs,#sidebar,#workspaceHead,.tab-end,.titlebar,#content');const info={scope:scope?.id?'#'+scope.id:scope?.classList.contains('tab-end')?'.tab-end':scope?.classList.contains('titlebar')?'.titlebar':null};for(const attr of uiFocusAttributes){const value=el.getAttribute(attr);if(value!==null)return {...info,attr,value};}return el.id?{...info,id:el.id}:null;}
 function findByFocusInfo(info){if(!info)return null;if(info.id)return document.getElementById(info.id);const root=info.scope?document.querySelector(info.scope):document;return root?.querySelector(`[${info.attr}="${CSS.escape(info.value)}"]`)||null;}
 function focusByInfo(info){const el=findByFocusInfo(info);if(el&&!el.disabled&&el.getClientRects().length){el.focus({preventScroll:true});return true;}return false;}
 function focusLost(){const el=document.activeElement;return !el||el===document.body||!el.isConnected;}
-function captureShellFocus(){const el=document.activeElement;if(!el?.closest?.('#tabs,#sidebar,#workspaceHead'))return ()=>{};const info=focusInfo(el);return ()=>{if(!focusLost())return;if(!focusByInfo(info)&&info?.scope==='#sidebar')$('#sidebar .nav.active')?.focus({preventScroll:true});};}
+// 网页标签栏（.browser-tabs，在 #content 里）也在重绘时保留焦点，方向键 / Enter 切换网页标签后键盘位置不丢。
+function captureShellFocus(){const el=document.activeElement;if(!el?.closest?.('#tabs,#sidebar,#workspaceHead,.browser-tabs'))return ()=>{};const info=focusInfo(el);return ()=>{if(!focusLost())return;if(!focusByInfo(info)&&info?.scope==='#sidebar')$('#sidebar .nav.active')?.focus({preventScroll:true});};}
 function rememberModalFocus(){lastFocusInfo=focusInfo(document.activeElement);}
 function restoreModalFocus(){if(lastFocus?.isConnected&&!lastFocus.disabled){lastFocus.focus({preventScroll:true});return;}if(!focusByInfo(lastFocusInfo))$('#tabs [aria-selected="true"]')?.focus({preventScroll:true});}
 

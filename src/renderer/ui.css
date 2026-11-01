@@ -364,6 +364,10 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .logs-table tbody tr:hover td,.data-table tbody tr:hover td{background:var(--panel2)}
 .logs-table td:first-child{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;color:var(--muted);white-space:nowrap}
 .logs-table .success{color:var(--green)}.logs-table .warn{color:var(--amber)}
+.logs-table .log-level{white-space:nowrap;font-weight:600}
+.logs-table .log-level[data-level="ERROR"]{color:var(--red)}
+.logs-table .log-level[data-level="WARN"]{color:var(--amber)}
+.logs-table .log-level[data-level="INFO"]{color:var(--muted);font-weight:500}
 .log-wrap,.table-wrap,.library-table{border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
 .log-wrap{overflow:auto}
 .library-table{overflow:auto;margin:0}
@@ -458,12 +462,12 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .instance-details>.actions-note svg{margin:2px 8px 0 0}
 
 /* ── 7. Instance management ───────────────────────────────── */
-.overview-summary{display:flex;align-items:baseline;gap:22px;margin:0 0 14px}
-.overview-summary .stat{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--muted)}
-.overview-summary .stat strong{font-size:20px;font-weight:650;color:var(--text);font-variant-numeric:tabular-nums}
-.overview-summary .stat.running strong{color:var(--green)}
-.overview-summary .stat.error strong{color:var(--red)}
-.overview-summary .actions-note{margin:0 0 0 auto}
+/* 实例管理：状态筛选按钮带数量（原来的统计行已并入） */
+.status-filters button{display:inline-flex;align-items:center;gap:6px}
+.filter-count{min-width:1.2em;font-weight:650;color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
+.status-filters [data-filter="running"] .filter-count{color:var(--green)}
+.status-filters [data-filter="error"] .filter-count{color:var(--red)}
+.filters-note{margin:0 auto 0 4px}
 .filters{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
 .segments{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
 .segments button{height:26px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:12px}
@@ -504,6 +508,9 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .cell-clip,.cell-muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell-muted{color:var(--muted)}
 .card-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+/* 没有「日志」按钮的行占同样的位置，各行按钮列对齐；不可见、不可聚焦、读屏不读 */
+.row-action-placeholder{visibility:hidden;pointer-events:none}
+.timezone-new-note{margin:2px 0 0 24px}
 
 /* ── 8. Proxy management ──────────────────────────────────── */
 #content.proxy-management{display:block;overflow-y:auto}
@@ -835,7 +842,7 @@ html[data-frame="custom"] .toast{top:80px}
  .workspace-head{padding:0 16px}
  .environment-save-bar{margin:14px -16px -16px;padding:10px 16px;bottom:-16px}
  .shortcut-hint{display:none}
- .overview-summary .actions-note{display:none}
+ .filters-note{display:none}
  .instance-table th:nth-child(6),.instance-table td:nth-child(6),.instance-table th:nth-child(7),.instance-table td:nth-child(7){display:none}
  .search-box{width:200px}
  .ip-editor{grid-template-columns:1fr 1fr}
@@ -937,6 +944,13 @@ html[data-frame="custom"] .toast{top:80px}
 .proxy-mode-card[aria-pressed="true"] .proxy-mode-badge{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
 .proxy-mode-description{color:var(--text);font-size:12px;line-height:1.5}
 .proxy-mode-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-basis:100%}
+/* 代理运行方式平时收成一行：标题 · 当前模式 · 状态 · 更改；展开后显示两张卡片和说明 */
+.proxy-mode-heading .proxy-mode-status{flex:1 1 auto;flex-basis:auto;min-width:0}
+.proxy-mode-current{padding:2px 8px;border:1px solid var(--accent);border-radius:5px;background:var(--accent-weak);color:var(--text);font-size:12px;font-weight:600;line-height:1.5}
+.proxy-mode-toggle{margin-left:auto}
+.proxy-mode-details{display:flex;flex-direction:column;gap:8px;flex-basis:100%;min-width:0}
+.proxy-mode-details[hidden]{display:none}
+.proxy-mode-hint{margin:0}
 .proxy-mode-isolation{flex-basis:100%;margin:0}
 .proxy-mode-confirm{flex-basis:100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:var(--panel2);border:1px solid var(--accent);border-radius:6px;font-size:12px;line-height:1.6}
 .proxy-mode-confirm>span{flex:1 1 320px}

@@ -31,8 +31,8 @@ async function openApp(browser,{size=[1440,960],data=fixture(),storage=null}={})
   case 'update-status':return {ok:true,value:{supported:false,status:'unsupported',currentVersion:'test',error:'源码运行请更新项目代码'}};
   case 'stop':snap={...snap,instances:snap.instances.map(x=>x.id===m.id?{...x,status:'stopped'}:x)};return {ok:true};
   case 'settings':await new Promise(r=>setTimeout(r,40));snap={...snap,instances:snap.instances.map(x=>x.id===m.id?{...x,...m.patch,status:'stopped'}:x)};return {ok:true,value:{changed:true}};
-  case 'environment-timezone':return {ok:true,value:{timezone:'Asia/Tokyo'}};default:return {ok:false,error:'Unmocked action '+action};}});
- await page.addInitScript(saved=>{if(saved!==null&&!sessionStorage.getItem('ux3-seeded')){localStorage.setItem('arena.ui.state.v1',saved);sessionStorage.setItem('ux3-seeded','1');}window.facet={request:(a,p)=>window.__ux3Request(a,p),onState:fn=>window.__stateListener=fn,onExternalFocus:()=>()=>{},onPageFind:()=>()=>{}};},storage);
+  case 'environment-timezone':return {ok:true,value:{timezone:'Asia/Tokyo'}};case 'tab-activate':case 'tab-new':case 'tab-close':{snap={...snap,instances:snap.instances.map(x=>{if(x.id!==m.id)return x;let tabs=(x.tabs||[]).map(t=>({...t}));if(action==='tab-new')tabs=[...tabs.map(t=>({...t,active:false})),{id:'tab-new-'+(tabs.length+1),title:'',url:'about:blank',active:true}];else if(action==='tab-close'){tabs=tabs.filter(t=>t.id!==m.tabId);if(tabs.length&&!tabs.some(t=>t.active))tabs[tabs.length-1].active=true;}else tabs=tabs.map(t=>({...t,active:t.id===m.tabId}));return {...x,tabs,activeTabId:tabs.find(t=>t.active)?.id||null};})};return {ok:true};}default:return {ok:false,error:'Unmocked action '+action};}});
+ await page.addInitScript(saved=>{if(saved!==null&&!sessionStorage.getItem('ux3-seeded')){localStorage.setItem('arena.ui.state.v1',saved);sessionStorage.setItem('ux3-seeded','1');}window.facet={request:(a,p)=>window.__ux3Request(a,p),onState:fn=>{(window.__stateListeners||=[]).push(fn);window.__stateListener=s=>window.__stateListeners.forEach(l=>l(s));return ()=>{};},onExternalFocus:()=>()=>{},onPageFind:()=>()=>{}};},storage);
  await page.goto(pageURL);await page.waitForSelector('#sidebar .nav');
  return {context,page,errors,calls};
 }
@@ -94,13 +94,14 @@ try{
  assert.deepEqual([...audit2],[],'palette readability audit');
  ok('Theme picker switches and remembers palettes; every alternative palette (including tinted title bar/sidebar) keeps audited text >= 11px and >= 4.5:1');
  await go(page,'proxies');await settle(page);const rows=await page.$$eval('#content .compact-node-table tbody tr',rs=>rs.filter(r=>r.getClientRects().length).map(r=>Math.round(r.getBoundingClientRect().height)));
- assert(rows.length>=20,'node rows rendered: '+rows.length);assert(rows.every(h=>h<=37),'compact rows stay 36px: '+rows.join(','));
- ok('43-node compact table keeps 36px rows after the size increase');
+ assert(rows.length>=20,'node rows rendered: '+rows.length);assert(rows.every(h=>h<=64)&&Math.max(...rows)-Math.min(...rows)<=2,'compact two-line rows stay uniform and <=64px: '+rows.join(','));
+ ok('43-node compact table keeps uniform two-line rows (<=64px) after the size increase');
  assert.deepEqual(errors,[]);await current.context.close();
 
  // C. Remembered state.
  current=await openApp(browser);({page,errors}=current);
- await page.locator('[data-close="inst-3"]').click();await page.waitForSelector('#modal [data-action="confirm"]');await page.locator('#modal [data-action="confirm"]').click();await page.waitForFunction(()=>!localOpen.has('inst-3'));
+ // The tab strip lists running instances only (runningTabs); inst-6 is running in the fixture.
+ await page.locator('[data-close="inst-6"]').click();await page.waitForSelector('#modal [data-action="confirm"]');await page.locator('#modal [data-action="confirm"]').click();await page.waitForFunction(()=>!localOpen.has('inst-6'));
  await go(page,'overview');await page.locator('[data-filter="error"]').click();await page.locator('#instanceSearch').fill('实例');
  await go(page,'proxies');await page.selectOption('#librarySort','name');await page.selectOption('#libraryOnly','available');await page.selectOption('#libraryConcurrency','5');await page.locator('#libraryIncludeHints').check();
  await go(page,'global-logs');await page.selectOption('#globalLogLevel','ERROR');await page.selectOption('#globalLogScope','diagnostic');await page.selectOption('#globalLogSource','src-1');
@@ -109,7 +110,7 @@ try{
  const startCallsBefore=current.calls.filter(c=>c.action==='start').length;
  await page.reload();await page.waitForSelector('#sidebar .nav');
  const restored=await page.evaluate(()=>({view,activeId,open:[...localOpen],filter,search,librarySort,libraryOnly,libraryConcurrency,libraryIncludeHints,librarySource,globalLogLevel,globalLogScope,globalLogSource}));
- assert.equal(restored.view,'proxies');assert.equal(restored.activeId,'inst-4');assert(!restored.open.includes('inst-3'));assert.equal(restored.open.length,14);
+ assert.equal(restored.view,'proxies');assert.equal(restored.activeId,'inst-4');assert(!restored.open.includes('inst-6'));assert.equal(restored.open.length,14);
  assert.deepEqual([restored.filter,restored.search,restored.librarySort,restored.libraryOnly,restored.libraryConcurrency,restored.libraryIncludeHints,restored.librarySource],['error','实例','name','available',5,true,'src-1']);
  assert.deepEqual([restored.globalLogLevel,restored.globalLogScope,restored.globalLogSource],['ERROR','diagnostic','src-1']);
  assert.equal(await page.locator('#librarySort').inputValue(),'name');assert.equal(current.calls.filter(c=>c.action==='start').length,startCallsBefore);
@@ -119,50 +120,62 @@ try{
  await go(page,'overview');await go(page,'proxies');await settle(page);assert(Math.abs(await page.evaluate(()=>document.querySelector('#content').scrollTop)-top)<=2,'scroll restored');
  ok('Scroll position is remembered per page within the run');
  const stoppedId=await page.evaluate(()=>state.instances.find(i=>i.status==='stopped').id);await page.evaluate(id=>{localOpen.add(id);render(true);},stoppedId);const stopsBefore=current.calls.filter(c=>c.action==='stop').length;
- await page.locator(`[data-close="${stoppedId}"]`).click();await page.waitForFunction(id=>!localOpen.has(id),stoppedId);assert.equal(await page.locator('#modalBackdrop').isHidden(),true);assert.equal(current.calls.filter(c=>c.action==='stop').length,stopsBefore);
- ok('Closing the tab of a stopped instance needs no confirmation and sends no stop');
+ // A stopped instance has no tab (the strip lists running instances only), so there is nothing to close or stop.
+ assert.equal(await page.locator(`[data-close="${stoppedId}"]`).count(),0);assert.equal(await page.locator('#modalBackdrop').isHidden(),true);assert.equal(current.calls.filter(c=>c.action==='stop').length,stopsBefore);
+ ok('A stopped instance shows no tab even when it was opened; nothing is stopped');
  assert.deepEqual(errors,[]);await current.context.close();
  current=await openApp(browser,{storage:JSON.stringify({v:1,view:'no-such-view',activeId:'gone',localOpen:['gone','inst-2'],filters:{librarySort:'evil',libraryConcurrency:99,librarySource:'gone',globalLogInstance:'gone',filter:'x',favoriteTab:'?'}})});({page,errors}=current);
  const stale=await page.evaluate(()=>({view,activeId,open:[...localOpen],librarySort,libraryConcurrency,librarySource,globalLogInstance,filter,favoriteTab}));
- assert.deepEqual(stale,{view:'browser',activeId:'inst-2',open:['inst-2'],librarySort:'original',libraryConcurrency:3,librarySource:'',globalLogInstance:'all',filter:'all',favoriteTab:'ips'});
+ // A stale saved active id keeps the startup default (the first instance; running in the fixture, so it has a tab).
+ assert.deepEqual(stale,{view:'browser',activeId:'inst-1',open:['inst-2'],librarySort:'original',libraryConcurrency:3,librarySource:'',globalLogInstance:'all',filter:'all',favoriteTab:'ips'});
  await current.context.close();
  current=await openApp(browser,{storage:'{not json'});assert.equal(await current.page.evaluate(()=>view),'browser');assert.deepEqual(current.errors,[]);await current.context.close();
- current=await openApp(browser,{storage:JSON.stringify({v:1,view:'logs',activeId:'inst-1',localOpen:[]})});assert.deepEqual(await current.page.evaluate(()=>({view,open:localOpen.size})),{view:'overview',open:0});await current.context.close();
+ // Since 28af9a7 tabs follow running instances: an instance page is restored whenever the instance still exists, whatever was open.
+ current=await openApp(browser,{storage:JSON.stringify({v:1,view:'logs',activeId:'inst-1',localOpen:[]})});assert.deepEqual(await current.page.evaluate(()=>({view,open:localOpen.size})),{view:'logs',open:0});
+ await current.context.close();current=await openApp(browser,{storage:JSON.stringify({v:1,view:'logs',activeId:'gone',localOpen:[]})});assert.equal(await current.page.evaluate(()=>view),'logs');assert.equal(await current.page.evaluate(()=>activeId),'inst-1','a missing instance falls back to the first one');await current.context.close();
  ok('Stale ids, unknown views, invalid values and corrupt storage fall back safely');
 
- // D. Keyboard.
- current=await openApp(browser);({page,errors}=current);const key=async k=>{await page.keyboard.press(k);await page.waitForTimeout(60);};
- await page.locator('#content').click({position:{x:5,y:5}}).catch(()=>{});
- await key('Control+2');assert.equal(await page.evaluate(()=>activeId),'inst-2');await key('Control+Tab');assert.equal(await page.evaluate(()=>activeId),'inst-3');await key('Control+Shift+Tab');assert.equal(await page.evaluate(()=>activeId),'inst-2');
- await key('Control+9');assert.equal(await page.evaluate(()=>activeId),'inst-15');
- const inView=await page.evaluate(()=>{const t=document.querySelector('#tabs [aria-selected="true"]').getBoundingClientRect(),s=document.querySelector('#tabs').getBoundingClientRect();return t.left>=s.left-1&&t.right<=s.right+1;});assert(inView,'active tab scrolled into view');
- await page.locator('#tabs [data-tab="inst-1"]').focus();await key('ArrowRight');assert.equal(await page.evaluate(()=>document.activeElement.dataset.tab),'inst-2');await key('End');assert.equal(await page.evaluate(()=>document.activeElement.dataset.tab),'inst-15');await key('Home');assert.equal(await page.evaluate(()=>document.activeElement.dataset.tab),'inst-1');await key('ArrowLeft');assert.equal(await page.evaluate(()=>document.activeElement.dataset.tab),'inst-15');
- await key('Enter');assert.equal(await page.evaluate(()=>activeId),'inst-15');assert.equal(await page.evaluate(()=>document.activeElement.dataset.tab),'inst-15');
- ok('Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+1..9 and arrow/Home/End in the tab strip; focus survives re-render');
- await key('Control+l');assert.match(await page.locator('#toast').innerText(),/未运行/);assert.equal(await page.evaluate(()=>document.activeElement.dataset.action),'toggle');
- await key('Control+1');await go(page,'overview');await key('Control+l');assert.equal(await page.evaluate(()=>view),'browser');assert.equal(await page.evaluate(()=>activeId),'inst-1');assert.equal(await page.evaluate(()=>document.activeElement.id),'addressField');
+ // D. Keyboard. Since d75750a, Ctrl+1..9 / Ctrl+Tab and the arrow keys act on the current instance's web page tabs;
+ // Ctrl+T opens a web page tab, Ctrl+W closes only the page tab, Ctrl+Shift+N opens the new-instance dialog.
+ const kb=fixture();kb.instances[0]={...kb.instances[0],activeTabId:'t1',tabs:[1,2,3,4].map(n=>({id:'t'+n,title:'网页 '+n,url:'https://example.test/'+n,active:n===1}))};
+ current=await openApp(browser,{data:kb});({page,errors}=current);const key=async k=>{await page.keyboard.press(k);await page.waitForTimeout(60);};
+ const activeTab=()=>page.evaluate(()=>current()?.tabs?.find(t=>t.active)?.id);
+ await page.evaluate(()=>route('browser','inst-1'));await settle(page);await page.locator('#content').click({position:{x:5,y:5}}).catch(()=>{});
+ await key('Control+2');assert.equal(await activeTab(),'t2');await key('Control+Tab');assert.equal(await activeTab(),'t3');await key('Control+Shift+Tab');assert.equal(await activeTab(),'t2');
+ await key('Control+9');assert.equal(await activeTab(),'t4');await key('Control+Tab');assert.equal(await activeTab(),'t1','Ctrl+Tab wraps around');
+ const inView=await page.evaluate(()=>{const t=document.querySelector('.browser-tabs [aria-selected="true"]').getBoundingClientRect(),s=document.querySelector('.browser-tabs').getBoundingClientRect();return t.left>=s.left-1&&t.right<=s.right+1;});assert(inView,'active page tab scrolled into view');
+ const focused=()=>page.evaluate(()=>document.activeElement?.dataset?.browserTab);
+ await page.locator('.browser-tab-select[data-browser-tab="t1"]').focus();await key('ArrowRight');assert.equal(await focused(),'t2');await key('End');assert.equal(await focused(),'t4');await key('Home');assert.equal(await focused(),'t1');await key('ArrowLeft');assert.equal(await focused(),'t4');
+ await key('Enter');await page.waitForFunction(()=>current()?.tabs?.find(t=>t.active)?.id==='t4');await settle(page);assert.equal(await focused(),'t4','focus survives the re-render');
+ ok('Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+1..9 and arrow/Home/End switch and move between the current instance\'s web page tabs; focus survives re-render');
+ await page.evaluate(()=>route('browser','inst-2'));await settle(page);await key('Control+l');assert.match(await page.locator('#toast').innerText(),/未运行/);assert.equal(await page.evaluate(()=>document.activeElement.dataset.action),'toggle');
+ await page.evaluate(()=>route('browser','inst-1'));await go(page,'overview');await key('Control+l');assert.equal(await page.evaluate(()=>view),'browser');assert.equal(await page.evaluate(()=>activeId),'inst-1');assert.equal(await page.evaluate(()=>document.activeElement.id),'addressField');
  await page.locator('#newTab').focus();await key('Enter');await page.waitForSelector('#nameInput');await key('Escape');assert.equal(await page.evaluate(()=>!!modal),false);assert.equal(await page.evaluate(()=>document.activeElement.id),'newTab');
- await key('Control+t');await page.waitForSelector('#nameInput');await key('Escape');
+ await key('Control+Shift+N');await page.waitForSelector('#nameInput');await key('Escape');assert.equal(await page.evaluate(()=>!!modal),false);
+ let mark=current.calls.length;await page.locator('#content').click({position:{x:5,y:5}}).catch(()=>{});await key('Control+t');await page.waitForFunction(()=>current()?.tabs?.length===5);
+ assert.deepEqual(current.calls.slice(mark).filter(c=>c.action==='tab-new').map(c=>c.id),['inst-1']);assert.equal(await page.evaluate(()=>document.activeElement.id),'addressField','a new page tab focuses the address bar');
  await page.locator('#sidebar [data-view="logs"]').focus();await key('Enter');await page.waitForFunction(()=>view==='logs');assert.equal(await page.evaluate(()=>document.activeElement.dataset.view),'logs');
- const before=current.calls.length;const prevented=await page.evaluate(()=>{const e=new KeyboardEvent('keydown',{key:'w',ctrlKey:true,bubbles:true,cancelable:true});document.dispatchEvent(e);return e.defaultPrevented;});assert.equal(prevented,false);assert.equal(current.calls.slice(before).filter(c=>c.action==='stop').length,0);
- ok('Ctrl+L, Ctrl+T, Esc returns focus to the opener, sidebar focus kept after navigation, no Ctrl+W');
+ mark=current.calls.length;const closing=await page.evaluate(()=>current().activeTabId);await key('Control+w');await page.waitForFunction(()=>current()?.tabs?.length===4);
+ assert.deepEqual(current.calls.slice(mark).filter(c=>c.action==='tab-close').map(c=>c.tabId),[closing]);assert.equal(current.calls.slice(mark).filter(c=>c.action==='stop').length,0,'Ctrl+W never stops the instance');
+ ok('Ctrl+L, Ctrl+T (new page tab), Ctrl+W (closes only the page tab), Ctrl+Shift+N, Esc returns focus to the opener, sidebar focus kept after navigation');
  await go(page,'environment');await key('Control+Enter');assert.match(await page.locator('#toast').innerText(),/没有需要保存的修改/);
  await page.locator('#timezone').fill('Europe/London');await page.locator('#timezone').dispatchEvent('input');await page.locator('#timezone').dispatchEvent('change');await key('Control+Enter');
  await page.waitForFunction(()=>!document.querySelector('[data-ux="save-environment"]')?.textContent.includes('保存中'));await page.waitForTimeout(120);
  assert(current.calls.some(c=>c.action==='settings'),'Ctrl+Enter saved');assert.notEqual(await page.evaluate(()=>document.activeElement.tagName),'BODY');
  assert.match(await page.locator('[data-ux="save-environment"]').getAttribute('title'),/Ctrl \+ Enter/);
  await go(page,'global');assert.match(await page.locator('.shortcut-list').innerText(),/Ctrl \+ L[\s\S]*Ctrl \+ Enter[\s\S]*Ctrl \+ Tab/);
- const rings=[];for(const theme of ['light','dark']){await page.evaluate(t=>{document.documentElement.dataset.theme=t;},theme);await page.keyboard.press('Tab');await page.locator('#tabs [data-tab="inst-1"]').focus();await page.keyboard.press('ArrowRight');rings.push(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle));}
+ const rings=[];for(const theme of ['light','dark']){await page.evaluate(t=>{document.documentElement.dataset.theme=t;},theme);await page.keyboard.press('Tab');await page.locator('#tabs [data-tab]').first().focus();rings.push(await page.evaluate(()=>getComputedStyle(document.activeElement).outlineStyle));}
  assert.deepEqual(rings,['solid','solid']);
  ok('Ctrl+Enter saves only when something changed, focus is not lost, shortcuts listed, focus ring visible in both themes');
  assert.deepEqual(errors,[]);await current.context.close();
 
  // E. Window sizes, long names, 15 instances, 43 nodes, no nodes, zero instances, failed/cancelled tasks.
- for(const size of SIZES){current=await openApp(browser,{size});({page,errors}=current);
+ const busy=fixture();busy.instances.forEach(x=>{x.status='running';});
+ for(const size of SIZES){current=await openApp(browser,{size,data:busy});({page,errors}=current);
   for(const v of VIEWS){await go(page,v);await settle(page);const o=await page.evaluate(()=>({doc:document.documentElement.scrollWidth-document.documentElement.clientWidth,side:[...document.querySelectorAll('#sidebar *')].some(el=>el.getBoundingClientRect().right>document.querySelector('#sidebar').getBoundingClientRect().right+1),head:document.querySelector('#workspaceHead').scrollWidth-document.querySelector('#workspaceHead').clientWidth}));
    assert(o.doc<=1,`${size}/${v}: page scrolls horizontally`);assert(!o.side,`${size}/${v}: sidebar content overflows`);assert(o.head<=1,`${size}/${v}: header overflows`);}
   await page.evaluate(async()=>{await route('overview','inst-2');});assert.match(await page.locator('#sidebar .instance-card h2').textContent(),/超长实例名称/);
-  assert(await page.evaluate(()=>{const t=document.querySelector('#tabs');return t.scrollWidth>t.clientWidth&&getComputedStyle(t).overflowX!=='hidden';}),'15 tabs scroll horizontally');
+  assert(await page.evaluate(()=>{const t=document.querySelector('#tabs');return t.scrollWidth>t.clientWidth&&getComputedStyle(t).overflowX!=='hidden';}),'15 running-instance tabs scroll horizontally');
   await go(page,'proxies');assert.match(await page.locator('#libraryTaskbar').innerText(),/检测已取消/);await go(page,'global-logs');assert.match(await page.locator('#content').innerText(),/检测失败/);
   assert.deepEqual(errors,[]);await current.context.close();}
  ok('1024×768, 1280×800, 1440×960: no horizontal overflow with a long name, 15 tabs, 43 nodes and failed/cancelled tasks');
