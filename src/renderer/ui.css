@@ -291,6 +291,7 @@ html[data-frame="custom"] .window-bar{display:flex;align-items:center;justify-co
 .library-muted{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
 .subscription-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .guide{margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-sm);background:var(--panel2);font-size:12px;line-height:1.7;color:var(--muted)}
+.unsaved-note{align-self:center;margin-left:4px;color:var(--amber);font-size:12px;font-weight:600}
 .scope-note{display:flex;align-items:center;gap:8px;margin:0 0 14px;padding:8px 12px;border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line));border-radius:var(--r-sm);background:var(--accent-weak);color:var(--text);font-size:12px;line-height:1.6}
 .scope-note svg{width:15px;height:15px;color:var(--accent-text)}
 .instance-node-results{margin:10px 0}

@@ -32,7 +32,7 @@ async function openApp(browser,{size=[1440,960],data=fixture(),storage=null}={})
   case 'stop':snap={...snap,instances:snap.instances.map(x=>x.id===m.id?{...x,status:'stopped'}:x)};return {ok:true};
   case 'settings':await new Promise(r=>setTimeout(r,40));snap={...snap,instances:snap.instances.map(x=>x.id===m.id?{...x,...m.patch,status:'stopped'}:x)};return {ok:true,value:{changed:true}};
   case 'environment-timezone':return {ok:true,value:{timezone:'Asia/Tokyo'}};default:return {ok:false,error:'Unmocked action '+action};}});
- await page.addInitScript(saved=>{if(saved!==null&&!sessionStorage.getItem('ux3-seeded')){localStorage.setItem('arena.ui.state.v1',saved);sessionStorage.setItem('ux3-seeded','1');}window.facet={request:(a,p)=>window.__ux3Request(a,p),onState:fn=>window.__stateListener=fn};},storage);
+ await page.addInitScript(saved=>{if(saved!==null&&!sessionStorage.getItem('ux3-seeded')){localStorage.setItem('arena.ui.state.v1',saved);sessionStorage.setItem('ux3-seeded','1');}window.facet={request:(a,p)=>window.__ux3Request(a,p),onState:fn=>window.__stateListener=fn,onExternalFocus:()=>()=>{},onPageFind:()=>()=>{}};},storage);
  await page.goto(pageURL);await page.waitForSelector('#sidebar .nav');
  return {context,page,errors,calls};
 }

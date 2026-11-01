@@ -8,7 +8,7 @@ await library.save({name:'测试订阅',text:JSON.stringify({proxies:[1,2,3].map
 const snap=()=>({...workspace.snapshot(library),versions:{app:'test',electron:'simulated IPC'},coreInstalled:true,activeId,creationProgress:c.creationProgress||null,library:library.summaries(),diagnostics:diag,instances:store.list().map(x=>({...x,status:states.get(x.id)||'stopped',nodes:store.nodes(x.id).map(n=>n.name),logs:[],assignment:{status:'未关联来源'},pageState:'未打开网页',error:'',currentURL:x.url}))});
 const emit=()=>{if(page&&!page.isClosed())page.evaluate(s=>window.__stateListener?.(s),snap()).catch(()=>{});};
 const c={store,library,workspace,emit,choose(id){activeId=id;emit();},log(id,text,level='INFO'){workspace.log('instance',text,level,id);emit();},diagnostics:{timezone:async()=>({timezone:'Europe/Berlin'})},start:async id=>{if(failStart){states.set(id,'error');throw Error('合成启动故障');}states.set(id,'running');emit();}};
-try{browser=await chromium.launch({headless:true,args:['--no-sandbox']});page=await browser.newPage({viewport:{width:1440,height:960}});page.on('pageerror',e=>errors.push(e.message));
+try{browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.PW_CHROMIUM||undefined});page=await browser.newPage({viewport:{width:1440,height:960}});page.on('pageerror',e=>errors.push(e.message));
 await page.exposeFunction('__testRequest',async(action,m={})=>{calls.push(action);try{let value;switch(action){
 case 'snapshot':return {ok:true,value:snap()};case 'activate':activeId=m.id;break;case 'layout':return {ok:true};
 case 'settings':{await new Promise(r=>setTimeout(r,70));const p=prepareSettings(store,m.id,m.patch);if(p.changed){states.set(m.id,'stopped');store.update(m.id,p.next);}value={changed:p.changed};break;}
@@ -18,7 +18,7 @@ case 'create':{const r=await createInstance(c,m);value=m.detailed?r:r.id;break;}
 case 'library-assign':{const node=library.node(m.sourceId,m.name);states.set(m.id,'stopped');store.saveNodes(m.id,[node],null,{sourceId:m.sourceId,name:m.name});store.update(m.id,{network:{mode:'mihomo',nodeName:node.name}});break;}
 case 'diagnostic-start':{diagnosticRequests.push(m);const id='task-'+diagnosticRequests.length;diag.lastJob={id,kind:m.kind,total:m.items.length,endedAt:new Date().toISOString(),items:m.items.map((x,i)=>({...x,state:i===1?'failed':'success'}))};diag.results=m.items.map((x,i)=>({...x,taskId:id,kind:m.kind,at:new Date().toISOString(),ok:i!==1,latencyMs:12,error:i===1?'检测目标无法完成请求':''}));workspace.log('diagnostic','开始latency检测：'+m.items.length+'个节点','INFO',null,{taskId:id});break;}
 default:throw Error('Unmocked action '+action);}emit();return {ok:true,value};}catch(e){return {ok:false,error:e.message};}});
-await page.addInitScript(()=>{window.facet={request:(a,p)=>window.__testRequest(a,p),onState:fn=>window.__stateListener=fn};});
+await page.addInitScript(()=>{window.facet={request:(a,p)=>window.__testRequest(a,p),onState:fn=>window.__stateListener=fn,onExternalFocus:()=>()=>{},onPageFind:()=>()=>{}};});
 await page.goto('file://'+path.resolve(__dirname,'../src/renderer/index.html'));await page.waitForSelector('[role=tab]');
 const ok=name=>{results.push(name);console.log('PASS',name);};
 await page.locator('#sidebar [data-view="environment"]').first().click();await page.waitForSelector('#environmentForm');assert(await page.locator('[data-ux="save-environment"]').isDisabled());
