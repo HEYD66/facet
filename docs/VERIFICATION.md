@@ -1,4 +1,11 @@
 # 验证入口与历史记录
+## 2026-11-01：v0.2.23 发布准备与打包验收
+- 内容：v0.2.22 之后的 `c617259`（#11 网页内查找与右键菜单）、`0e294d7`（DNS 卡片只显示已保存设置）、`a0ddd7e`（代理运行方式一行、实例管理筛选与按钮对齐、直连时禁用时区选项、日志级别上色、网页标签切换后焦点保持、三个界面测试恢复）；应用与锁文件版本升至 0.2.23，说明见 [v0.2.23](releases/v0.2.23.md)。各项的界面与 Electron 验证见 [UX 交付状态](UX-DELIVERY-STATUS.md) 11-01 两条。
+- 门禁：`check`、`test:control-api`、`git diff --check` 通过；全部单元测试 443 项中 440 通过、1 项 POSIX 跳过，并行时 `node-network`（读取本机网卡超时）和 `shared-proxy` 外部端口用例各失败 1 次，单独重跑 9/9、13/13 通过。
+- 构建：复用已提交并校验过的组件，执行 `node scripts/build-installer.cjs`；`resources/` 没有变化。安装包 `Facet-Setup-0.2.23-x64.exe`，131,122,445 字节，SHA256 `5b376056dde8db1f1c363da6b0f204a26259d7ca1f975042a8e4aae8d072ff6b`；安装包、blockmap、latest.yml、.sha256 齐全，校验一致；Authenticode `NotSigned`。
+- 包内核验：除不随包的 `subscription-proxy.cjs` 外 170 个源码文件与 asar 内一致；38 个生产依赖都在；内置 24 份文档与白名单一致；其他资源与许可证一致；asar 内没有 `.local-dev`、`.git` 或验收记录；本版新增内容的高置信凭据模式扫描无命中。
+- 真实打包程序：解包目录复制到没有低完整性标签的临时目录（Facet.exe、app.asar 哈希与构建输出相同），`test:installed` **27/27 通过，退出码 0**，未改动正式用户数据，结束后没有残留进程。
+- 未验证：没有运行安装器的安装/卸载向导；没有实测旧版客户端自动升级。
 ## 2026-10-27：v0.2.22 发布准备与打包验收
 - 内容：v0.2.21 之后的 `9f95925` 至 `a6b23c8`（1:1 呈现与 #10、宫格小格子 iframe 输入、AI 会话交给 DSH、音频/窗口尺寸/WebGPU/渲染器/内存/任务栏/触摸点/DPR 等环境读数）；应用与锁文件版本升至 0.2.22，说明见 [v0.2.22](releases/v0.2.22.md)。
 - 门禁：`check`、`test:control-api`、`git diff --check` 通过；全部单元测试 443 项中 441 通过、1 项 POSIX 跳过，`node-network.test.cjs` 读取本机网卡超时 1 次，单独重跑 9/9 通过。
