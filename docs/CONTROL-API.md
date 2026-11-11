@@ -62,6 +62,26 @@ API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，�
 
 停止操作会中断当前尚未写入的出口地区查询；取消项不计作失败，已保存实例保留。应用退出时，尚未写入的创建请求不能继续保存。普通创建也会在写入前核对节点源版本及完整配置，不依赖调用者提供 `sourceVersion`；查询期间源已更新、节点被删除或排除时，拒绝保存旧节点。
 
+## 获取免费节点（2026-11-11，当前源码未发布）
+
+通过 `POST /v1/actions` 调用：
+
+| action | 参数 | 结果 |
+| --- | --- | --- |
+| `library-free-start` | `kinds?`（`["plain","encrypted"]` 的非空子集，默认两者）、`target?`（1–500，默认 30）、`limit?`（1–2000 且不小于 `target`，默认 `max(400,target)`）、`replace?`（布尔，默认 false） | 立即返回 `{started:true,id}`，任务在后台运行 |
+| `library-free-cancel` | 无 | `{cancelled:true}`；没有任务时 `{cancelled:false}` |
+
+`plain` 是公开 HTTP / SOCKS5 代理，`encrypted` 是其他协议节点。同一时间只有一个任务，重复启动返回错误。参数无效、正在切换代理模式、节点网络设置异常、内置 Mihomo 缺失、节点源已达 30 个且还没有免费节点源、或免费节点源已满 3000 个时拒绝启动。
+
+`ok:true` 只表示任务已启动。用 `{"action":"snapshot"}` 轮询 `freeNodes`：
+
+- `id`、`running`、`cancelling`、`stage`（`fetch` / `verify` / `save` / `done`）、`kinds`、`target`、`limit`、`replace`、`startedAt`、`endedAt`。
+- `sources[]`：`name`、`state`（`loading` / `ok` / `failed` / `cancelled`）、`candidates`。
+- `total`（本次候选数）、`checked`（已得出结论的候选数）、`usable`、`plain`、`encrypted`。
+- `result`：运行中为 `null`；结束后为 `{imported,sourceId,cancelled,error}`。`error` 非空表示未正常完成，此时 `imported` 仍可能大于 0（已验证的节点会保存）。
+
+`running:false` 且 `id` 与启动时返回的一致才算结束，再核对 `result.imported` 以及 `library[]` 中 `free:true` 的源（`fetchedAt` 为最近一次获取时间；它固定排在 `library[]` 第一个，按 `id` 或 `free` 查找，不要按序号）。候选节点通过内置 Mihomo 的临时内核访问 `https://www.cloudflare.com/cdn-cgi/trace`，返回出口 IP 才算可用；随后经同一节点依次询问出口 IP 查询服务（IP.SB、GeoJS、ipapi.co、ipwho.is，单个 4 秒、合计 9 秒以内），取得国家、地区、城市、时区和运营商。验证结果同时写入该节点的连通性和出口 IP 记录，字段与 `diagnostic-start` 的 `ip` 检测相同；查询服务都没有返回有效国家和 IANA 时区时，节点仍然导入，出口 IP 记录只有 IP 和国家（`timezone` 为空，`provider` 为 `Cloudflare trace`），此时按该节点新建实例会返回 `regionNotice`。默认追加：免费节点源的 `updatedAt` 不变，原有节点和检测记录保留，节点库任何源里已有的地址不再验证；`replace:true` 在找到新节点后清空原有免费节点及其检测记录。停止或出错时保留已验证的节点；应用退出时任务中止，不再写入。snapshot 不含节点密码。公开列表下载走系统网络，与订阅下载的限制相同（仅公网地址、2 MB 上限）。
+
 ## 新建实例的默认扩展（2026-10-23，当前源码未发布）
 
 通过 `POST /v1/actions` 调用：
@@ -129,7 +149,7 @@ OPTIONS 预检不表示业务授权，CORS 不能代替令牌。`ok:true` 也不
 | --- | --- | --- |
 | 实例 | `create`、`rename`、`start`、`stop`、`remove`、`instance-notes`、`instance-autostart` | ID、实际状态、持久数据 |
 | 环境 | `settings`、`fingerprint-preset`、`reset-environment`、`instance-reset-many` | 草稿/保存区别；重置后网站数据和新环境 |
-| 代理 | `library-save`、`library-rename`、`library-remove`、`library-assign`、`library-assign-many` | 全局源与独立实例副本 |
+| 代理 | `library-save`、`library-rename`、`library-remove`、`library-assign`、`library-assign-many`、`library-free-start`、`library-free-cancel` | 全局源与独立实例副本；免费节点任务看 snapshot 的 `freeNodes` |
 | 检测 | `diagnostic-start`、`diagnostic-cancel`、`diagnostic-history`、`node-network-save` | 任务结果和网络设置作用范围 |
 | 扩展 | `extension-import`、`extension-configure`、`extension-remove`、`extension-open`、`extension-refresh` | 确认范围和真实扩展功能 |
 | 迁移 | `instance-export`、`instance-import-inspect`、`instance-import-commit` | 文件选择、归档复读校验与下游状态 |

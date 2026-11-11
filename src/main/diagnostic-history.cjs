@@ -83,6 +83,19 @@ class DiagnosticHistory {
     if (n) this.schedule();
     return n;
   }
+  // Drops the records of named nodes, for sources that reuse a name after the node behind it is gone.
+  forget(sourceId, names) {
+    let n = 0;
+    for (const name of names) {
+      const k = this.key(sourceId, name);
+      if (this.data.nodes[k]) {
+        delete this.data.nodes[k];
+        n++;
+      }
+    }
+    if (n) this.schedule();
+    return n;
+  }
   list() {
     return Object.values(this.data.nodes);
   }

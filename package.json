@@ -36,6 +36,8 @@
     "test:subscription": "node --test tests/subscription.test.cjs tests/subscription-content-type.test.cjs tests/subscription-addresses.test.cjs",
     "test:subscription-electron": "node tests/subscription-import-runner.cjs",
     "test:library": "node --test tests/library.test.cjs",
+    "test:free-nodes": "node --test tests/free-nodes.test.cjs",
+    "test:free-nodes-electron": "node scripts/launch-electron.cjs tests/free-nodes-electron.cjs",
     "test:workspace": "node --test tests/workspace.test.cjs",
     "test:fingerprint": "node --test tests/fingerprint.test.cjs",
     "test:experience": "node --test tests/experience.test.cjs",

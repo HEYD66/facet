@@ -1,4 +1,16 @@
 # 验证入口与历史记录
+## 2026-11-11：代理管理「获取免费节点」（源码未发布）
+- 同日修复（出口时区）：用户在重启后的千面里获取 30 个免费节点并新建实例，提示「已按实测国家设置语言，但检测记录没有可确认的时区」。原因是出口 IP 记录只有 Cloudflare 返回的国家。改为验证通过后经同一节点查询出口地区和时区。修复后：`real-run.cjs` 目标 30 个用时 23.7 秒（验证 90 / 400），30 个全部带时区（IP.SB 29、GeoJS 1）；`FREE_NODES_REAL=1` 的 Electron 测试 8 / 8 带时区，用其中一个节点新建实例，语言和时区按记录写入且没有提示。以下数字是修复后的：单元测试 453 项中 452 通过、1 项 POSIX 跳过，`test:free-nodes` 10 项（新增出口地区查询的服务顺序、无效时区、总时限）；`test:free-nodes-electron` 替身模式 10 组、真实模式 7 组（新增「用免费节点新建实例直接得到语言和时区」）。用户已导入的 30 个节点没有改动，仍然没有时区。下面「真实联网」里的用时是修复前测的。
+- 同日调整（免费节点源排第一）：`check`、`test:control-api`、`git diff --check` 通过；`test:free-nodes` 10 项、`test:free-nodes-electron` 替身模式 10 组通过，其中先建一个本地源再获取免费节点，核对 snapshot、左侧节点源列表和新建实例的「初始网络出口」里免费节点源都在本地源前面。全部单元测试第一次并行运行时 `ip-services.test.cjs` 的限速计时用例失败 1 次（本次没有改动该文件），单独重跑 3 次 8/8 通过，整套重跑 453 项中 452 通过、1 项 POSIX 跳过。没有重跑其他 Electron 回归（它们没有免费节点源，顺序不变）。
+- 门禁：`check`（373 脚本）、`test:control-api`、`git diff --check` 通过；全部单元测试 452 项中 451 通过、1 项 POSIX 跳过。新增 `npm.cmd run test:free-nodes` 9 项：解析各种列表格式、候选抽取与去重、免费节点源的追加 / 清空 / 30 个源上限、参数校验、整轮任务（分批验证、够数即停、写入连通性与出口 IP 记录、第二轮追加）、停止 / 失败 / 退出 / 退出等待上限、验证内核配置（每个候选独立的带密码回环入口，`MATCH,REJECT`）。
+- 真实 Electron：新增 `npm.cmd run test:free-nodes-electron`（真实 Controller、IPC 和控制界面，临时 `userData`，列表与验证用本地替身）9 组通过：弹窗默认值与风险提示、无效输入不启动、关闭弹窗后任务继续并提示结果、节点带延迟和出口 IP 记录入库且密码不出主进程、节点表显示「免费」源、停止后已存节点不变、删除节点后再获取为追加且旧记录仍有效、本机 HTTP API（`/v1/actions`）启动任务并从 snapshot 读到结果、没有残留验证目录。
+- 真实联网：
+  - 同一测试加 `FREE_NODES_REAL=1`（真实公开列表 + 内置 Mihomo；停止、追加和 HTTP API 三组只在替身模式运行）6 组通过，验证 11 个候选导入 8 个。
+  - `.local-dev/free-nodes-20261111/real-run.cjs`（临时数据目录）：目标 10 个用时 9.8 秒（验证 11 / 240）；目标 60 个用时 31.8 秒（验证 169 / 400，http 46、ss 6、hysteria 3、vless 2、socks5 / wireguard / trojan 各 1）；只要加密节点 15 个用时 14.3 秒。
+  - 停止：下载阶段停止立即结束；验证阶段停止 95 毫秒后结束，已验证的 10 个照常保存。每次运行后没有残留的验证目录和千面的 Mihomo 进程。
+- 回归：`node-evidence-electron.cjs` 6 组、`connectivity-history-electron.cjs` 7 组、`proxy-scroll-runner.cjs` 8 组、`test:shared-proxy-electron` 24 组、`new-instance-node-runner.cjs` 12 组、三个界面测试 `ux3-renderer` 13、`appearance-audit` 8、`experience-renderer` 15 项全部通过。
+- 环境说明：本机 `D:\AProgram\arena` 带低完整性标签，从高完整性的终端运行 Electron 测试时，仓库内的 `node_modules\electron` 子进程启动失败（`GPU process launch failed: error_code=18`，页面 `ERR_FAILED`），改动前的 `test:rename` 同样失败。以上 Electron 测试都用 `ELECTRON_OVERRIDE_DIST_PATH` 指向 `%LOCALAPPDATA%\FacetRuntime\electron\44.9.3-x64-…` 的同版本运行时副本执行；仓库没有为此改动。
+- 未验证：没有在正在运行的正式千面里操作（需重启主进程才加载）；没有打包验收；免费节点分配给实例后访问真实网站的效果没有测（节点随时可能失效）；弹窗的夜间主题只靠沿用现有样式变量，没有单独截图检查。
 ## 2026-11-01：v0.2.23 发布准备与打包验收
 - 内容：v0.2.22 之后的 `c617259`（#11 网页内查找与右键菜单）、`0e294d7`（DNS 卡片只显示已保存设置）、`a0ddd7e`（代理运行方式一行、实例管理筛选与按钮对齐、直连时禁用时区选项、日志级别上色、网页标签切换后焦点保持、三个界面测试恢复）；应用与锁文件版本升至 0.2.23，说明见 [v0.2.23](releases/v0.2.23.md)。各项的界面与 Electron 验证见 [UX 交付状态](UX-DELIVERY-STATUS.md) 11-01 两条。
 - 门禁：`check`、`test:control-api`、`git diff --check` 通过；全部单元测试 443 项中 440 通过、1 项 POSIX 跳过，并行时 `node-network`（读取本机网卡超时）和 `shared-proxy` 外部端口用例各失败 1 次，单独重跑 9/9、13/13 通过。
