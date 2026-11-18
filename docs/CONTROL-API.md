@@ -47,6 +47,19 @@ Electron 的持久会话具有各自的 Chromium `browserContextId`；Playwright
 
 API 和 CDP 只用于本机脚本自动化；不要把端口映射到公网，也不要把令牌提交到日志、工单或版本库。
 
+## 实例分组与管理顺序
+
+用 `{"action":"snapshot"}` 查询 `instanceManagement.groups`（有序的 `{id,name}` 列表）、`instanceManagement.order`（实例管理表格使用的全局 ID 顺序）和 `instances[].groupId`（缺省或 `null` 表示未分组）。分组和顺序保存在 `instances.json`，`GET /v1/instances` 继续使用原有实例列表顺序。
+
+| action | 参数 | 结果 |
+| --- | --- | --- |
+| `instance-group-create` | `name`（1–40 个字符，去掉首尾空白后唯一） | 新分组 `{id,name}` |
+| `instance-group-move` | `ids`（实例 ID 数组）、`groupId`（分组 ID 或 `null`） | `{moved}`，迁移的实例按原相对顺序追加到目标分组末尾 |
+| `instance-group-reorder` | `id`、`targetId`（两个分组 ID）、`position`（`before` / `after`） | `{saved:true}` |
+| `instance-row-reorder` | `id`、`targetId`（两个实例 ID）、`position`、`groupId`（分组 ID、`null` 或 `"all"`）、`ids`（调整前可见实例的有序 ID 数组） | `{saved:true}`，验证实例归属和当前顺序，其他行保留原位置 |
+
+通过 `/v1/actions` 调用 `start`、`stop` 时可传 `expectedGroupId`（分组 ID 或 `null`），实例执行前须仍在该组。使用 `snapshot` 核对归属、顺序和运行状态。
+
 ## 批量创建节点分配（当前源码）
 
 普通新建的 `instance-new-plan` 返回自动选择的未分配可用节点及 `sourceVersion`。确认自动方案时传 `requireUnusedNode:true` 和该版本；写入前再次验证连通记录、分配与源版本。界面手动修改节点后解除自动方案限制，仍允许显式复用。AI 的 `create random:true` 同样排除已分配配置并实测连通与出口地区；环境重置按原约定保留代理，导入与手动指定节点不强制独占。

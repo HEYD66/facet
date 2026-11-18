@@ -23,7 +23,9 @@ async function replace(c,id){
   atomic(target,source,{backup:false});
   if(JSON.stringify(JSON.parse(fs.readFileSync(target,'utf8')))!==JSON.stringify(source))throw Error('代理副本校验失败');
   journal.begin(c.dir,id);
-  c.store.commit({...c.store.data,instances:c.store.list().map(x=>x.id===id?next:x)});
+  const data=c.store.data,{groupId}=c.store.get(id);
+  if(groupId)next.groupId=groupId;
+  c.store.commit({...data,instances:c.store.list().map(x=>x.id===id?next:x),...(Array.isArray(data.instanceOrder)?{instanceOrder:data.instanceOrder.map(value=>value===id?next.id:value)}:{})});
  }catch(error){
   if(!error.atomicWriteCommitted){fs.rmSync(target,{force:true});journal.finish(c.dir,id);catalog.forget(next.id);throw Error('新实例创建失败，旧实例及数据保留：'+error.message);}
   // Atomic rename succeeded; never roll back to a potentially deleted identity.

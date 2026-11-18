@@ -129,6 +129,9 @@ function installIPC(window,controller){
     case 'diagnostic-cancel':controller.diagnostics.cancel();break;
 
     case 'instance-notes':return {ok:true,value:await controller.queue(id,()=>{controller.store.update(id,{notes:message.notes});controller.emit();return {saved:true};})};
+    case 'instance-group-create':case 'instance-group-reorder':case 'instance-group-move':case 'instance-row-reorder':{
+     const value=require('./instance-groups.cjs').update(controller.store,message);
+     controller.emit();return {ok:true,value};}
     case 'instance-export':return {ok:true,value:await controller.queue('instance-transfer',async()=>{
       const ids=message.ids;for(const target of ids||[])controller.store.get(target);const mode=message.mode||'separate';if(!['separate','combined'].includes(mode))throw Error('导出方式无效');
       let destination;
@@ -158,8 +161,8 @@ function installIPC(window,controller){
     case 'overlay-show':return {ok:true,value:await overlay.show(message)};
     case 'overlay-hide':overlay.hide('request');return {ok:true};
     case 'browser-snapshot':return {ok:true,value:await controller.capturePageFrame(id)};
-    case 'start':await controller.start(id);break;
-    case 'stop':await controller.stop(id);break;
+    case 'start':await controller.start(id,{expectedGroupId:message.expectedGroupId});break;
+    case 'stop':await controller.stop(id,{expectedGroupId:message.expectedGroupId});break;
     case 'remove':await controller.remove(id);break;
     case 'reset-environment':return {ok:true,value:await controller.resetEnvironment(id)};
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};

@@ -21,6 +21,10 @@ app.whenReady().then(async()=>{try{
  installIPC(win,controller);
  let instance=controller.store.list()[0];controller.store.update(instance.id,{url,notes:'保留管理备注'});
  const other=controller.store.create('其他实例');
+ const groups=require('../src/main/instance-groups.cjs');
+ const group=groups.update(controller.store,{action:'instance-group-create',name:'重置验证组'});
+ groups.update(controller.store,{action:'instance-group-move',ids:[instance.id],groupId:group.id});
+ assert.deepEqual(groups.snapshot(controller.store.data).order,[other.id,instance.id]);
  await win.loadFile(path.resolve(__dirname,'../src/renderer/index.html'));
  const ui=code=>win.webContents.executeJavaScript(code);
  await wait(()=>ui('!!current()&&typeof route==="function"'),'control UI');
@@ -42,6 +46,8 @@ app.whenReady().then(async()=>{try{
  instance=controller.store.list().find(x=>x.name===before.name);assert(instance);assert.notEqual(instance.id,originalId);
  const after=controller.store.get(instance.id);
  assert.deepEqual(after.network,before.network);
+ assert.equal(after.groupId,group.id);
+ assert.deepEqual(groups.snapshot(controller.store.data).order,[other.id,instance.id]);
  assert.equal(after.notes,'');assert.equal(after.environment.language,'ja-JP');assert.equal(after.environment.timezone,'Asia/Tokyo');
  assert.notEqual(after.environment.fingerprint.seed,before.environment.fingerprint.seed);
  assert.equal(after.environment.fingerprint.touch,0);
@@ -106,5 +112,7 @@ app.whenReady().then(async()=>{try{
  const reopened=new (require('../src/main/store.cjs').Store)(root);
  assert.deepEqual(reopened.get(instance.id).environment,batchAfter.environment);
  assert.deepEqual(reopened.get(instance.id).network,before.network);
+ assert.equal(reopened.get(instance.id).groupId,group.id);
+ assert.equal(groups.snapshot(reopened.data).order.at(-1),instance.id);
  console.log(JSON.stringify({status:'passed',root,results:['真实界面重置后表单显示已保存的新 UA、平台、CPU、种子，无旧草稿冲突','重置停止实例、清除 Cookie 与网站存储、保留代理和其他实例草稿','重启后网站存储不会复活','重置生成的新环境在大于模拟屏幕的真实视图铺满、原生边角点击成功，显示适配不改写环境','真实界面批量重置后清除成功项草稿与撤销记录，重新读取磁盘配置一致']},null,2));
 }catch(error){console.error(error.stack||String(error));process.exitCode=1;}finally{try{await controller?.closeAll();}catch{}if(!win?.isDestroyed())win?.destroy();server?.close();app.exit(process.exitCode||0);}}).catch(error=>{console.error(error.stack||String(error));app.exit(1);});

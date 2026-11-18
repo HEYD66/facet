@@ -20,6 +20,7 @@ function parseStoreData(raw){
 }
 function validateStoreData(raw) {
  const data=parseStoreData(raw),ids=new Set();
+ if(data.instanceGroups!==undefined)require('./instance-groups.cjs').validateGroups(data.instanceGroups);
  const instances=data.instances.map(value=>{
   if(!value||typeof value!=='object'||Array.isArray(value)||
      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value.id)||ids.has(value.id))throw Error('实例 ID 无效或重复');
@@ -63,7 +64,7 @@ class Store {
  // 全部静音（顶部按钮）：存在 instances.json 顶层，重启后保持。
  get muted(){return this.data.muted===true;}
  setMuted(value){const data={...this.data};if(value)data.muted=true;else delete data.muted;this.commit(data);}
- remove(id){this.get(id);this.commit({...this.data,instances:this.list().filter(x=>x.id!==id)});}
+ remove(id){this.get(id);const data=this.data;this.commit({...data,instances:this.list().filter(x=>x.id!==id),...(Array.isArray(data.instanceOrder)?{instanceOrder:data.instanceOrder.filter(value=>value!==id)}:{})});}
  proxyFile(id){this.get(id);return path.join(this.dir,'proxy-sources',id+'.json');}
  importNodes(id,text){const nodes=parseNodes(text);this.saveNodes(id,nodes,null);return nodes.map(n=>n.name);}
  saveNodes(id,nodes,subscription,assignment=null){this.sourceCache?.delete(id);atomic(this.proxyFile(id),{version:1,nodes,subscription,assignment});}
