@@ -3,6 +3,7 @@ const {WebContentsView}=require('electron');
 const crypto=require('node:crypto'),path=require('node:path');
 const {MAX_TABS,tabURL,forInstance}=require('./browser-tabs-state.cjs');
 const PAGE_FIELDS=['url','title','pageState','lastLoadedAt','error','loadFailed'];
+function focusAddress(c,id){if(!c.window.isDestroyed()){c.window.webContents.focus();c.window.webContents.send('core:focus-address',{id});}}
 function current(r,tab){return r.activeTabId===tab.id;}
 function sync(r,tab){if(current(r,tab)){for(const key of PAGE_FIELDS)r[key]=tab[key];r.native=tab.native||r.native;}}
 function saved(r){return {activeId:r.activeTabId,items:[...r.tabs.values()].map(tab=>({id:tab.id,url:tab.url}))};}
@@ -34,17 +35,21 @@ async function loadPage(c,id,r,tab){
  const resumeRendering=()=>{if(alive())require('./background-rendering.cjs').resume(wc);};
  wc.on('dom-ready',resumeRendering);wc.on('did-finish-load',resumeRendering);
  const changed=()=>{if(!alive())return;const url=wc.getURL();if(url==='about:blank'||/^https?:/i.test(url))tab.url=url;tab.title=wc.getTitle();sync(r,tab);c.emitSoon();};
- const navigated=()=>{changed();if(alive())try{persist(c,id,r);}catch{c.log(id,'网页标签地址保存失败，当前页面仍保留','WARN');}};
+ // 新建标签页首次加载默认页时，Chromium 提交跨进程导航会自动把原生焦点抢给网页视图；
+ // 在用户实际点击网页或主动跳转之前，把焦点还回控制窗口，避免打断地址栏输入或掉进网页搜索框。
+ const restoreAddressFocus=()=>{if(tab.keepAddressFocus&&alive()&&current(r,tab)&&c.activeId===id&&!c.grid&&!c.window.isDestroyed()&&c.window.isFocused()&&wc.isFocused())c.window.webContents.focus();};
+ const navigated=()=>{changed();restoreAddressFocus();if(alive())try{persist(c,id,r);}catch{c.log(id,'网页标签地址保存失败，当前页面仍保留','WARN');}};
+ wc.on('input-event',(_event,input)=>{if(tab.keepAddressFocus&&(input.type==='mouseDown'||input.type==='touchStart'||input.type==='gestureTap'))tab.keepAddressFocus=false;});
  wc.on('before-input-event',(event,input)=>{
   if(input.type!=='keyDown'||input.isAutoRepeat)return;
   if(input.key==='F12'){event.preventDefault();if(!current(r,tab))return;c.toggleDevTools(id).catch(error=>c.log(id,'开发者工具切换失败：'+error.message,'WARN'));return;}
   if(!input.control||input.alt||input.meta)return;const key=input.key.toLowerCase();
-  if(key==='t'&&!input.shift){event.preventDefault();c.newTab(id).then(()=>c.window.webContents.send('core:focus-address',{id})).catch(error=>c.log(id,error.message,'WARN'));}
-  else if(key==='w'&&!input.shift){event.preventDefault();c.closeTab(id,tab.id).catch(error=>c.log(id,error.message,'WARN'));}
+  if(key==='t'&&!input.shift){event.preventDefault();c.newTab(id,{focusAddress:true}).then(()=>focusAddress(c,id)).catch(error=>c.log(id,error.message,'WARN'));}
+  else if(key==='w'&&!input.shift){event.preventDefault();c.closeTab(id,tab.id).then(res=>{if(res?.lastTabReplaced)focusAddress(c,id);}).catch(error=>c.log(id,error.message,'WARN'));}
   else if(key==='tab'){event.preventDefault();const list=[...r.tabs.keys()],index=list.indexOf(r.activeTabId);c.activateTab(id,list[(index+(input.shift?-1:1)+list.length)%list.length]).catch(()=>{});}
   else if(/^[1-9]$/.test(key)&&!input.shift){event.preventDefault();const list=[...r.tabs.keys()];c.activateTab(id,list[key==='9'?list.length-1:Math.min(Number(key)-1,list.length-1)]).catch(()=>{});}
   else if(key==='n'&&input.shift){event.preventDefault();c.window.webContents.send('core:new-instance');}
-  else if(key==='l'&&!input.shift){event.preventDefault();c.window.webContents.send('core:focus-address',{id});}
+  else if(key==='l'&&!input.shift){event.preventDefault();focusAddress(c,id);}
   else if(key==='f'&&!input.shift){event.preventDefault();if(current(r,tab))try{require('./page-tools.cjs').open(c,id);}catch(error){c.log(id,error.message,'WARN');}}
  });
  require('./page-tools.cjs').attach(c,id,r,tab,wc);
@@ -62,7 +67,7 @@ async function loadPage(c,id,r,tab){
  wc.on('did-fail-load',(_event,code,description,url,main)=>{
   if(!alive()||code===-3)return;if(main)tab.loadFailed=true;let host;try{host=new URL(url).hostname;}catch{}
   const trace=c.networkTrace.begin({operation:'page-load',instanceId:id,host,proxy:!!r.core,route:r.core?'instance-proxy':'direct'});c.networkTrace.record(trace,{stage:'page-error',errorNumber:code,reason:description,mainFrame:main});c.networkTrace.finish(trace,{result:'failed'});
-  if(main){tab.pageState='加载失败';tab.error=`页面加载失败：${description} (${code})`+(r.core?.recentIssue()?'；内核提示：'+r.core.recentIssue():'');sync(r,tab);c.log(id,tab.error,'WARN');c.notePageFailure(id,r,code,url);}
+  if(main){restoreAddressFocus();tab.pageState='加载失败';tab.error=`页面加载失败：${description} (${code})`+(r.core?.recentIssue()?'；内核提示：'+r.core.recentIssue():'');sync(r,tab);c.log(id,tab.error,'WARN');c.notePageFailure(id,r,code,url);}
  });
  wc.on('render-process-gone',(_event,details)=>{if(!alive())return;tab.pageState='浏览进程退出';tab.error='此标签页的浏览进程退出，请刷新标签页';sync(r,tab);const trace=c.networkTrace.begin({operation:'renderer-exit',instanceId:id});c.networkTrace.record(trace,{stage:'process-exit',reason:details?.reason,exitCode:details?.exitCode});c.networkTrace.finish(trace,{result:'failed'});c.log(id,tab.error,'ERROR');});
  wc.on('facet-environment-error',error=>c.log(id,error.message,'WARN'));
@@ -85,13 +90,14 @@ async function loadPage(c,id,r,tab){
   r.extensionHost?.bindPage(wc);return tab;
  }catch(error){r.extensionHost?.unbindPage(wc);try{c.window.contentView.removeChildView(view);}catch{}if(!wc.isDestroyed())wc.close({waitForBeforeUnload:false});tab.view=null;throw error;}
 }
-function show(c,id,r,tab){
+function show(c,id,r,tab,{focus='page'}={}){
  const old=r.view,changed=r.activeTabId!==tab.id;if(old!==tab.view){c.releaseCapture(r);c.removeDevToolsView(r,true);if(old){old.setVisible(false);require('./background-rendering.cjs').resume(old.webContents);if(r.gridParent){r.gridParent.removeChildView(old);c.window.contentView.addChildView(old);r.gridParent=null;}}r.viewportKey=null;r.gridApplied=null;r.gridBounds=null;}
  r.activeTabId=tab.id;r.view=tab.view;sync(r,tab);if(changed)require('./page-tools.cjs').changed(c,id,r);
  if(old&&old!==tab.view)require('./tile-input.cjs').changed(r,old.webContents);
  require('./background-rendering.cjs').setThrottling(r,!!c.grid&&c.grid.mode!=='live'&&!r.extensionWindows?.size);
  if(r.extensionHost?.compat?.tabs){const compat=r.extensionHost.compat;compat.tabs.focusedId=tab.view.webContents.id;if(changed)compat.broadcast('tabs.onActivated',[{tabId:tab.view.webContents.id,windowId:compat.tabs.primaryWindowId}]);}
- if(c.grid)c.applyGrid();else if(c.activeId===id&&c.bounds){c.setDevToolsLayout(r,c.bounds);tab.view.setVisible(r.status==='running');if(r.status==='running')tab.view.webContents.focus();}
+ if(focus!=='address')tab.keepAddressFocus=false;
+ if(c.grid)c.applyGrid();else if(c.activeId===id&&c.bounds){c.setDevToolsLayout(r,c.bounds);tab.view.setVisible(r.status==='running');if(r.status==='running'){if(focus==='address'){if(!c.window.isDestroyed())c.window.webContents.focus();}else if(focus==='page')tab.view.webContents.focus();}}
  require('./background-rendering.cjs').scheduleViewportRestore(c.window,r,tab);
  persist(c,id,r);c.emitSoon();
 }
@@ -101,16 +107,16 @@ async function initialize(c,id,r,x){
  const tab=r.tabs.get(plan.activeId);await loadPage(c,id,r,tab);show(c,id,r,tab);return tab.view.webContents;
 }
 function runtime(c,id){if(c.disposing)throw Error('应用正在退出');if(c.proxyModeSwitching)throw Error(require('./proxy-mode.cjs').busyMessage);if(c.transfer.progress?.running&&c.transfer.progress.ids.includes(id))throw Error('所选实例正在导出，请等待完成');const r=c.runtimes.get(id);if(!r?.view||r.tabsClosing||r.status!=='running')throw Error('请先启动实例');return r;}
-async function create(c,id,{url=require('./browser-tabs-state.cjs').NEW_TAB_URL,active=true}={}){
+async function create(c,id,{url=require('./browser-tabs-state.cjs').NEW_TAB_URL,active=true,focusAddress:keepAddress=false}={}){
  const r=runtime(c,id);if(r.tabs.size>=MAX_TABS)throw Error('每个实例最多打开 32 个网页标签');
- const tab={id:crypto.randomUUID(),url:tabURL(url),title:'',pageState:'准备加载',error:'',view:null};r.tabs.set(tab.id,tab);
- try{await loadPage(c,id,r,tab);if(active)show(c,id,r,tab);else persist(c,id,r);navigatePage(c,id,r,tab);c.emit();return {tabId:tab.id,webContentsId:tab.view.webContents.id};}
+ const tab={id:crypto.randomUUID(),url:tabURL(url),title:'',pageState:'准备加载',error:'',view:null,keepAddressFocus:keepAddress===true};r.tabs.set(tab.id,tab);
+ try{await loadPage(c,id,r,tab);if(active)show(c,id,r,tab,{focus:keepAddress?'address':'page'});else persist(c,id,r);navigatePage(c,id,r,tab);c.emit();return {tabId:tab.id,webContentsId:tab.view.webContents.id};}
  catch(error){r.tabs.delete(tab.id);throw error;}
 }
 async function activate(c,id,tabId){const r=runtime(c,id),tab=r.tabs.get(tabId);if(!tab)throw Error('网页标签不存在或不属于此实例');await loadPage(c,id,r,tab);show(c,id,r,tab);navigatePage(c,id,r,tab);c.emit();return {tabId:tab.id};}
 async function close(c,id,tabId){
  const r=runtime(c,id),tab=r.tabs.get(tabId);if(!tab)throw Error('网页标签不存在或不属于此实例');
- if(r.tabs.size===1){const created=await create(c,id);await close(c,id,tabId);return {...created,lastTabReplaced:true};}
+ if(r.tabs.size===1){const created=await create(c,id,{focusAddress:true});await close(c,id,tabId);return {...created,lastTabReplaced:true};}
  if(current(r,tab)){const list=[...r.tabs.keys()],index=list.indexOf(tabId);await activate(c,id,list[index+1]||list[index-1]);}
  r.tabs.delete(tabId);clearTimeout(tab.backgroundViewportTimer);if(tab.view){const wc=tab.view.webContents,row=r.extensionHost?.compat?.tabs.rows.get(wc.id);if(row)row.lastTab=r.extensionHost.compat.tabs.tab(row);r.extensionHost?.unbindPage(wc);try{c.window.contentView.removeChildView(tab.view);}catch{}if(!wc.isDestroyed()){wc.stop();wc.close({waitForBeforeUnload:false});}}
  persist(c,id,r);c.emit();return {closed:tabId};

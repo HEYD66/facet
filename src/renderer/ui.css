@@ -276,7 +276,7 @@ html[data-frame="custom"] .window-bar{display:flex;align-items:center;justify-co
 .workspace-head h1{display:flex;align-items:center;gap:8px;margin:0;font-size:16px;font-weight:650;white-space:nowrap}
 .head-instance{min-width:0;padding-left:10px;border-left:1px solid var(--line);color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .workspace-head .toolbar{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.main-content{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 20px 20px;overflow:auto}
+.main-content{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 20px 20px;overflow:auto;container-type:inline-size;container-name:main}
 .footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 12px;background:var(--bg);border-top:1px solid var(--line);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden}
 .footer-left{display:flex;min-width:0;overflow:hidden}
 #footerCore{overflow:hidden;text-overflow:ellipsis}
@@ -463,17 +463,17 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ── 7. Instance management ───────────────────────────────── */
 /* 实例管理：状态筛选按钮带数量（原来的统计行已并入） */
-.status-filters button{display:inline-flex;align-items:center;gap:6px}
+.status-filters button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none}
 .filter-count{min-width:1.2em;font-weight:650;color:var(--text);font-variant-numeric:tabular-nums;text-align:right}
 .status-filters [data-filter="running"] .filter-count{color:var(--green)}
 .status-filters [data-filter="error"] .filter-count{color:var(--red)}
 .filters-note{margin:0 auto 0 4px}
-.filters{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
-.segments{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
-.segments button{height:26px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:12px}
+.filters{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:0 0 10px}
+.segments{display:inline-flex;flex-shrink:0;gap:2px;padding:2px;border:1px solid var(--line);border-radius:7px;background:var(--panel2)}
+.segments button{height:26px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:12px;white-space:nowrap;flex:none}
 .segments button:hover{color:var(--text)}
 .segments button.active{background:var(--panel);color:var(--text);font-weight:600;box-shadow:var(--shadow-sm),0 0 0 1px var(--line)}
-.search-box{display:flex;align-items:center;gap:6px;width:260px;height:var(--h);padding:0 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--panel);color:var(--muted)}
+.search-box{display:flex;align-items:center;gap:6px;flex:0 1 260px;min-width:160px;max-width:100%;width:260px;height:var(--h);padding:0 10px;border:1px solid var(--line2);border-radius:var(--r-sm);background:var(--panel);color:var(--muted)}
 .search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
 .search-box svg{width:14px;height:14px}
 .search-box .search{flex:1;height:28px;padding:0;border:0;background:transparent;box-shadow:none!important}
@@ -506,10 +506,10 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .batch-preview-table td small{display:block;margin-top:4px}
 .table-wrap{overflow:visible}
 .instance-table{table-layout:fixed}
-.instance-table th{position:static;z-index:auto}
+.instance-table th{position:static;z-index:auto;overflow:hidden;text-overflow:ellipsis}
 .instance-table th:first-child{border-top-left-radius:var(--r)}.instance-table th:last-child{border-top-right-radius:var(--r)}
-.instance-table td{height:44px;padding:6px 12px}
-.instance-table .col-check{width:59px;padding-right:0}
+.instance-table td{height:44px;padding:6px 12px;overflow:hidden}
+.instance-table .col-check{width:56px;padding-right:0}
 .instance-table th.col-check{padding-left:34px}
 .instance-row-controls{display:flex;align-items:center;gap:4px}
 .instance-drag-handle{display:grid;place-items:center;flex:0 0 18px;padding:0;height:25px;border:0;border-radius:4px;background:transparent;color:var(--muted)}
@@ -517,7 +517,7 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .instance-drag-handle svg{width:14px;height:16px;pointer-events:none}
 .instance-table tr.drop-before td{box-shadow:inset 0 2px var(--accent)}
 .instance-table tr.drop-after td{box-shadow:inset 0 -2px var(--accent)}
-.instance-table th:nth-child(2){width:18%}.instance-table .col-autostart{width:118px}.instance-table th:nth-child(4){width:96px}.instance-table th:nth-child(5){width:22%}.instance-table th:nth-child(7){width:120px}.instance-table .col-actions{width:212px}
+.instance-table th:nth-child(2){width:auto}.instance-table .col-autostart{width:108px}.instance-table th:nth-child(4){width:92px}.instance-table th:nth-child(5){width:20%}.instance-table th:nth-child(6){width:15%}.instance-table th:nth-child(7){width:112px}.instance-table .col-actions{width:206px}
 .instance-autostart{display:inline-flex;align-items:center;gap:8px;padding:4px 0;border:0;background:transparent;color:var(--muted);font:inherit;cursor:pointer;white-space:nowrap}.instance-autostart[aria-checked="true"]{color:var(--accent)}.instance-autostart:disabled{opacity:.55;cursor:wait}.autostart-track{position:relative;display:inline-block;width:32px;height:18px;border:1px solid var(--line2);border-radius:10px;background:var(--panel2)}.autostart-track::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--muted);border-radius:50%}.instance-autostart[aria-checked="true"] .autostart-track{background:var(--accent);border-color:var(--accent)}.instance-autostart[aria-checked="true"] .autostart-track::after{left:16px;background:#fff}
 .instance-table tr.selected td{background:var(--accent-weak)}
 .cell-name b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -860,6 +860,34 @@ html[data-frame="custom"] .toast{top:80px}
 .grid-play:hover{border-color:var(--accent);background:var(--accent-weak)}
 .grid-play svg{width:18px;height:18px}
 .grid-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px 0;color:var(--muted);font-size:13px}
+/* 按主内容区实际宽度响应式精简表格列（AI 面板展开或调宽时自动避免列挤压重叠） */
+@container main (max-width:1040px){
+ .filters-note{display:none}
+ .instance-table th:nth-child(6),.instance-table td:nth-child(6),.instance-table th:nth-child(7),.instance-table td:nth-child(7){display:none}
+ .instance-table th,.instance-table td{padding-left:8px;padding-right:8px}
+ .instance-table .col-check{width:50px;padding-right:0}
+ .instance-table th.col-check{padding-left:28px}
+ .instance-table .col-autostart{width:96px}
+ .instance-table th:nth-child(4){width:84px}
+ .instance-table th:nth-child(5){width:24%}
+ .instance-table .col-actions{width:196px}
+ .search-box{width:200px}
+}
+@container main (max-width:760px){
+ .instance-table th:nth-child(5),.instance-table td:nth-child(5){display:none}
+ .instance-table .row-action-placeholder{display:none}
+ .instance-table .col-autostart{width:86px}
+ .instance-table th:nth-child(4){width:76px}
+ .instance-table .col-actions{width:152px}
+ .segments button{padding:0 9px}
+}
+@container main (max-width:540px){
+ .instance-autostart span:last-child{display:none}
+ .instance-table .col-autostart{width:46px}
+ .instance-table th:nth-child(4){width:70px}
+ .instance-table .col-actions{width:144px}
+ .instance-notes-btn{padding:0 6px}
+}
 @media (max-width:1100px){
  .body-grid{grid-template-columns:196px minmax(0,1fr)}
  .brand strong,.brand span{display:none}

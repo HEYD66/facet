@@ -11,8 +11,8 @@ const tools=[
  {type:'function',function:{name:'network_log',description:'观察当前实例网页真实网络请求。start 后触发网页操作，read 按 after 游标分页查看请求、响应与错误，body 用 requestId 读取响应正文；clear 清空，stop 停止收集。只保留内存中最近500条，请求列表不会禁用其他网络监听。任务结束自动清理。',parameters:{type:'object',properties:{instanceId:{type:'string'},action:{type:'string',enum:['start','read','body','clear','stop']},after:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:100},requestId:{type:'string'},sessionId:{type:'string'}},required:['instanceId','action']}}},
  {type:'function',function:{name:'upload_file',description:'将本机已有文件填入网页 input[type=file]，支持多个文件。selector 是实际 CSS 选择器；可选 frameId 为 Page.getFrameTree 返回的 CDP frame.id。填写后仍需网页提交并核对服务器结果。遵循当前权限，完全权限不再确认。',parameters:{type:'object',properties:{instanceId:{type:'string'},selector:{type:'string'},files:{type:'array',items:{type:'string'}},frameId:{type:'string'}},required:['instanceId','selector','files']}}}
 ];
-function stopCapture(wc){const st=captures.get(wc);if(!st)return;wc.debugger.removeListener('message',st.listener);wc.removeListener('destroyed',st.destroy);captures.delete(wc);st.owner.aiNetworkPages?.delete(wc);}
-function cleanup(agent){for(const wc of agent.aiNetworkPages||[])stopCapture(wc);}
+function stopCapture(wc,owner){const st=captures.get(wc);if(!st||owner&&st.owner!==owner)return;wc.debugger.removeListener('message',st.listener);wc.removeListener('destroyed',st.destroy);captures.delete(wc);st.owner.aiNetworkPages?.delete(wc);}
+function cleanup(agent){for(const wc of [...(agent.aiNetworkPages||[])])stopCapture(wc,agent);}
 async function command(agent,wc,method,params={},sessionId){
  const signal=agent.run.abort.signal;signal.throwIfAborted();let abort;
  try{return await Promise.race([wc.debugger.sendCommand(method,params,sessionId),new Promise((_,reject)=>{abort=()=>reject(signal.reason||Error('任务已停止'));signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();})]);}

@@ -71,6 +71,22 @@ app.whenReady().then(async()=>{let error;try{
  await wait(()=>hits.includes('/linked?q=1'),'link opened in instance');
  const r=c.runtimes.get(target);await wait(()=>r.view.webContents.getURL()===base+'/linked?q=1','active tab shows the link');assert(r.tabs.size>=2);await wait(async()=>await ui('view')==='browser','UI follows the instance');
  reports.push('A Markdown link opens as a new tab in the running instance (its proxy and session), and the UI follows it');
+
+ // 新双栏界面、默认完全权限、推理强度与左边缘调宽验证。
+ assert.equal(await ui("document.querySelector('#aiPermission').value"),'full','default permission is full');
+ await ui("const s=document.querySelector('#aiReasoning');s.value='high';s.dispatchEvent(new Event('change',{bubbles:true}))");
+ await wait(()=>a.settings().reasoningEffort==='high','reasoning effort saved');
+ assert.equal(await ui("document.querySelector('#aiReasoning').value"),'high');
+ const beforeW=await ui("Math.round(document.querySelector('#aiPanel').getBoundingClientRect().width)");
+ await ui("(()=>{const r=document.querySelector('#aiResizer'),x=Math.round(r.getBoundingClientRect().left+2);r.dispatchEvent(new PointerEvent('pointerdown',{button:0,clientX:x,pointerId:1,bubbles:true}));r.dispatchEvent(new PointerEvent('pointermove',{button:0,clientX:x-100,pointerId:1,bubbles:true}));r.dispatchEvent(new PointerEvent('pointerup',{button:0,clientX:x-100,pointerId:1,bubbles:true}));})()");
+ await sleep(80);
+ const afterW=await ui("Math.round(document.querySelector('#aiPanel').getBoundingClientRect().width)");
+ assert(afterW>=beforeW+80,`dragging #aiResizer widens the panel and survives workspace ResizeObserver (before=${beforeW}, after=${afterW})`);
+ assert.equal(Number(await ui("localStorage.getItem('facet.ai.width.v1')")),afterW,'resized width is persisted');
+ const wasHidden=await ui("document.querySelector('#aiSessions').hidden");
+ await ui("document.querySelector('#aiSessionsButton').click()");
+ assert.equal(await ui("document.querySelector('#aiSessions').hidden"),!wasHidden,'left session sidebar toggles cleanly');
+ reports.push('Default full permission, reasoning effort selector, resizable width and left session sidebar verified');
 }catch(e){error=e;console.error(e.stack||e);}finally{
  try{await c?.closeAll();}catch{}win?.destroy();server?.close();
  const report={passed:!error,reports,error:error?String(error.stack||error):null};fs.writeFileSync(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({...report,root},null,2));

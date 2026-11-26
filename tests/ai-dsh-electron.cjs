@@ -47,10 +47,10 @@ app.whenReady().then(async()=>{let error;try{
  await ui("document.querySelector('#aiToggle').click()");await wait(()=>ui("!document.querySelector('#aiPanel').hidden&&document.querySelector('#aiEngine').textContent.includes('DeepSeek Harness')"));
  assert.equal(a.snapshot().engine.version,'0.2.1-rc.2');
  if(resume){
-  assert.equal(requests.length,0);assert.equal(a.run.busy,false);assert.equal(a.run.permission,'confirm');assert.equal(a.run.queue[0].prompt,'RESUME_AFTER_RESTART');assert.equal(a.run.queue[0].images.length,1);
+  assert.equal(requests.length,0);assert.equal(a.run.busy,false);assert.equal(a.run.permission,'read');assert.equal(a.run.queue[0].prompt,'RESUME_AFTER_RESTART');assert.equal(a.run.queue[0].images.length,1);
   assert(a.run.plan);assert.equal(a.snapshot().task.planCurrent,false);
   await wait(()=>ui("document.querySelector('#aiQueue').textContent.includes('RESUME_AFTER_RESTART')&&!!document.querySelector('#aiQueueNext')"));
-  reports.push('Fresh process restores encrypted pending text/image and resets permission; no model request or action resumes automatically');
+  reports.push('Fresh process restores encrypted pending text/image and retains session permission; no model request or action resumes automatically');
   a.save({baseURL:base+'/v1',model:'dsh-fixture'});await ui("document.querySelector('#aiPermission').value='read';document.querySelector('#aiQueueNext').click()");await wait(()=>requests.length&&a.run&&!a.run.busy);
   assert.equal(a.run.permission,'read');assert.equal(a.run.queue.length,0);
   // The restored conversation continues its own DSH session: the stopped task, the stop note and the new answer are one history.
@@ -71,8 +71,9 @@ app.whenReady().then(async()=>{let error;try{
   const steerImage=nativeImage.createFromBitmap(Buffer.from([0,0,255,255]),{width:1,height:1}).toDataURL();
   await ipc('ai-message',{taskId:a.run.id,mode:'steer',prompt:'立即补充：读取真实网页并参考附图',images:[steerImage]});
   await ipc('ai-clear');const viewedSession=a.sessions.selectedId;assert.notEqual(viewedSession,originalSession);
-  reply(held.res,{content:'首步完成'});held=null;await wait(()=>!a.run.busy&&a.run.entries.some(e=>e.text==='完成 SECOND'));
-  assert.equal(a.sessions.selectedId,viewedSession);assert.equal(a.sessions.activeId,originalSession);assert.equal(a.run.queue.length,0);assert.equal(a.run.permission,'full');
+  const origRt=a.runtime(originalSession);
+  reply(held.res,{content:'首步完成'});held=null;await wait(()=>!origRt.run.busy&&origRt.run.entries.some(e=>e.text==='完成 SECOND'));
+  assert.equal(a.sessions.selectedId,viewedSession);assert.equal(origRt.run.queue.length,0);assert.equal(origRt.run.permission,'full');
   const calls=requests.flatMap(p=>p.messages.filter(m=>m.role==='tool'));assert(calls.some(m=>m.content.includes('DSH browser fixture')));
   const second=requests.find(p=>p.messages.at(-1)?.content==='SECOND');assert(second&&second.messages.some(m=>String(m.content).includes('补充已执行')));
   assert(requests.some(p=>p.messages.some(m=>Array.isArray(m.content)&&m.content.some(b=>b.type==='image_url'&&b.image_url.url===steerImage))));
@@ -87,11 +88,9 @@ app.whenReady().then(async()=>{let error;try{
   assert(a.run.entries.some(e=>e.kind==='tool'&&e.text.startsWith('observe：')));assert.equal(a.snapshot().task.planCurrent,true);
   reports.push('Official DSH continues an unfinished current plan after a premature text-only reply, reads the real page and verifies completion');
   const old=structuredClone(a.run.plan);old.steps=[{id:'old',title:'核对旧的6个实例',status:'in_progress'}];a.run.plan=old;a.persist();const beforeGreeting=requests.length;
-  a.begin({prompt:'hi',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert.equal(requests.length,beforeGreeting+1);assert.equal(a.snapshot().task.planCurrent,false);assert.deepEqual(a.run.plan,old);
-  const greeting=requests.at(-1);assert(greeting.messages[0].content.includes('本轮开始时授权数量为 1 个'));assert(greeting.messages.some(m=>String(m.content).startsWith('历史任务计划')));
-  await wait(()=>ui("document.querySelector('#aiPlan summary')?.textContent.includes('历史计划')&&document.querySelector('#aiContinue').textContent==='继续旧任务'"));
-  assert.equal(await ui("document.querySelector('#aiPlan').open"),false);
-  reports.push('Greeting preserves an old six-instance plan as collapsed history; current scope stays authoritative, no old operation resumes and the reply is not falsely marked unfinished');
+  a.begin({prompt:'hi',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert.equal(requests.length,beforeGreeting+1);assert.equal(a.snapshot().task.planCurrent,false);assert.equal(a.run.plan,null);
+  await wait(()=>ui("document.querySelector('#aiPlan').hidden"));
+  reports.push('New turn isolates tasks by clearing previous completed/stale plans so old plans never clutter the top bar');
   a.clear();a.begin({prompt:'PLAN_STUCK',ids:[target],permission:'read'});await wait(()=>!a.run.busy);assert.equal(a.run.status,'已完成');assert(a.run.plan.steps.every(s=>s.status==='completed'));
   assert.equal(a.run.entries.filter(e=>e.kind==='system'&&e.text.includes('正在核对并继续')).length,4);
   reports.push('Current task continues beyond two reminders and finishes the real page inspection without an artificial follow-through cutoff');
@@ -110,7 +109,7 @@ app.whenReady().then(async()=>{let error;try{
   await ipc('ai-message',{taskId:a.run.id,mode:'queue',prompt:'RESUME_AFTER_RESTART',images:[png]});
   const n=requests.length;await ipc('ai-stop');await wait(()=>!a.run.busy);held.res.destroy();held=null;assert.equal(a.run.queue.length,1);assert.equal(requests.length,n);
   const raw=fs.readFileSync(a.conversation.file,'utf8');assert(!raw.includes('RESUME_AFTER_RESTART')&&!raw.includes(png));
-  await wait(()=>ui("!!document.querySelector('#aiQueueNext')&&!document.querySelector('#aiContinue').hidden"));
+  await wait(()=>ui("!!document.querySelector('#aiQueueNext')"));
   reports.push('Queue limit, removal, stale-task rejection and Stop verified; queued text/image persist as ciphertext and never auto-run after Stop');
   await ui("document.documentElement.dataset.theme='dark'");await new Promise(r=>setTimeout(r,300));const image=await win.webContents.capturePage();assert(!image.isEmpty());fs.writeFileSync(path.join(root,'dsh-panel-dark.png'),image.toPNG());
   const layout=await ui("(()=>{const p=document.querySelector('#aiPanel'),q=document.querySelector('#aiQueue'),c=document.querySelector('.ai-compose');return {panel:p.getBoundingClientRect().width,overflow:p.scrollWidth>p.clientWidth+1,queue:q.getBoundingClientRect().height,composer:c.getBoundingClientRect().height}})()");assert(!layout.overflow);assert(layout.queue>0&&layout.composer>0);

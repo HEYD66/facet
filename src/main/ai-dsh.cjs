@@ -90,7 +90,7 @@ async function drive(host,definitions,system){
    // The stop explanation offers no tools and has a short deadline; when the model cannot
    // give it, Facet's own explanation becomes that turn's answer.
    const fallback=()=>'本次任务未完成。'+stopReason+'\n已停止继续操作；已执行的操作不会自动撤销。请展开上方工具记录核对执行结果，再决定下一步。\n模型未能生成完整说明，以上为千面提供的停止说明。';
-   const tools=final?undefined:options.tools?.filter(t=>!['read_page','click','fill'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.parameters}}));
+   const tools=final?undefined:options.tools?.filter(t=>!['read_page','click','fill','page_action'].includes(t.name)).map(t=>({type:'function',function:{name:t.name,description:t.description,parameters:t.parameters}}));
    const request=host.completion(wire,AbortSignal.any([signal,options.signal,...(final?[AbortSignal.timeout(20000)]:[])]),part=>{
     if(!part)return;received+=part;start();
     streamedEntry.text=(streamedEntry.text+part).slice(0,12000);r.partial=streamedEntry.text;r.status='正在回复';host.schedulePersist();push({type:'text-delta',index:0,text:part});
@@ -126,7 +126,7 @@ async function drive(host,definitions,system){
   await ctx.plugin(askUser,{mode:'legacy'});
   await ctx.plugin(pruner.default);
   await ctx.plugin(FacetCompaction,{headroomTokens:Math.min(65536,Math.max(4096,Math.floor(window*0.12)))});
-  await ctx.plugin(loop.default,{agents:[],maxParallelToolCalls:1});
+  await ctx.plugin(loop.default,{agents:[],maxParallelToolCalls:6});
   ctx.llm.registerAdapter(['facet'],new FacetAdapter());
   ctx.systemPrompt.section({name:'facet',order:0,text:system,interpolate:false,complete:true});
   for(const definition of definitions){const schema=definition.function;

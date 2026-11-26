@@ -50,19 +50,21 @@ app.whenReady().then(async()=>{let error;try{
   results.push('Old-format memory migrates into a new DSH session once (text, summary; images noted), with encrypted pre-DSH backup');
   await click('#aiClear');await wait(()=>agent.sessions.selectedId!==legacy);const running=agent.sessions.selectedId;
   assert.equal(agent.thread.turns,0);assert.equal(agent.sessions.rows.length,2);
-  agent.begin({prompt:'RUNNING',ids:[target],permission:'confirm'});await wait(()=>agent.pending);
-  const pending=agent.pending.id;await click('#aiClear');await wait(()=>agent.sessions.selectedId!==running);const b=agent.sessions.selectedId;
-  assert(agent.run.busy);assert.equal(agent.sessions.activeId,running);assert.equal(agent.snapshot().task,null);assert.equal(agent.pending.id,pending);
-  assert.throws(()=>agent.begin({prompt:'cannot overlap',ids:[target]}),/已有任务/);
-  await wait(()=>ui("document.querySelector('#aiSend').disabled"));
+  agent.begin({prompt:'RUNNING',ids:[target],permission:'confirm'});await wait(()=>agent.runtime(running).pending);
+  const pending=agent.runtime(running).pending.id;await click('#aiClear');await wait(()=>agent.sessions.selectedId!==running);const b=agent.sessions.selectedId;
+  // 多会话独立并行：会话 A 在后台等待确认，切到会话 B 后互不阻塞，会话 B 可直接并行完成任务且上下文零串台。
+  assert(agent.runtime(running).run.busy);assert.equal(agent.snapshot().task,null);assert.equal(agent.runtime(running).pending.id,pending);
   assert.throws(()=>agent.sessions.remove(running,true),/先停止/);
-  await click('#aiSessionsButton');await wait(()=>ui("!document.querySelector('#aiSessions').hidden"));
-  await click('[data-session-open="'+running+'"]');await wait(()=>agent.sessions.selectedId===running);await wait(()=>ui("!document.querySelector('#aiApproval').hidden"));
-  await click('[data-ai-approval="yes"]');await wait(()=>!agent.run.busy);assert.equal(await c.runtimes.get(target).view.webContents.executeJavaScript('document.querySelector("#value").value'),'ACTUAL_FILL');
-  agent.sessions.select(b);agent.begin({prompt:'B_ONLY',ids:[target],permission:'read'});await wait(()=>!agent.run.busy);assert.equal(agent.run.status,'已完成');
+  await wait(()=>ui("!document.querySelector('#aiSend').disabled"));
+  agent.begin({prompt:'B_ONLY',ids:[target],permission:'read'});await wait(()=>!agent.runtime(b).run.busy);assert.equal(agent.runtime(b).run.status,'已完成');
   const bPayload=payloads.find(x=>x.messages.at(-1).content==='B_ONLY');assert(bPayload);assert(!JSON.stringify(bPayload).includes('RUNNING'));assert(!JSON.stringify(bPayload).includes('LEGACY_CONTEXT'));
-  results.push('UI new session preserves old history; background confirmation survives switching; overlapping execution rejected; actual DOM fill finishes only in its originating session');
-  await click('#aiSessionsButton');await wait(()=>ui('!!document.querySelector(\'[data-session-rename="'+b+'"]\')'));
+  if(await ui("document.querySelector('#aiSessions').hidden"))await click('#aiSessionsButton');
+  await wait(()=>ui("!document.querySelector('#aiSessions').hidden"));
+  await click('[data-session-open="'+running+'"]');await wait(()=>agent.sessions.selectedId===running);await wait(()=>ui("!document.querySelector('#aiApproval').hidden"));
+  await click('[data-ai-approval="yes"]');await wait(()=>!agent.runtime(running).run.busy);assert.equal(await c.runtimes.get(target).view.webContents.executeJavaScript('document.querySelector("#value").value'),'ACTUAL_FILL');
+  results.push('UI new session preserves old history; background confirmation survives switching; separate sessions execute in parallel with full context isolation; actual DOM fill finishes in its originating session');
+  if(await ui("document.querySelector('#aiSessions').hidden"))await click('#aiSessionsButton');
+  await wait(()=>ui('!!document.querySelector(\'[data-session-rename="'+b+'"]\')'));
   await click('[data-session-rename="'+b+'"]');await ui('document.querySelector("#aiSessionName").value="会话 B · 独立上下文"');await click('#aiSessionConfirm');await wait(()=>agent.sessions.rows.find(x=>x.id===b).title==='会话 B · 独立上下文');
   // Disk-write failure leaves all saved sessions and selection intact.
   const bytes=fs.readFileSync(agent.conversation.file),before=agent.sessions.rows,rename=fs.renameSync;
@@ -70,12 +72,14 @@ app.whenReady().then(async()=>{let error;try{
   try{assert.throws(()=>agent.sessions.create(),/保存失败/);assert.equal(agent.sessions.rows,before);assert.deepEqual(fs.readFileSync(agent.conversation.file),bytes);}finally{fs.renameSync=rename;}agent.persist();
   const disposable=agent.sessions.create();agent.sessions.rename(disposable,'删除测试');
   assert.throws(()=>agent.sessions.remove(disposable,false),/确认/);
+  if(await ui("document.querySelector('#aiSessions').hidden"))await click('#aiSessionsButton');
   await wait(()=>ui('!!document.querySelector(\'[data-session-delete="'+disposable+'"]\')'));
-  await click('#aiSessionsButton');await click('[data-session-delete="'+disposable+'"]');assert(agent.sessions.rows.some(x=>x.id===disposable));
+  await click('[data-session-delete="'+disposable+'"]');assert(agent.sessions.rows.some(x=>x.id===disposable));
   await click('#aiSessionCancel');assert(agent.sessions.rows.some(x=>x.id===disposable));
   await click('[data-session-delete="'+disposable+'"]');await click('#aiSessionConfirm');await wait(()=>!agent.sessions.rows.some(x=>x.id===disposable));
   agent.sessions.select(b);await wait(()=>ui("document.querySelector('#aiHistory').textContent.includes('B_ONLY')"));
-  await click('#aiSessionsButton');await wait(()=>ui("!document.querySelector('#aiSessions').hidden"));
+  if(await ui("document.querySelector('#aiSessions').hidden"))await click('#aiSessionsButton');
+  await wait(()=>ui("!document.querySelector('#aiSessions').hidden"));
   for(const theme of ['dark','light']){await ui('document.documentElement.dataset.theme='+JSON.stringify(theme));await new Promise(r=>setTimeout(r,150));const image=await win.webContents.capturePage();assert(!image.isEmpty());fs.writeFileSync(path.join(root,'sessions-'+theme+'.png'),image.toPNG());}
   const bounds=await ui("(()=>{const p=document.querySelector('#aiPanel'),h=p.querySelector('header'),s=document.querySelector('#aiSessions');return {header:h.scrollWidth<=h.clientWidth,list:s.scrollWidth<=s.clientWidth}})()");assert(bounds.header&&bounds.list);
   assert(!fs.readFileSync(agent.conversation.file,'utf8').includes('B_ONLY'));

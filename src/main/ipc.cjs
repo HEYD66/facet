@@ -23,24 +23,25 @@ function installIPC(window,controller){
   if(controller.proxyModeSwitching&&(['start','stop','settings','reset-environment','delete','remove','create','import','import-subscription','refresh-subscription','node-network-save','environment-timezone','proxy-mode-set','node-ports-set'].includes(action)||/^(batch-|instance-|extension-|library-|diagnostic-)/.test(action)))throw Error(require('./proxy-mode.cjs').busyMessage);
   const exporting=controller.transfer.progress;if(exporting?.running){const mutations=['start','stop','rename','settings','reset-environment','instance-notes','instance-autostart','delete','remove','import','import-subscription','refresh-subscription','library-assign','instance-node-select','tab-new','tab-activate','tab-close','navigate','back','forward','reload','audio-volume','audio-mute','environment-timezone'];if(exporting.ids.includes(id)&&mutations.includes(action)||action.startsWith('extension-')&&action!=='extension-reveal'||['batch-start','batch-stop','batch-delete','batch-reset','library-assign-many'].includes(action))throw Error('所选实例正在导出，请等待完成');}
    switch(action){
-    case 'ai-select':return {ok:true,value:ai.select(message.providerId,message.model)};
+    case 'ai-select':return {ok:true,value:ai.select(message.providerId,message.model,message.reasoningEffort)};
+    case 'ai-reasoning':return {ok:true,value:ai.setReasoning(message.reasoningEffort)};
     case 'ai-provider-remove':return {ok:true,value:ai.removeProvider(message.providerId)};
     case 'ai-models':return {ok:true,value:await ai.models(message.settings||{})};
     case 'ai-state':return {ok:true,value:ai.snapshot()};
     case 'ai-markdown':return {ok:true,value:await require('./ai-markdown.cjs').parseMany(message.texts)};
     case 'ai-settings':return {ok:true,value:ai.save(message.settings||{})};
     case 'ai-run':return {ok:true,value:ai.begin(message)};
-    case 'ai-submit':return {ok:true,value:ai.run?.busy?require('./ai-inbox.cjs').submit(ai,message):ai.begin(message)};
+    case 'ai-submit':{const target=ai.runtime(message.sessionId);return {ok:true,value:target.run?.busy?require('./ai-inbox.cjs').submit(ai,message):ai.begin(message)};}
     case 'ai-message':return {ok:true,value:require('./ai-inbox.cjs').submit(ai,message)};
-    case 'ai-queue-remove':require('./ai-inbox.cjs').remove(ai,message.messageId);return {ok:true};
-    case 'ai-queue-next':return {ok:true,value:require('./ai-inbox.cjs').next(ai,{ids:message.ids,permission:message.permission,sharePage:true,allowGlobal:true})};
-    case 'ai-stop':ai.stop();return {ok:true};
-    case 'ai-clear':return {ok:true,value:{sessionId:ai.sessions.create()}};
+    case 'ai-queue-remove':require('./ai-inbox.cjs').remove(ai,message.messageId,message.sessionId);return {ok:true};
+    case 'ai-queue-next':return {ok:true,value:require('./ai-inbox.cjs').next(ai,{ids:message.ids,permission:message.permission,sharePage:true,allowGlobal:true},false,message.sessionId)};
+    case 'ai-stop':ai.stop(message.sessionId);return {ok:true};
+    case 'ai-clear':return {ok:true,value:{sessionId:ai.sessions.create({scope:message.scope,permission:message.permission})}};
     case 'ai-session-select':ai.sessions.select(message.sessionId);return {ok:true};
     case 'ai-session-rename':ai.sessions.rename(message.sessionId,message.title);return {ok:true};
     case 'ai-session-delete':ai.sessions.remove(message.sessionId,message.confirmed);return {ok:true};
-    case 'ai-approve':ai.approve(message.approvalId,message.allow);return {ok:true};
-    case 'ai-answer':ai.answer(message.questionId,message.answers,message.skip===true);return {ok:true};
+    case 'ai-approve':ai.approve(message.approvalId,message.allow,message.sessionId);return {ok:true};
+    case 'ai-answer':ai.answer(message.questionId,message.answers,message.skip===true,message.sessionId);return {ok:true};
     case 'proxy-mode-set':return {ok:true,value:await controller.setProxyMode(message.mode,{confirmed:message.confirmed===true})};
     case 'node-ports-set':return {ok:true,value:await controller.setNodePorts(message.enabled,{confirmed:message.confirmed===true})};
     case 'node-ports-sync':return {ok:true,value:await controller.syncNodePorts()};
@@ -168,7 +169,7 @@ function installIPC(window,controller){
     case 'instance-remove-many':return {ok:true,value:await controller.queue('instance-delete',()=>require('./instance-bulk.cjs').removeMany(controller,message.ids))};
     case 'instance-reset-many':return {ok:true,value:await controller.queue('instance-reset',()=>require('./instance-bulk.cjs').resetMany(controller,message.ids))};
     case 'tab-list':{const x=controller.store.get(id);return {ok:true,value:require('./browser-tabs.cjs').snapshot(x,controller.runtimes.get(id))};}
-    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||undefined,active:message.active!==false})};
+    case 'tab-new':return {ok:true,value:await controller.newTab(id,{url:message.url||undefined,active:message.active!==false,focusAddress:message.focusAddress===true})};
     case 'tab-activate':return {ok:true,value:await controller.activateTab(id,message.tabId)};
     case 'tab-close':return {ok:true,value:await controller.closeTab(id,message.tabId)};
     case 'navigate':return {ok:true,value:await controller.navigate(id,message.url)};

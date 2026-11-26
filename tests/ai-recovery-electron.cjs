@@ -13,7 +13,7 @@ app.whenReady().then(async()=>{let error;try{
  c=new(require('../src/main/controller.cjs').Controller)(win,root,'');require('../src/main/ipc.cjs').installIPC(win,c);const agent=c.aiAgent;
  const ui=async code=>{try{return await win.webContents.executeJavaScript(code);}catch(e){throw Error('Renderer fixture: '+code+'\n'+e.message);}};await win.loadFile(path.join(__dirname,'../src/renderer/index.html'));await ui("document.querySelector('#aiToggle').click()");
  if(process.argv.includes('--resume')){
-  assert.equal(agent.run.busy,false);assert.equal(agent.run.permission,'confirm');assert.equal(agent.run.plan.steps[0].status,'blocked');
+  assert.equal(agent.run.busy,false);assert.equal(agent.run.permission,'read');assert.equal(agent.run.plan.steps[0].status,'blocked');
   await wait(()=>ui("!document.querySelector('#aiPlan').hidden&&document.querySelector('#aiPlan').textContent.includes('等待页面恢复')"));
   assert.equal(agent.snapshot().task.retry,null);assert(agent.sessions.rows.length>=2);assert(agent.thread.turns>0);
   reports.push('Fresh Electron process restores the selected session plan, history and blocked state without resuming actions or retry timers');

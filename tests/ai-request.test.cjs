@@ -46,3 +46,9 @@ test('a context-length rejection is classified for DSH compaction without echoin
  const plain=await provider(t,(_req,res)=>{res.writeHead(400);res.end('bad model name');});
  await assert.rejects(request(plain),e=>e.code===undefined&&/HTTP 400/.test(e.message)&&!e.message.includes('bad model'));
 });
+test('a service rejecting reasoning_effort gets one immediate retry without it',async t=>{
+ const bodies=[];let downgraded=0;
+ const url=await provider(t,async(req,res)=>{let body='';for await(const chunk of req)body+=chunk;bodies.push(JSON.parse(body));if(bodies.length===1){res.writeHead(400,{'Content-Type':'application/json'});res.end('{"error":{"message":"Unrecognized request argument supplied: reasoning_effort"}}');}else ok(res);});
+ const result=await request(url,{body:JSON.stringify({model:'local-fixture',messages:[],stream:true,reasoning_effort:'high'}),onDowngradeReasoning:()=>downgraded++});
+ assert.equal(result.content,'已收到');assert.equal(bodies.length,2);assert.equal(downgraded,1);assert.equal(bodies[0].reasoning_effort,'high');assert.equal('reasoning_effort' in bodies[1],false);
+});

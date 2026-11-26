@@ -23,8 +23,10 @@ function argsSummary(name, args) {
       if (typeof args.text === 'string') parts.push('输入 ' + args.text.length + ' 个字符');
       if (args.value !== undefined && args.action === 'select') parts.push('选择一项');
       if (args.direction) parts.push(args.direction);
+      if (args.ms) parts.push(args.ms + 'ms');
       return parts.filter(Boolean).join(' ');
     }
+    case 'manage_tabs': return [args.action, args.url && address(args.url), args.tabId && clip(args.tabId, 16)].filter(Boolean).join(' ');
     case 'dialog': return args.accept ? '确定' : '取消';
     case 'cdp_command': {
       const expression = typeof args.params?.expression === 'string' ? ' · ' + clip(args.params.expression, 80) : '';

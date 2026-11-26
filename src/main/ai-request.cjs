@@ -26,8 +26,8 @@ async function errorText(response){
  try{while(bytes<16384){const {done,value}=await reader.read();if(done)break;parts.push(value);bytes+=value.length;}}catch{/* classification is best effort */}finally{await reader.cancel().catch(()=>{});}
  return Buffer.concat(parts).toString('utf8').slice(0,16384);
 }
-async function completionRequest({url,headers,body,signal,onText=()=>{},onRetry=()=>{},onDowngrade=()=>{}}){
- const deadline=AbortSignal.any([signal,AbortSignal.timeout(90000)]);let delivered=false,retry=null,downgraded=false;
+async function completionRequest({url,headers,body,signal,onText=()=>{},onRetry=()=>{},onDowngrade=()=>{},onDowngradeReasoning=()=>{}}){
+ const deadline=AbortSignal.any([signal,AbortSignal.timeout(90000)]);let delivered=false,retry=null,downgraded=false,downgradedReasoning=false;
  for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
   signal.throwIfAborted();if(retry)onRetry({...retry,phase:'requesting'});
   let response,reason='',delay=null,error;
@@ -38,6 +38,8 @@ async function completionRequest({url,headers,body,signal,onText=()=>{},onRetry=
     const detail=[400,413,422].includes(status)?await errorText(response):(await response.body?.cancel(),'');
     // A strict service that rejects usage reporting gets the same request without it, once.
     if(detail&&!downgraded&&/stream_options|include_usage/i.test(detail)&&body.includes('"stream_options"')){downgraded=true;body=JSON.stringify({...JSON.parse(body),stream_options:undefined});onDowngrade();attempt--;continue;}
+    // A model/service that rejects reasoning_effort gets the same request without it, once.
+    if(detail&&!downgradedReasoning&&/reasoning[_ -]?effort|unknown field|unrecognized|extra_forbidden|not supported/i.test(detail)&&body.includes('"reasoning_effort"')){downgradedReasoning=true;body=JSON.stringify({...JSON.parse(body),reasoning_effort:undefined});onDowngradeReasoning();attempt--;continue;}
     error=Error('模型接口返回 HTTP '+status+'，请检查密钥、模型和服务状态');
     if(detail&&OVERFLOW.test(detail)){error=Error('模型上下文超出上限（HTTP '+status+'），需要压缩较早内容后重试');error.code='CONTEXT_WINDOW_EXCEEDED';}
     if(RETRY_STATUS.has(status))reason='HTTP '+status;
